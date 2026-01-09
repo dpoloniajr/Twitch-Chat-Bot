@@ -274,10 +274,12 @@ app.get('/upgrade-status/:upgradeId', (req, res) => {
     authUrl: upgrade.authUrl
   });
 });
-
-// Start the server
-app.listen(PORT, () => {
-  console.log(`🚀 Token Generator Server running at http://localhost:${PORT}`);
-  console.log(`📱 Open this URL in your browser to generate tokens`);
-  console.log(`   http://localhost:${PORT}`);
-});
+// Cleanup old upgrades every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, upgrade] of pendingUpgrades.entries()) {
+    if (now - upgrade.timestamp > 3600000) { // 1 hour
+      pendingUpgrades.delete(key);
+    }
+  }
+}, 3600000);
