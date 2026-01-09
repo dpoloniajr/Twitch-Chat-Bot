@@ -130,6 +130,20 @@ const ALL_SCOPES = Object.values(SCOPE_CATEGORIES).flatMap(cat => cat.map(s => s
 app.get('/', (req, res) => {
   console.log('Home page requested');
 
+  // Read current scopes from .env if they exist
+  let currentScopes = [];
+  try {
+    const envContent = fs.readFileSync('.env', 'utf8');
+    const scopesMatch = envContent.match(/TWITCH_SCOPES=(.+)/);
+    if (scopesMatch && scopesMatch[1]) {
+      currentScopes = scopesMatch[1].trim().split(' ').filter(s => s);
+    }
+  } catch (err) {
+    // .env might not exist yet, that's okay
+  }
+
+  console.log('Current scopes in .env:', currentScopes);
+
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -192,6 +206,9 @@ app.get('/', (req, res) => {
           cursor: pointer;
           width: 18px;
           height: 18px;
+        }
+        .scope-item input[type="checkbox"]:checked + .scope-text {
+          color: #667eea;
         }
         .scope-item label {
           cursor: pointer;
@@ -278,6 +295,16 @@ app.get('/', (req, res) => {
           color: #856404;
           line-height: 1.5;
         }
+        .info-box {
+          background: #d1ecf1;
+          border: 1px solid #bee5eb;
+          border-radius: 6px;
+          padding: 12px;
+          margin-bottom: 20px;
+          font-size: 13px;
+          color: #0c5460;
+          line-height: 1.5;
+        }
       </style>
     </head>
     <body>
@@ -292,6 +319,10 @@ app.get('/', (req, res) => {
               Scopes selected: <span id="selectedCount">0</span> / ${ALL_SCOPES.length}
             </div>
 
+            <div class="info-box">
+              ℹ️ <strong>Currently authorized scopes:</strong> <span id="currentScopes">${currentScopes.length > 0 ? currentScopes.join(', ') : 'None'}</span>
+            </div>
+
             <div style="display: flex; gap: 10px; margin-bottom: 30px;">
               <button type="button" class="btn-select-all" onclick="selectAllScopes()">Select All</button>
               <button type="button" class="btn-clear" onclick="clearAllScopes()">Clear All</button>
@@ -304,7 +335,7 @@ app.get('/', (req, res) => {
                   ${scopes.map(s => `
                     <div class="scope-item">
                       <label>
-                        <input type="checkbox" name="scope" value="${s.scope}" class="scope-checkbox" onchange="updateCount()">
+                        <input type="checkbox" name="scope" value="${s.scope}" class="scope-checkbox" onchange="updateCount()" ${currentScopes.includes(s.scope) ? 'checked' : ''}>
                         <div class="scope-text">
                           <div class="scope-name">${s.scope}</div>
                           <div class="scope-desc">${s.description}</div>
@@ -318,7 +349,7 @@ app.get('/', (req, res) => {
 
             <button type="submit" class="btn-authorize">Authorize with Selected Scopes →</button>
             <div class="note">
-              💡 <strong>Note:</strong> Select only the scopes your bot actually needs. Requesting excessive scopes may result in app suspension.
+              💡 <strong>Note:</strong> Select only the scopes your bot actually needs. Requesting excessive scopes may result in app suspension. You can easily add or remove scopes anytime by coming back here.
             </div>
           </form>
         </div>
@@ -455,10 +486,13 @@ app.get('/callback', async (req, res) => {
       `);
     }
 
-    // Update the .env file
+    // Update the .env file with tokens and scopes
+    // Ensure scopes are space-separated, not comma-separated
+    const scopeString = Array.isArray(scope) ? scope.join(' ') : (scope || '');
     const updatedEnv = envContent
       .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
-      .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`);
+      .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
+      .replace(/TWITCH_SCOPES=.*/, `TWITCH_SCOPES=${scopeString}`);
 
     try {
       fs.writeFileSync('.env', updatedEnv);

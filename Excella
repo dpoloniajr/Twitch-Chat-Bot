@@ -1,4 +1,4 @@
-const { RefreshingAuthProvider } = require('@twurple/auth');
+const { StaticAuthProvider } = require('@twurple/auth');
 const { ChatClient } = require('@twurple/chat');
 const { ApiClient } = require('@twurple/api');
 require('dotenv').config();
@@ -10,7 +10,8 @@ const config = {
   accessToken: process.env.TWITCH_ACCESS_TOKEN,
   refreshToken: process.env.TWITCH_REFRESH_TOKEN,
   channels: (process.env.TWITCH_CHANNELS || '').split(',').filter(c => c),
-  broadcasterName: process.env.TWITCH_BROADCASTER_NAME
+  broadcasterName: process.env.TWITCH_BROADCASTER_NAME,
+  scopes: (process.env.TWITCH_SCOPES || 'chat:read chat:edit').split(' ').filter(s => s)
 };
 
 // Validate config on startup
@@ -26,14 +27,12 @@ const tokenData = {
   obtainmentTimestamp: 0
 };
 
-// Setup auth provider
-const authProvider = new RefreshingAuthProvider({
-  clientId: config.clientId,
-  clientSecret: config.clientSecret
-});
-
-// Add user with token data
-authProvider.addUser(config.broadcasterName, tokenData);
+// Setup auth provider using StaticAuthProvider
+const authProvider = new StaticAuthProvider(
+  config.clientId,
+  config.accessToken,
+  config.scopes
+);
 
 // Create API and Chat clients
 const apiClient = new ApiClient({ authProvider });
