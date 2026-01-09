@@ -1,173 +1,14 @@
-const { RefreshingAuthProvider, AccessToken, InvalidTokenError } = require('@twurple/auth');
+const { RefreshingAuthProvider } = require('@twurple/auth');
 const { ChatClient } = require('@twurple/chat');
 const { ApiClient } = require('@twurple/api');
-const axios = require('axios');
-const fs = require('fs');
 require('dotenv').config();
-
-// Custom AuthProvider extending RefreshingAuthProvider with dynamic scope upgrade capability
-class DynamicScopeAuthProvider extends RefreshingAuthProvider {
-  constructor(clientId, clientSecret, initialTokenData, redirectUri = 'http://localhost:3000/callback') {
-    super({
-      clientId,
-      clientSecret
-    });
-
-    this.redirectUri = redirectUri;
-    this.initialTokenData = initialTokenData;
-    this.users = new Map();
-  }
-
-  // Override addUser to store initial data and handle scope upgrades
-  addUser(userId, tokenData, scopes = []) {
-    super.addUser(userId, tokenData, scopes);
-    this.users.set(userId, {
-      tokenData: { ...tokenData },
-      scopes: new Set(scopes)
-    });
-
-    // Update current user for backward compatibility
-    this.userId = userId;
-    this.requestedScopes = new Set(scopes);
-  }
-
-  // Override getAccessTokenForUser to check for missing scopes
-  async getAccessTokenForUser(userId, scopes) {
-    // Check if we need additional scopes that aren't in our requested scopes
-    const userData = this.users.get(userId);
-    if (!userData) {
-      throw new Error(`User ${userId} not found`);
-    }
-
-    const missingScopes = scopes ? scopes.filter(scope => !userData.scopes.has(scope)) : [];
-
-    if (missingScopes.length > 0) {
-      console.log(`Missing scopes for user ${userId}: ${missingScopes.join(', ')}. Attempting to upgrade...`);
-      await this.upgradeScopesForUser(userId, missingScopes);
-    }
-
-    // Now call the parent method
-    return super.getAccessTokenForUser(userId, scopes);
-  }
-
-  // Upgrade scopes by communicating with the token generator web interface
-  async upgradeScopes(newScopes) {
-    return this.upgradeScopesForUser(this.userId, newScopes);
-  }
-
-  // Upgrade scopes for specific user
-  async upgradeScopesForUser(userId, newScopes) {
-    console.log(`🔄 Upgrading token for user ${userId} with new scopes: ${newScopes.join(', ')}`);
-
-    const userData = this.users.get(userId);
-    if (!userData) {
-      throw new Error(`User ${userId} not found`);
-    }
-
-    try {
-      // Make HTTP request to token generator to initiate scope upgrade
-      const response = await axios.post('http://localhost:3000/upgrade-scopes', {
-        missingScopes: newScopes,
-        userId: userId
-      }, {
-        timeout: 10000 // 10 second timeout
-      });
-
-      const { upgradeId, authUrl } = response.data;
-
-      console.log('\n🚨 SCOPE UPGRADE REQUIRED 🚨');
-      console.log(`Your bot token for user ${userId} is missing required permissions.`);
-      console.log('Please visit this URL in your browser to authorize the additional scopes:');
-      console.log(`\n${authUrl}\n`);
-      console.log('After authorization, the bot will automatically continue.');
-      console.log('This is a one-time setup process.\n');
-
-      // Wait for the upgrade to complete
-      await this.waitForUpgradeCompletion(upgradeId);
-
-      // After upgrade completes, update the user's scopes
-      newScopes.forEach(scope => userData.scopes.add(scope));
-
-    } catch (error) {
-      if (error.code === 'ECONNREFUSED') {
-        console.error('❌ Token generator server is not running. Please start it with: node token-generator.js');
-        throw new Error('Token generator server not available. Please start the token generator first.');
-      }
-
-      console.error('❌ Failed to initiate scope upgrade:', error.response?.data || error.message);
-      throw error;
-    }
-  }
-
-  // Wait for scope upgrade to complete
-  async waitForUpgradeCompletion(upgradeId) {
-    const maxAttempts = 300; // 5 minutes (300 * 1 second)
-    let attempts = 0;
-
-    console.log('⏳ Waiting for authorization completion... (Press Ctrl+C to cancel)');
-
-    while (attempts < maxAttempts) {
-      try {
-        const response = await axios.get(`http://localhost:3000/upgrade-status/${upgradeId}`, {
-          timeout: 5000
-        });
-
-        const { status, error } = response.data;
-
-        if (status === 'completed') {
-          console.log('✅ Scope upgrade completed successfully!');
-
-          // Reload environment variables after successful upgrade
-          require('dotenv').config({ override: true });
-
-          // Update token data for all users
-          const newTokenData = {
-            accessToken: process.env.TWITCH_ACCESS_TOKEN,
-            refreshToken: process.env.TWITCH_REFRESH_TOKEN,
-            expiresIn: 0,
-            obtainmentTimestamp: 0
-          };
-
-          // Update all users with new token data
-          for (const [userId, userData] of this.users) {
-            userData.tokenData = { ...newTokenData };
-            // Re-add user to refresh provider with new tokens
-            super.addUser(userId, newTokenData, Array.from(userData.scopes));
-          }
-
-          return;
-        }
-
-        if (status === 'error') {
-          throw new Error(`Scope upgrade failed: ${JSON.stringify(error)}`);
-        }
-
-        // Still pending, wait and try again
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        attempts++;
-
-      } catch (error) {
-        if (error.code === 'ECONNREFUSED') {
-          throw new Error('Token generator server stopped. Please restart it.');
-        }
-        throw error;
-      }
-    }
-
-    throw new Error('Scope upgrade timeout - authorization not completed within 5 minutes');
-  }
-}
 
 // Configuration
 const config = {
   clientId: process.env.TWITCH_CLIENT_ID,
   clientSecret: process.env.TWITCH_CLIENT_SECRET,
-  
-  // Get these tokens from https://twitchtokengenerator.com/
-  // You need: chat:read, chat:edit, clips:edit, moderator:read:followers
   accessToken: process.env.TWITCH_ACCESS_TOKEN,
   refreshToken: process.env.TWITCH_REFRESH_TOKEN,
-  
   channels: (process.env.TWITCH_CHANNELS || '').split(',').filter(c => c),
   broadcasterName: process.env.TWITCH_BROADCASTER_NAME
 };
@@ -185,42 +26,14 @@ const tokenData = {
   obtainmentTimestamp: 0
 };
 
-// Setup auth provider with dynamic scope upgrade capability
-const authProvider = new DynamicScopeAuthProvider(
-  config.clientId,
-  config.clientSecret,
-  tokenData
-);
+// Setup auth provider
+const authProvider = new RefreshingAuthProvider({
+  clientId: config.clientId,
+  clientSecret: config.clientSecret
+});
 
-// Initialize with user and initial scopes
-authProvider.addUser(config.broadcasterName, tokenData, ['chat']);
-
-// Pre-check scopes before connecting
-async function checkAndUpgradeScopes() {
-  console.log('🔍 Checking token scopes...');
-
-  // Try to get access token with required scopes
-  // If it fails due to missing scopes, upgradeScopes will handle the authorization
-  try {
-    await authProvider.getAccessTokenForUser(config.broadcasterName, ['chat:read', 'chat:edit']);
-    console.log('✅ Token has required scopes');
-  } catch (error) {
-    // If it's a scope upgrade error, the upgradeScopes method should have handled it
-    // If the upgrade completed successfully, the tokens should now be valid
-    console.log('🔄 Attempting to verify scopes after potential upgrade...');
-
-    // Small delay to ensure token file is written
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    try {
-      await authProvider.getAccessTokenForUser(config.broadcasterName, ['chat:read', 'chat:edit']);
-      console.log('✅ Scopes verified after upgrade');
-    } catch (retryError) {
-      console.error('❌ Scope verification failed:', retryError.message);
-      throw retryError;
-    }
-  }
-}
+// Add user with token data
+authProvider.addUser(config.broadcasterName, tokenData);
 
 // Create API and Chat clients
 const apiClient = new ApiClient({ authProvider });
@@ -337,9 +150,6 @@ async function start() {
       throw new Error('Failed to initialize broadcaster ID');
     }
   }
-
-  // Check and upgrade scopes before connecting
-  await checkAndUpgradeScopes();
 
   await chatClient.connect();
 

@@ -13,28 +13,122 @@ app.use(express.json());
 const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 
-// Scopes needed for the bot
-const SCOPES = [
-  'chat:read',
-  'chat:edit',
-  'clips:edit',
-  'moderator:read:followers'
-].join(' ');
+// All available Twitch OAuth scopes grouped by category
+const SCOPE_CATEGORIES = {
+  'Chat (IRC)': [
+    { scope: 'chat:read', description: 'Read chat messages' },
+    { scope: 'chat:edit', description: 'Send chat messages' }
+  ],
+  'Chat (Bot/User)': [
+    { scope: 'channel:bot', description: 'Join chat as a bot and perform chat actions' },
+    { scope: 'user:bot', description: 'Join chat as a user and appear as a bot' },
+    { scope: 'user:write:chat', description: 'Send chat messages as user' },
+    { scope: 'user:read:chat', description: 'Receive chatroom messages' },
+    { scope: 'moderator:manage:announcements', description: 'Send announcements in chat' }
+  ],
+  'Clips': [
+    { scope: 'clips:edit', description: 'Create and manage clips' },
+    { scope: 'channel:manage:clips', description: 'Manage clips for a channel' },
+    { scope: 'editor:manage:clips', description: 'Create clips as an editor' }
+  ],
+  'Moderation': [
+    { scope: 'moderation:read', description: 'View channel moderation data' },
+    { scope: 'moderator:read:banned_users', description: 'View banned users' },
+    { scope: 'moderator:manage:banned_users', description: 'Ban and unban users' },
+    { scope: 'moderator:read:followers', description: 'Read followers list' },
+    { scope: 'moderator:read:moderators', description: 'Read moderators list' },
+    { scope: 'moderator:manage:moderators', description: 'Add/remove moderators' },
+    { scope: 'moderator:manage:chat_messages', description: 'Delete chat messages' },
+    { scope: 'moderator:read:chat_messages', description: 'Read deleted chat messages' },
+    { scope: 'moderator:read:automod_settings', description: 'View AutoMod settings' },
+    { scope: 'moderator:manage:automod_settings', description: 'Manage AutoMod settings' },
+    { scope: 'moderator:manage:automod', description: 'Manage held AutoMod messages' },
+    { scope: 'moderator:read:blocked_terms', description: 'View blocked terms' },
+    { scope: 'moderator:manage:blocked_terms', description: 'Manage blocked terms' },
+    { scope: 'moderator:read:chat_settings', description: 'View chat settings' },
+    { scope: 'moderator:manage:chat_settings', description: 'Manage chat settings' },
+    { scope: 'moderator:read:chatters', description: 'View chatters in chatroom' },
+    { scope: 'moderator:read:shoutouts', description: 'View shoutouts' },
+    { scope: 'moderator:manage:shoutouts', description: 'Send shoutouts' }
+  ],
+  'Channel Management': [
+    { scope: 'channel:manage:broadcast', description: 'Manage broadcast settings' },
+    { scope: 'channel:read:ads', description: 'Read ads schedule' },
+    { scope: 'channel:manage:ads', description: 'Manage ads schedule' },
+    { scope: 'channel:edit:commercial', description: 'Run commercials' },
+    { scope: 'channel:read:stream_key', description: 'View stream key' },
+    { scope: 'channel:manage:schedule', description: 'Manage stream schedule' },
+    { scope: 'channel:manage:videos', description: 'Manage videos' },
+    { scope: 'channel:read:editors', description: 'View channel editors' }
+  ],
+  'Followers & Subscriptions': [
+    { scope: 'channel:read:subscriptions', description: 'View channel subscriptions' },
+    { scope: 'user:read:follows', description: 'View channels you follow' }
+  ],
+  'VIPs': [
+    { scope: 'channel:read:vips', description: 'View VIPs in channel' },
+    { scope: 'channel:manage:vips', description: 'Manage VIPs' },
+    { scope: 'moderator:read:vips', description: 'View VIPs (moderator view)' }
+  ],
+  'Channel Points': [
+    { scope: 'channel:read:redemptions', description: 'View Channel Points redemptions' },
+    { scope: 'channel:manage:redemptions', description: 'Manage Channel Points redemptions' },
+    { scope: 'channel:read:predictions', description: 'View predictions' },
+    { scope: 'channel:manage:predictions', description: 'Manage predictions' },
+    { scope: 'channel:read:polls', description: 'View polls' },
+    { scope: 'channel:manage:polls', description: 'Manage polls' }
+  ],
+  'User Account': [
+    { scope: 'user:edit', description: 'Manage user object' },
+    { scope: 'user:read:email', description: 'View email address' },
+    { scope: 'user:read:emotes', description: 'View emotes available' },
+    { scope: 'user:manage:chat_color', description: 'Update chat color' }
+  ],
+  'Extensions & Analytics': [
+    { scope: 'analytics:read:extensions', description: 'View extension analytics' },
+    { scope: 'analytics:read:games', description: 'View game analytics' },
+    { scope: 'channel:manage:extensions', description: 'Manage extensions' },
+    { scope: 'channel:read:extensions', description: 'View extensions (if scope exists)' },
+    { scope: 'user:read:broadcast', description: 'View broadcast config' },
+    { scope: 'user:edit:broadcast', description: 'Edit broadcast config' }
+  ],
+  'Bits': [
+    { scope: 'bits:read', description: 'View Bits information' }
+  ],
+  'Guest Star': [
+    { scope: 'channel:read:guest_star', description: 'View Guest Star details' },
+    { scope: 'channel:manage:guest_star', description: 'Manage Guest Star' },
+    { scope: 'moderator:read:guest_star', description: 'View Guest Star (moderator)' },
+    { scope: 'moderator:manage:guest_star', description: 'Manage Guest Star (moderator)' }
+  ],
+  'Other': [
+    { scope: 'channel:read:charity', description: 'View charity campaign details' },
+    { scope: 'channel:read:goals', description: 'View Creator Goals' },
+    { scope: 'channel:read:hype_train', description: 'View Hype Train info' },
+    { scope: 'user:read:blocked_users', description: 'View block list' },
+    { scope: 'user:manage:blocked_users', description: 'Manage block list' },
+    { scope: 'user:read:subscriptions', description: 'View subscriptions' },
+    { scope: 'user:read:moderated_channels', description: 'View moderated channels' },
+    { scope: 'user:read:whispers', description: 'Receive whispers' },
+    { scope: 'user:manage:whispers', description: 'Send whispers' },
+    { scope: 'whispers:read', description: 'Receive whispers (PubSub)' },
+    { scope: 'moderator:read:suspicious_users', description: 'View suspicious users' },
+    { scope: 'moderator:read:unban_requests', description: 'View unban requests' },
+    { scope: 'moderator:manage:unban_requests', description: 'Manage unban requests' },
+    { scope: 'moderator:read:warnings', description: 'View warnings' },
+    { scope: 'moderator:manage:warnings', description: 'Warn users' },
+    { scope: 'channel:moderate', description: 'Perform moderation actions' },
+    { scope: 'moderator:read:shield_mode', description: 'View Shield Mode' },
+    { scope: 'moderator:manage:shield_mode', description: 'Manage Shield Mode' }
+  ]
+};
 
-// Store pending scope upgrades
-const pendingUpgrades = new Map();
+// Flatten all scopes
+const ALL_SCOPES = Object.values(SCOPE_CATEGORIES).flatMap(cat => cat.map(s => s.scope));
 
-// Home page - show authorization link
+// Home page - show scope selection and authorization link
 app.get('/', (req, res) => {
   console.log('Home page requested');
-
-  const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
-    `client_id=${CLIENT_ID}&` +
-    `redirect_uri=http://localhost:${PORT}/callback&` +
-    `response_type=code&` +
-    `scope=${encodeURIComponent(SCOPES)}`;
-
-  console.log('Generated auth URL:', authUrl);
 
   res.send(`
     <!DOCTYPE html>
@@ -42,43 +136,271 @@ app.get('/', (req, res) => {
     <head>
       <title>Twitch Bot Token Generator</title>
       <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-        .auth-link { background: #9146FF; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0; }
-        .auth-link:hover { background: #772CE8; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          padding: 20px;
+        }
+        .container { 
+          max-width: 900px; 
+          margin: 0 auto; 
+          background: white;
+          border-radius: 10px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 30px;
+          text-align: center;
+        }
+        .header h1 { font-size: 28px; margin-bottom: 10px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        .content { padding: 30px; }
+        .section { margin-bottom: 30px; }
+        .section-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #333;
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+          border-bottom: 2px solid #667eea;
+        }
+        .scope-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        .scope-item {
+          padding: 12px;
+          border: 2px solid #e0e0e0;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: white;
+        }
+        .scope-item:hover {
+          border-color: #667eea;
+          background: #f5f7ff;
+        }
+        .scope-item input[type="checkbox"] {
+          margin-right: 10px;
+          cursor: pointer;
+          width: 18px;
+          height: 18px;
+        }
+        .scope-item label {
+          cursor: pointer;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+        }
+        .scope-text {
+          flex: 1;
+        }
+        .scope-name {
+          font-weight: 600;
+          color: #333;
+          font-size: 13px;
+          font-family: 'Courier New', monospace;
+          color: #764ba2;
+        }
+        .scope-desc {
+          font-size: 12px;
+          color: #666;
+          margin-top: 4px;
+        }
+        .button-group {
+          display: flex;
+          gap: 10px;
+          margin-top: 20px;
+          justify-content: center;
+        }
+        button {
+          padding: 12px 24px;
+          font-size: 14px;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+        .btn-select-all {
+          background: #667eea;
+          color: white;
+        }
+        .btn-select-all:hover {
+          background: #5568d3;
+        }
+        .btn-clear {
+          background: #f0f0f0;
+          color: #333;
+        }
+        .btn-clear:hover {
+          background: #e0e0e0;
+        }
+        .btn-authorize {
+          background: #00a86b;
+          color: white;
+          padding: 14px 40px;
+          font-size: 16px;
+          width: 100%;
+          margin-top: 20px;
+        }
+        .btn-authorize:hover {
+          background: #008c5a;
+        }
+        .btn-authorize:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .selected-count {
+          text-align: center;
+          padding: 15px;
+          background: #f5f7ff;
+          border-radius: 6px;
+          font-size: 14px;
+          color: #667eea;
+          margin-bottom: 20px;
+          font-weight: 600;
+        }
+        .note {
+          background: #fff3cd;
+          border: 1px solid #ffc107;
+          border-radius: 6px;
+          padding: 12px;
+          margin-top: 20px;
+          font-size: 13px;
+          color: #856404;
+          line-height: 1.5;
+        }
       </style>
     </head>
     <body>
-      <h1>Twitch Bot Token Generator</h1>
-      <p>Click the button below to authorize your bot:</p>
-      <a href="${authUrl}" class="auth-link" target="_blank">Authorize Bot on Twitch</a>
-      <p><small>After authorization, you'll be redirected back here automatically.</small></p>
+      <div class="container">
+        <div class="header">
+          <h1>🤖 Twitch Bot Token Generator</h1>
+          <p>Select the scopes your bot needs and authorize</p>
+        </div>
+        <div class="content">
+          <form id="scopeForm">
+            <div class="selected-count">
+              Scopes selected: <span id="selectedCount">0</span> / ${ALL_SCOPES.length}
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 30px;">
+              <button type="button" class="btn-select-all" onclick="selectAllScopes()">Select All</button>
+              <button type="button" class="btn-clear" onclick="clearAllScopes()">Clear All</button>
+            </div>
+
+            ${Object.entries(SCOPE_CATEGORIES).map(([category, scopes]) => `
+              <div class="section">
+                <div class="section-title">${category}</div>
+                <div class="scope-grid">
+                  ${scopes.map(s => `
+                    <div class="scope-item">
+                      <label>
+                        <input type="checkbox" name="scope" value="${s.scope}" class="scope-checkbox" onchange="updateCount()">
+                        <div class="scope-text">
+                          <div class="scope-name">${s.scope}</div>
+                          <div class="scope-desc">${s.description}</div>
+                        </div>
+                      </label>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+
+            <button type="submit" class="btn-authorize">Authorize with Selected Scopes →</button>
+            <div class="note">
+              💡 <strong>Note:</strong> Select only the scopes your bot actually needs. Requesting excessive scopes may result in app suspension.
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <script>
+        function updateCount() {
+          const checked = document.querySelectorAll('.scope-checkbox:checked').length;
+          document.getElementById('selectedCount').textContent = checked;
+        }
+
+        function selectAllScopes() {
+          document.querySelectorAll('.scope-checkbox').forEach(cb => cb.checked = true);
+          updateCount();
+        }
+
+        function clearAllScopes() {
+          document.querySelectorAll('.scope-checkbox').forEach(cb => cb.checked = false);
+          updateCount();
+        }
+
+        document.getElementById('scopeForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const selectedScopes = Array.from(document.querySelectorAll('.scope-checkbox:checked'))
+            .map(cb => cb.value);
+
+          if (selectedScopes.length === 0) {
+            alert('Please select at least one scope');
+            return;
+          }
+
+          // Send selected scopes to server
+          const response = await fetch('/generate-auth-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scopes: selectedScopes })
+          });
+
+          const data = await response.json();
+          if (data.authUrl) {
+            window.location.href = data.authUrl;
+          } else {
+            alert('Error generating authorization URL');
+          }
+        });
+
+        updateCount();
+      </script>
     </body>
     </html>
   `);
+});
+
+// Generate authorization URL with selected scopes
+app.post('/generate-auth-url', (req, res) => {
+  const { scopes } = req.body;
+
+  if (!scopes || !Array.isArray(scopes) || scopes.length === 0) {
+    return res.status(400).json({ error: 'No scopes provided' });
+  }
+
+  const scopeString = scopes.join(' ');
+  const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
+    `client_id=${CLIENT_ID}&` +
+    `redirect_uri=http://localhost:${PORT}/callback&` +
+    `response_type=code&` +
+    `scope=${encodeURIComponent(scopeString)}`;
+
+  console.log('Generated auth URL with scopes:', scopes.join(', '));
+
+  res.json({ authUrl });
 });
 
 // Callback handler
 app.get('/callback', async (req, res) => {
   console.log('Callback received with query:', req.query);
 
-  const { code, state, error, error_description } = req.query;
-
-  // Check if this is a scope upgrade callback
-  const isUpgrade = state && state.startsWith('upgrade_');
-  const upgradeId = isUpgrade ? state : null;
+  const { code, error, error_description } = req.query;
 
   if (error) {
     console.log('Authorization error:', error, error_description);
-
-    // If it's an upgrade, mark it as failed
-    if (isUpgrade && upgradeId) {
-      const upgrade = pendingUpgrades.get(upgradeId);
-      if (upgrade) {
-        upgrade.status = 'error';
-        upgrade.error = { error, error_description };
-      }
-    }
-
     return res.send(`
       <h1>Authorization Error</h1>
       <p><strong>Error:</strong> ${error}</p>
@@ -89,16 +411,6 @@ app.get('/callback', async (req, res) => {
 
   if (!code) {
     console.log('No code received in callback');
-
-    // If it's an upgrade, mark it as failed
-    if (isUpgrade && upgradeId) {
-      const upgrade = pendingUpgrades.get(upgradeId);
-      if (upgrade) {
-        upgrade.status = 'error';
-        upgrade.error = 'No authorization code received';
-      }
-    }
-
     return res.send('<h1>Error: No authorization code received</h1>');
   }
 
@@ -162,17 +474,6 @@ app.get('/callback', async (req, res) => {
       `);
     }
 
-    // If this is a scope upgrade, mark it as completed
-    if (isUpgrade && upgradeId) {
-      const upgrade = pendingUpgrades.get(upgradeId);
-      if (upgrade) {
-        upgrade.status = 'completed';
-        upgrade.tokens = { access_token, refresh_token, expires_in };
-        upgrade.grantedScopes = grantedScopes;
-        console.log('✅ Scope upgrade completed successfully!');
-      }
-    }
-
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -188,6 +489,8 @@ app.get('/callback', async (req, res) => {
         <p>Your tokens have been saved to the .env file.</p>
         <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
         <p><strong>Refresh Token:</strong> ${refresh_token.substring(0, 20)}...</p>
+        <p><strong>Granted Scopes:</strong></p>
+        <p style="word-break: break-all; font-size: 12px;">${grantedScopes}</p>
         <p>You can now close this window and start your bot!</p>
         <script>setTimeout(() => window.close(), 5000);</script>
       </body>
@@ -196,16 +499,6 @@ app.get('/callback', async (req, res) => {
 
   } catch (error) {
     console.error('Token exchange failed:', error.response?.data || error.message);
-
-    // If it's an upgrade, mark it as failed
-    if (isUpgrade && upgradeId) {
-      const upgrade = pendingUpgrades.get(upgradeId);
-      if (upgrade) {
-        upgrade.status = 'error';
-        upgrade.error = error.response?.data || error.message;
-      }
-    }
-
     res.send(`
       <h1>Error exchanging tokens</h1>
       <pre>${JSON.stringify(error.response?.data || error.message, null, 2)}</pre>
@@ -218,68 +511,3 @@ app.listen(PORT, () => {
   console.log(`\n🚀 Token Generator Server running at http://localhost:${PORT}`);
   console.log('📱 Open this URL in your browser to generate tokens\n');
 });
-
-// Scope upgrade routes
-app.post('/upgrade-scopes', (req, res) => {
-  const { missingScopes, userId } = req.body;
-
-  if (!missingScopes || !Array.isArray(missingScopes)) {
-    return res.status(400).json({ error: 'Missing or invalid missingScopes parameter' });
-  }
-
-  const upgradeId = `upgrade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  // Generate authorization URL with all required scopes
-  const allScopes = [...SCOPES.split(' '), ...missingScopes];
-  const uniqueScopes = [...new Set(allScopes)]; // Remove duplicates
-
-  const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
-    `client_id=${CLIENT_ID}&` +
-    `redirect_uri=http://localhost:${PORT}/callback&` +
-    `response_type=code&` +
-    `scope=${encodeURIComponent(uniqueScopes.join(' '))}&` +
-    `state=${upgradeId}`;
-
-  // Store the upgrade request
-  pendingUpgrades.set(upgradeId, {
-    missingScopes,
-    userId: userId || 'default',
-    authUrl,
-    timestamp: Date.now(),
-    status: 'pending'
-  });
-
-  console.log(`🔄 Scope upgrade initiated: ${upgradeId} for scopes: ${missingScopes.join(', ')}`);
-
-  res.json({
-    upgradeId,
-    authUrl,
-    message: 'Scope upgrade initiated. Please complete authorization.'
-  });
-});
-
-app.get('/upgrade-status/:upgradeId', (req, res) => {
-  const { upgradeId } = req.params;
-  const upgrade = pendingUpgrades.get(upgradeId);
-
-  if (!upgrade) {
-    return res.status(404).json({ error: 'Upgrade not found' });
-  }
-
-  res.json({
-    upgradeId,
-    status: upgrade.status,
-    missingScopes: upgrade.missingScopes,
-    userId: upgrade.userId,
-    authUrl: upgrade.authUrl
-  });
-});
-// Cleanup old upgrades every hour
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, upgrade] of pendingUpgrades.entries()) {
-    if (now - upgrade.timestamp > 3600000) { // 1 hour
-      pendingUpgrades.delete(key);
-    }
-  }
-}, 3600000);
