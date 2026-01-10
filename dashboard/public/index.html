@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twitch Bot Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <h1 class="logo">Bot Dashboard</h1>
+      <ul class="nav-links">
+        <li><a href="#dashboard" onclick="showPage('dashboard')" class="nav-link active">Dashboard</a></li>
+        <li><a href="#tester" onclick="showPage('tester')" class="nav-link">Command Tester</a></li>
+        <li><a href="#chat" onclick="showPage('chat')" class="nav-link">Chat Monitor</a></li>
+        <li><a href="#settings" onclick="showPage('settings')" class="nav-link">Settings</a></li>
+        <li><a href="#custom" onclick="showPage('custom')" class="nav-link">Custom Commands</a></li>
+        <li><a href="#logs" onclick="showPage('logs')" class="nav-link">Logs</a></li>
+        <li><a href="#stats" onclick="showPage('stats')" class="nav-link">Stats</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Dashboard Page -->
+  <div id="dashboard" class="page active">
+    <div class="container">
+      <h2>Dashboard</h2>
+      
+      <div class="status-grid">
+        <div class="status-card">
+          <h3>Bot Status</h3>
+          <p id="botStatus" class="status-value">Disconnected</p>
+          <div id="statusIndicator" class="status-indicator disconnected"></div>
+        </div>
+        
+        <div class="status-card">
+          <h3>Channels</h3>
+          <p id="channelsList" class="status-value">-</p>
+        </div>
+        
+        <div class="status-card">
+          <h3>Commands Executed</h3>
+          <p id="commandCount" class="status-value">0</p>
+        </div>
+        
+        <div class="status-card">
+          <h3>Last Command</h3>
+          <p id="lastCommand" class="status-value">None</p>
+          <small id="lastCommandTime"></small>
+        </div>
+      </div>
+
+      <div class="commands-section">
+        <h3>Available Commands</h3>
+        <div id="commandsList" class="commands-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Tester Page -->
+  <div id="tester" class="page">
+    <div class="container">
+      <h2>Command Tester</h2>
+      
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="testerUsername" placeholder="Enter username" value="testuser">
+      </div>
+
+      <div class="form-group">
+        <label>Command</label>
+        <select id="testerCommand">
+          <option value="!clip">!clip - Create a clip</option>
+          <option value="!followage">!followage - Check follow age</option>
+          <option value="!shoutout">!shoutout - Give a shoutout (mods only)</option>
+          <option value="!commands">!commands - Show commands</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Extra Args (optional)</label>
+        <input type="text" id="testerArgs" placeholder="e.g., username for !followage">
+      </div>
+
+      <button onclick="testCommand()" class="btn btn-primary">Execute Command</button>
+
+      <div id="testerResult" class="result-box" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Chat Monitor Page -->
+  <div id="chat" class="page">
+    <div class="container">
+      <h2>Chat Monitor</h2>
+      <p class="info-text">Live chat messages from connected channels appear here</p>
+      
+      <div id="chatFeed" class="chat-feed"></div>
+    </div>
+  </div>
+
+  <!-- Settings Page -->
+  <div id="settings" class="page">
+    <div class="container">
+      <h2>Bot Settings</h2>
+      
+      <div class="form-group">
+        <label>Broadcaster Name</label>
+        <input type="text" id="broadcasterName" disabled>
+      </div>
+
+      <div class="form-group">
+        <label>Channels (comma-separated)</label>
+        <textarea id="channels" disabled></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Scopes</label>
+        <textarea id="scopes" disabled></textarea>
+      </div>
+
+      <p class="info-text">⚠️ To modify settings, edit your .env file and restart the bot.</p>
+    </div>
+  </div>
+
+  <!-- Custom Commands Page -->
+  <div id="custom" class="page">
+    <div class="container">
+      <h2>Custom Commands</h2>
+
+      <div class="form-group">
+        <label>Command Name (with or without !)</label>
+        <input type="text" id="ccName" placeholder="!hello">
+      </div>
+
+      <div class="form-group">
+        <label>Response</label>
+        <textarea id="ccResponse" placeholder="Use {user}, {displayname}, {channel}, {target}"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Permission Level</label>
+        <select id="ccLevel">
+          <option value="everyone">Everyone</option>
+          <option value="mod">Mods & Broadcaster</option>
+          <option value="broadcaster">Broadcaster Only</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveCommand()">Save Command</button>
+
+      <div class="logs-controls" style="margin-top:20px;">
+        <button class="btn btn-secondary" onclick="loadCustomCommands()">Refresh</button>
+      </div>
+
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Response</th>
+            <th>Level</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="customCommandsList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Logs Page -->
+  <div id="logs" class="page">
+    <div class="container">
+      <h2>Command Logs</h2>
+      
+      <div class="logs-controls">
+        <button onclick="refreshLogs()" class="btn btn-secondary">Refresh</button>
+        <button onclick="clearLogs()" class="btn btn-danger">Clear Logs</button>
+      </div>
+
+      <table id="logsTable" class="logs-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>User</th>
+            <th>Command</th>
+            <th>Channel</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="logsList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Stats Page -->
+  <div id="stats" class="page">
+    <div class="container">
+      <h2>User Statistics</h2>
+      
+      <div class="stats-controls">
+        <button onclick="refreshStats()" class="btn btn-secondary">Refresh</button>
+      </div>
+
+      <table id="statsTable" class="stats-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Commands Used</th>
+            <th>First Seen</th>
+            <th>Last Command</th>
+          </tr>
+        </thead>
+        <tbody id="statsList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 const { StaticAuthProvider } = require('@twurple/auth');
 const { ChatClient } = require('@twurple/chat');
 const { ApiClient } = require('@twurple/api');
+const axios = require('axios');
 require('dotenv').config();
 
 // Configuration
@@ -42,14 +43,87 @@ const chatClient = new ChatClient({
 });
 
 let broadcasterId = null;
+let tokenUserId = null;
+let botStartTime = Date.now();
+const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
+let customCommands = [];
+
+function formatResponse(template, ctx) {
+  return template
+    .replace(/\{user\}/gi, ctx.user || '')
+    .replace(/\{displayname\}/gi, ctx.displayName || ctx.user || '')
+    .replace(/\{channel\}/gi, ctx.channel || '')
+    .replace(/\{target\}/gi, ctx.target || '')
+    .trim();
+}
+
+// Update dashboard with bot state
+async function updateDashboard() {
+  try {
+    await axios.post(`${dashboardBaseUrl}/api/update-state`, {
+      isConnected: true,
+      channels: config.channels,
+      broadcasterName: config.broadcasterName,
+      uptime: Date.now() - botStartTime,
+      scopes: config.scopes,
+      commands: [
+        { name: '!clip', description: 'Create a clip of the stream' },
+        { name: '!followage [username]', description: 'Check how long someone has been following' },
+        { name: '!shoutout [username]', description: 'Shout out another streamer (mods only)' },
+        { name: '!commands', description: 'Show available commands' }
+      ]
+    });
+  } catch (error) {
+    // Dashboard may not be running, silently fail
+  }
+}
+
+// Log command to dashboard
+async function logCommand(username, command, channel, success = true) {
+  try {
+    await axios.post(`${dashboardBaseUrl}/api/logs`, {
+      user: username,
+      command: command,
+      channel: channel,
+      success: success
+    });
+
+    // Update user stats
+    await axios.post(`${dashboardBaseUrl}/api/stats/${username}`);
+  } catch (error) {
+    // Dashboard may not be running, silently fail
+  }
+}
+
+// Load custom commands from dashboard
+async function loadCustomCommands() {
+  try {
+    const res = await axios.get(`${dashboardBaseUrl}/api/custom-commands`);
+    customCommands = res.data || [];
+  } catch (error) {
+    customCommands = [];
+  }
+}
 
 // Get broadcaster ID
 async function init() {
   try {
+    const tokenInfo = await apiClient.getTokenInfo();
+    tokenUserId = tokenInfo?.userId || null;
+    if (!tokenUserId) {
+      throw new Error('OAuth token missing userId; ensure the token is tied to a user account.');
+    }
+
+    const tokenUser = await apiClient.users.getUserById(tokenUserId);
     const user = await apiClient.users.getUserByName(config.broadcasterName);
     if (user) {
       broadcasterId = user.id;
       console.log(`✓ Got broadcaster ID: ${broadcasterId}`);
+      console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
+      console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
+      
+      // Update dashboard
+      updateDashboard();
     }
   } catch (error) {
     console.error('Failed to get broadcaster info:', error.message);
@@ -103,18 +177,73 @@ async function getFollowAge(username) {
   }
 }
 
+// Send shoutout
+async function sendShoutout(targetUsername) {
+  try {
+    const user = await apiClient.users.getUserByName(targetUsername);
+    if (!user) return { success: false, error: 'User not found' };
+
+    if (!tokenUserId) {
+      return { success: false, error: 'Bot token missing user context; restart after re-auth.' };
+    }
+
+    // Get the user's channel information to find last played game
+    const channelInfo = await apiClient.channels.getChannelInfoById(user.id);
+    const gameName = channelInfo?.gameName || 'something awesome';
+
+    // Check if the target user is live
+    const streamInfo = await apiClient.streams.getStreamByUserId(user.id);
+    const isLive = streamInfo !== null;
+
+    if (isLive) {
+      // Send the shoutout via API if they're live
+      const response = await fetch(`https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${user.id}&moderator_id=${tokenUserId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Client-Id': config.clientId
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+    }
+    
+    return { 
+      success: true, 
+      username: user.displayName,
+      gameName: gameName,
+      isLive: isLive
+    };
+  } catch (error) {
+    console.error('Failed to send shoutout:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // Message handler
 chatClient.onMessage(async (channel, user, message, msg) => {
   const username = user || msg.userInfo?.userName;
   const text = message.trim().toLowerCase();
+
+  // push raw chat to dashboard feed
+  axios.post(`${dashboardBaseUrl}/api/chat`, {
+    channel,
+    user: username,
+    message
+  }).catch(() => {});
   
   // !clip command
   if (text === '!clip') {
     const clipUrl = await createClip();
     if (clipUrl) {
       chatClient.say(channel, `@${username} Clip created! ${clipUrl}`);
+      logCommand(username, '!clip', channel, true);
     } else {
       chatClient.say(channel, `@${username} Failed to create clip. Make sure the stream is live!`);
+      logCommand(username, '!clip', channel, false);
     }
   }
   
@@ -131,11 +260,70 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     } else {
       chatClient.say(channel, `@${username} Could not retrieve follow age.`);
     }
+    logCommand(username, `!followage ${targetUser}`, channel, followAge !== null);
+  }
+  
+  // !shoutout command (mods and broadcaster only)
+  if (text.startsWith('!shoutout') || text.startsWith('!so')) {
+    // Check if user is mod or broadcaster
+    const isMod = msg.userInfo.isMod;
+    const isBroadcaster = msg.userInfo.isBroadcaster;
+    
+    if (!isMod && !isBroadcaster) {
+      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
+      return;
+    }
+    
+    const parts = text.split(' ');
+    if (parts.length < 2) {
+      chatClient.say(channel, `@${username} Usage: !shoutout <username>`);
+      return;
+    }
+    
+    const targetUser = parts[1].replace('@', '');
+    const result = await sendShoutout(targetUser);
+    
+    if (result.success) {
+      chatClient.say(channel, `Go check out ${result.username} at https://twitch.tv/${targetUser} - they were last playing ${result.gameName}!`);
+      logCommand(username, `!shoutout ${targetUser}`, channel, true);
+    } else {
+      chatClient.say(channel, `@${username} Failed to send shoutout: ${result.error}`);
+      logCommand(username, `!shoutout ${targetUser}`, channel, false);
+    }
   }
   
   // !commands - help command
   if (text === '!commands' || text === '!help') {
-    chatClient.say(channel, 'Available commands: !clip, !followage [username], !commands');
+    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods only), !commands');
+    logCommand(username, '!commands', channel, true);
+    return;
+  }
+
+  // Custom commands
+  const matched = customCommands.find(cmd => cmd.name === text);
+  if (matched) {
+    const isMod = msg.userInfo.isMod;
+    const isBroadcaster = msg.userInfo.isBroadcaster;
+
+    const allowed = matched.level === 'everyone' 
+      || matched.level === 'mod' && (isMod || isBroadcaster)
+      || matched.level === 'broadcaster' && isBroadcaster;
+
+    if (!allowed) {
+      chatClient.say(channel, `@${username} You do not have permission to use this command.`);
+      logCommand(username, matched.name, channel, false);
+      return;
+    }
+
+    const rendered = formatResponse(matched.response, {
+      user: username,
+      displayName: msg.userInfo.displayName,
+      channel: channel.replace('#', ''),
+      target: text.split(' ')[1] || ''
+    });
+
+    chatClient.say(channel, rendered);
+    logCommand(username, matched.name, channel, true);
   }
 });
 
@@ -149,6 +337,9 @@ async function start() {
       throw new Error('Failed to initialize broadcaster ID');
     }
   }
+
+  await loadCustomCommands();
+  setInterval(loadCustomCommands, 30000);
 
   await chatClient.connect();
 
