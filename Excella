@@ -80,8 +80,26 @@ async function startAnnouncements() {
 
 function setupEventSub() {
   if (eventSub) return;
+  // Allow disabling EventSub via env if token auth is problematic
+  if (process.env.DISABLE_EVENTSUB === '1') {
+    console.log('EventSub disabled via DISABLE_EVENTSUB=1');
+    return;
+  }
+  // Guard: valid broadcaster ID required
+  if (!broadcasterId || !/^\d+$/.test(String(broadcasterId))) {
+    console.warn('EventSub disabled: broadcasterId invalid or non-numeric', broadcasterId);
+    return;
+  }
   if (!tokenUserId) {
     console.warn('EventSub disabled: no user token context');
+    return;
+  }
+  // Guard: token scopes must include moderator or user permissions, not just channel:bot
+  const hasUserScopes = config.scopes.some(s => 
+    s.startsWith('user:') || s.startsWith('moderator:') || s.startsWith('channel:manage') || s.startsWith('channel:read')
+  );
+  if (!hasUserScopes) {
+    console.warn('EventSub disabled: token scopes lack user permissions. Re-authorize with proper scopes.');
     return;
   }
   try {
@@ -89,33 +107,39 @@ function setupEventSub() {
     eventSub.start();
 
     // Stream online/offline
-    eventSub.onStreamOnline(broadcasterId, ev => {
+    const subId = String(broadcasterId);
+    console.log('[EventSub] Subscribing with broadcasterId:', subId, 'isNumeric:', /^\d+$/.test(subId), 'tokenUserId:', tokenUserId);
+    eventSub.onStreamOnline(subId, ev => {
       console.log('EventSub: Stream online');
       config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
     });
-    eventSub.onStreamOffline(broadcasterId, ev => {
+    eventSub.onStreamOffline(subId, ev => {
       console.log('EventSub: Stream offline');
     });
 
     // Follows
-    eventSub.onChannelFollow(broadcasterId, ev => {
+    eventSub.onChannelFollow(subId, ev => {
       const name = ev.userDisplayName || ev.userName || 'someone';
       config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
     });
 
     // Raids
-    eventSub.onChannelRaidTo(broadcasterId, ev => {
+    eventSub.onChannelRaidTo(subId, ev => {
       const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
       const viewers = ev.viewers ?? '?';
       config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
     });
 
     // Channel Points redemptions
-    eventSub.onChannelRedemptionAdd(broadcasterId, async ev => {
+    eventSub.onChannelRedemptionAdd(subId, async ev => {
       const reward = ev.rewardTitle || 'Reward';
       const user = ev.userDisplayName || ev.userName;
       const input = ev.userInput || '';
       console.log('Redemption:', reward, 'by', user, 'input:', input);
+      // Log to dashboard
+      axios.post(`${dashboardBaseUrl}/api/redemptions`, {
+        user, reward, input
+      }).catch(() => {});
       // Basic mapping: echo to chat
       config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
     });
@@ -244,10 +268,6 @@ async function init() {
   } catch (error) {
     console.error('Failed to initialize bot:', error.message);
     broadcasterId = null;
-    if (!broadcasterId || !/^\d+$/.test(String(broadcasterId))) {
-      console.warn('EventSub disabled: broadcasterId invalid or non-numeric', broadcasterId);
-      return;
-    }
     initComplete = true;
   }
 }

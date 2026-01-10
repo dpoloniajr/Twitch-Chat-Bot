@@ -18,6 +18,9 @@ const logsDir = path.join(__dirname, 'logs');
 const commandLogsFile = path.join(logsDir, 'commands.json');
 const userStatsFile = path.join(logsDir, 'stats.json');
 const customCommandsFile = path.join(logsDir, 'customCommands.json');
+const announcementsFile = path.join(logsDir, 'announcements.json');
+const redemptionsFile = path.join(logsDir, 'redemptions.json');
+const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
 
 // Initialize logs directory
 async function initLogs() {
@@ -43,6 +46,27 @@ async function initLogs() {
       await fs.access(customCommandsFile);
     } catch {
       await fs.writeFile(customCommandsFile, JSON.stringify([], null, 2));
+    }
+
+    // Initialize announcements
+    try {
+      await fs.access(announcementsFile);
+    } catch {
+      await fs.writeFile(announcementsFile, JSON.stringify([], null, 2));
+    }
+
+    // Initialize redemptions log
+    try {
+      await fs.access(redemptionsFile);
+    } catch {
+      await fs.writeFile(redemptionsFile, JSON.stringify([], null, 2));
+    }
+
+    // Initialize EventSub events log
+    try {
+      await fs.access(eventSubEventsFile);
+    } catch {
+      await fs.writeFile(eventSubEventsFile, JSON.stringify([], null, 2));
     }
   } catch (error) {
     console.error('Failed to initialize logs:', error.message);
@@ -234,6 +258,84 @@ app.post('/api/update-state', (req, res) => {
   botState = { ...botState, ...req.body };
   broadcastState({ type: 'state', data: botState });
   res.json({ success: true });
+});
+
+// Get announcements
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(announcementsFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Save announcements
+app.post('/api/announcements', async (req, res) => {
+  try {
+    const { announcements } = req.body;
+    await fs.writeFile(announcementsFile, JSON.stringify(announcements, null, 2));
+    broadcastState({ type: 'announcements', data: announcements });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Log redemption (from bot)
+app.post('/api/redemptions', async (req, res) => {
+  try {
+    const redemptions = JSON.parse(await fs.readFile(redemptionsFile, 'utf8'));
+    redemptions.push({
+      ...req.body,
+      timestamp: new Date().toISOString()
+    });
+    // Keep last 100 redemptions
+    if (redemptions.length > 100) redemptions.shift();
+    await fs.writeFile(redemptionsFile, JSON.stringify(redemptions, null, 2));
+    broadcastState({ type: 'redemption', data: req.body });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get redemptions log
+app.get('/api/redemptions', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(redemptionsFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Log EventSub event
+app.post('/api/eventsub-events', async (req, res) => {
+  try {
+    const events = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
+    events.push({
+      ...req.body,
+      timestamp: new Date().toISOString()
+    });
+    // Keep last 100 events
+    if (events.length > 100) events.shift();
+    await fs.writeFile(eventSubEventsFile, JSON.stringify(events, null, 2));
+    broadcastState({ type: 'eventsub-event', data: req.body });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get EventSub events log
+app.get('/api/eventsub-events', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // WebSocket connection handler

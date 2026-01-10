@@ -14,7 +14,9 @@
         <li><a href="#dashboard" onclick="showPage('dashboard')" class="nav-link active">Dashboard</a></li>
         <li><a href="#tester" onclick="showPage('tester')" class="nav-link">Command Tester</a></li>
         <li><a href="#chat" onclick="showPage('chat')" class="nav-link">Chat Monitor</a></li>
-        <li><a href="#settings" onclick="showPage('settings')" class="nav-link">Settings</a></li>
+        <li><a href="#announcements" onclick="showPage('announcements')" class="nav-link">Announcements</a></li>
+        <li><a href="#events" onclick="showPage('events')" class="nav-link">Polls/Predictions</a></li>
+        <li><a href="#redemptions" onclick="showPage('redemptions')" class="nav-link">Redemptions</a></li>
         <li><a href="#custom" onclick="showPage('custom')" class="nav-link">Custom Commands</a></li>
         <li><a href="#logs" onclick="showPage('logs')" class="nav-link">Logs</a></li>
         <li><a href="#stats" onclick="showPage('stats')" class="nav-link">Stats</a></li>
@@ -99,8 +101,101 @@
     </div>
   </div>
 
-  <!-- Settings Page -->
-  <div id="settings" class="page">
+  <!-- Announcements Page -->
+  <div id="announcements" class="page">
+    <div class="container">
+      <h2>Announcements</h2>
+      <p class="info-text">Manage timed announcements. Set ANNOUNCEMENTS and ANNOUNCEMENT_INTERVAL_MS in .env and restart bot.</p>
+      
+      <div class="form-group">
+        <label>Announcements (one per line, separated by | in .env)</label>
+        <textarea id="announcementsList" placeholder="Follow the channel|Check out our socials|Visit our Discord" rows="8"></textarea>
+      </div>
+
+      <button onclick="saveAnnouncements()" class="btn btn-primary">Save to .env</button>
+      <button onclick="loadAnnouncements()" class="btn btn-secondary">Refresh</button>
+
+      <div class="info-box" style="margin-top:20px;">
+        <strong>Note:</strong> To enable announcements, update your .env with:
+        <br><code>ANNOUNCEMENTS=Message1|Message2|Message3</code>
+        <br><code>ANNOUNCEMENT_INTERVAL_MS=900000</code> (15 minutes)
+        <br>Then restart the bot.
+      </div>
+    </div>
+  </div>
+
+  <!-- Polls/Predictions Page -->
+  <div id="events" class="page">
+    <div class="container">
+      <h2>Polls & Predictions</h2>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div>
+          <h3>Create Poll</h3>
+          <div class="form-group">
+            <label>Poll Title</label>
+            <input type="text" id="pollTitle" placeholder="What game should we play?">
+          </div>
+          <div class="form-group">
+            <label>Options (comma-separated, max 5)</label>
+            <input type="text" id="pollOptions" placeholder="Game A,Game B,Game C">
+          </div>
+          <div class="form-group">
+            <label>Duration (seconds)</label>
+            <input type="number" id="pollDuration" value="60" min="15" max="1800">
+          </div>
+          <button onclick="createPoll()" class="btn btn-primary">Start Poll</button>
+          <div id="pollResult" style="margin-top:10px;"></div>
+        </div>
+
+        <div>
+          <h3>Create Prediction</h3>
+          <div class="form-group">
+            <label>Prediction Title</label>
+            <input type="text" id="predTitle" placeholder="Will the stream last 2+ hours?">
+          </div>
+          <div class="form-group">
+            <label>Outcomes (comma-separated, 2 required)</label>
+            <input type="text" id="predOutcomes" placeholder="Yes,No">
+          </div>
+          <div class="form-group">
+            <label>Duration (seconds)</label>
+            <input type="number" id="predDuration" value="120" min="30" max="1800">
+          </div>
+          <button onclick="createPrediction()" class="btn btn-primary">Start Prediction</button>
+          <div id="predResult" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Redemptions Page -->
+  <div id="redemptions" class="page">
+    <div class="container">
+      <h2>Channel Points Redemptions & Events</h2>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div>
+          <h3>Recent Redemptions</h3>
+          <div class="logs-controls">
+            <button onclick="loadRedemptions()" class="btn btn-secondary">Refresh</button>
+          </div>
+          <div id="redemptionsList" class="event-log"></div>
+        </div>
+
+        <div>
+          <h3>EventSub Events (Follows, Raids, etc.)</h3>
+          <div class="logs-controls">
+            <button onclick="loadEventSubEvents()" class="btn btn-secondary">Refresh</button>
+          </div>
+          <div id="eventSubEventsList" class="event-log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Page (hidden) -->
+  <div id="settings" class="page" style="display:none;">
     <div class="container">
       <h2>Bot Settings</h2>
       

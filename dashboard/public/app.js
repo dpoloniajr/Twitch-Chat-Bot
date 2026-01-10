@@ -25,6 +25,12 @@ function initWebSocket() {
     } else if (message.type === 'customCommands') {
       botState.customCommands = message.data;
       renderCustomCommands();
+    } else if (message.type === 'redemption') {
+      loadRedemptions();
+    } else if (message.type === 'eventsub-event') {
+      loadEventSubEvents();
+    } else if (message.type === 'announcements') {
+      loadAnnouncements();
     }
   };
   
@@ -327,6 +333,156 @@ async function deleteCommand(name) {
   loadCustomCommands();
 }
 
+// Announcements
+async function loadAnnouncements() {
+  try {
+    const res = await fetch('/api/announcements');
+    const data = await res.json();
+    const announcements = Array.isArray(data) ? data : [];
+    document.getElementById('announcementsList').value = announcements.join('\n');
+  } catch (error) {
+    console.error('Failed to load announcements:', error);
+  }
+}
+
+async function saveAnnouncements() {
+  const text = document.getElementById('announcementsList').value;
+  const announcements = text.split('\n').map(a => a.trim()).filter(Boolean);
+  try {
+    await fetch('/api/announcements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ announcements })
+    });
+    alert('Announcements saved. Restart bot to apply changes.');
+  } catch (error) {
+    alert('Error saving announcements: ' + error.message);
+  }
+}
+
+// Polls
+async function createPoll() {
+  const title = document.getElementById('pollTitle').value;
+  const optionsText = document.getElementById('pollOptions').value;
+  const duration = parseInt(document.getElementById('pollDuration').value) || 60;
+  
+  if (!title) {
+    alert('Poll title required');
+    return;
+  }
+  
+  const options = optionsText.split(',').map(o => o.trim()).filter(Boolean).slice(0, 5);
+  if (options.length < 2) {
+    alert('At least 2 options required');
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        command: `!poll start "${title}" ${options.join(';')} ${duration}`
+      })
+    });
+    const result = await res.json();
+    document.getElementById('pollResult').innerHTML = `<div style="color:#0f0;">Poll created: ${title}</div>`;
+    setTimeout(() => {
+      document.getElementById('pollTitle').value = '';
+      document.getElementById('pollOptions').value = '';
+      document.getElementById('pollResult').innerHTML = '';
+    }, 3000);
+  } catch (error) {
+    document.getElementById('pollResult').innerHTML = `<div style="color:#f00;">Error: ${error.message}</div>`;
+  }
+}
+
+// Predictions
+async function createPrediction() {
+  const title = document.getElementById('predTitle').value;
+  const outcomesText = document.getElementById('predOutcomes').value;
+  const duration = parseInt(document.getElementById('predDuration').value) || 120;
+  
+  if (!title) {
+    alert('Prediction title required');
+    return;
+  }
+  
+  const outcomes = outcomesText.split(',').map(o => o.trim()).filter(Boolean).slice(0, 2);
+  if (outcomes.length < 2) {
+    alert('Exactly 2 outcomes required');
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        command: `!prediction start "${title}" ${outcomes.join(';')} ${duration}`
+      })
+    });
+    const result = await res.json();
+    document.getElementById('predResult').innerHTML = `<div style="color:#0f0;">Prediction created: ${title}</div>`;
+    setTimeout(() => {
+      document.getElementById('predTitle').value = '';
+      document.getElementById('predOutcomes').value = '';
+      document.getElementById('predResult').innerHTML = '';
+    }, 3000);
+  } catch (error) {
+    document.getElementById('predResult').innerHTML = `<div style="color:#f00;">Error: ${error.message}</div>`;
+  }
+}
+
+// Redemptions
+async function loadRedemptions() {
+  try {
+    const res = await fetch('/api/redemptions');
+    const redemptions = await res.json();
+    const list = document.getElementById('redemptionsList');
+    
+    if (!redemptions || redemptions.length === 0) {
+      list.innerHTML = '<div class="event-item">No redemptions yet</div>';
+      return;
+    }
+    
+    list.innerHTML = redemptions.reverse().slice(0, 20).map(r => `
+      <div class="event-item">
+        <div class="event-item-type">Channel Points</div>
+        <div><strong>${escapeHtml(r.user || 'Unknown')}</strong> redeemed <strong>${escapeHtml(r.reward || 'Reward')}</strong></div>
+        ${r.input ? `<div><em>${escapeHtml(r.input)}</em></div>` : ''}
+        <div class="event-item-time">${new Date(r.timestamp).toLocaleString()}</div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Failed to load redemptions:', error);
+  }
+}
+
+// EventSub Events
+async function loadEventSubEvents() {
+  try {
+    const res = await fetch('/api/eventsub-events');
+    const events = await res.json();
+    const list = document.getElementById('eventSubEventsList');
+    
+    if (!events || events.length === 0) {
+      list.innerHTML = '<div class="event-item">No events yet (enable EventSub in .env)</div>';
+      return;
+    }
+    
+    list.innerHTML = events.reverse().slice(0, 20).map(e => `
+      <div class="event-item">
+        <div class="event-item-type">${escapeHtml(e.type || 'Event')}</div>
+        <div>${escapeHtml(e.details || '')}</div>
+        <div class="event-item-time">${new Date(e.timestamp).toLocaleString()}</div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Failed to load EventSub events:', error);
+  }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
@@ -342,4 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh logs and stats on page load
   refreshLogs();
   refreshStats();
+  loadAnnouncements();
+  loadRedemptions();
+  loadEventSubEvents();
 });
