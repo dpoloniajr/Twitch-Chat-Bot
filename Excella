@@ -253,29 +253,29 @@ async function init() {
 }
 
 // Create a clip
-      eventSub.onStreamOnline(String(broadcasterId), ev => {
+async function createClip() {
   try {
     if (!initComplete) {
       return { error: 'Bot is still initializing. Please try again in a moment.' };
-      eventSub.onStreamOffline(String(broadcasterId), ev => {
+    }
 
     if (!broadcasterId) {
       return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
     }
-      eventSub.onChannelFollow(String(broadcasterId), ev => {
+
     // Check if required scope is present
     if (!config.scopes.includes('clips:edit')) {
       console.error('Missing required scope: clips:edit');
       return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
-      eventSub.onChannelRaidTo(String(broadcasterId), ev => {
+
     // Ensure broadcasterId is a string
     const channelId = String(broadcasterId);
     console.log('[DEBUG] Calling create clip via Helix API. channelId:', channelId, 'scopes:', config.scopes);
 
     // Call Twitch Helix API directly to avoid extractUserId issues in Twurple clips API
     const response = await axios.post(
-      eventSub.onChannelRedemptionAdd(String(broadcasterId), async ev => {
+      'https://api.twitch.tv/helix/clips',
       { broadcaster_id: channelId },
       {
         headers: {
@@ -300,7 +300,7 @@ async function init() {
     const errorMsg = (error?.response?.data?.message) || error.message || error.toString();
     return { error: errorMsg };
   }
-}
+  }
 
 // Get follow age
 async function getFollowAge(username) {
