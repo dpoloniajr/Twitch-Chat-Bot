@@ -45,6 +45,7 @@ const chatClient = new ChatClient({
 let broadcasterId = null;
 let tokenUserId = null;
 let botStartTime = Date.now();
+let initComplete = false;
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
 const commandCooldowns = new Map();
@@ -137,6 +138,8 @@ async function renderCustomCommand(cmd, context) {
 // Get broadcaster ID
 async function init() {
   try {
+    console.log(`Initializing... (broadcaster: ${config.broadcasterName})`);
+    
     const tokenInfo = await apiClient.getTokenInfo();
     tokenUserId = tokenInfo?.userId || null;
     if (!tokenUserId) {
@@ -145,32 +148,73 @@ async function init() {
 
     const tokenUser = await apiClient.users.getUserById(tokenUserId);
     const user = await apiClient.users.getUserByName(config.broadcasterName);
-    if (user) {
-      broadcasterId = user.id;
-      console.log(`✓ Got broadcaster ID: ${broadcasterId}`);
-      console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
-      console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
-      
-      // Update dashboard
-      updateDashboard();
+    
+    if (!user) {
+      throw new Error(`Broadcaster "${config.broadcasterName}" not found. Check your .env TWITCH_BROADCASTER_NAME`);
     }
+    
+    broadcasterId = user.id;
+    console.log(`✓ Got broadcaster ID: ${broadcasterId}`);
+    console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
+    console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
+    
+    // Update dashboard
+    updateDashboard();
+    initComplete = true;
   } catch (error) {
-    console.error('Failed to get broadcaster info:', error.message);
+    console.error('Failed to initialize bot:', error.message);
+    broadcasterId = null;
+    initComplete = true;
   }
 }
 
 // Create a clip
 async function createClip() {
   try {
-    const clipId = await apiClient.clips.createClip({
-      channelId: broadcasterId
-    });
-    
+    if (!initComplete) {
+      return { error: 'Bot is still initializing. Please try again in a moment.' };
+    }
+
+    if (!broadcasterId) {
+      return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
+    }
+
+    // Check if required scope is present
+    if (!config.scopes.includes('clips:edit')) {
+      console.error('Missing required scope: clips:edit');
+      return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
+    }
+
+    // Ensure broadcasterId is a string
+    const channelId = String(broadcasterId);
+    console.log('[DEBUG] Calling create clip via Helix API. channelId:', channelId, 'scopes:', config.scopes);
+
+    // Call Twitch Helix API directly to avoid extractUserId issues in Twurple clips API
+    const response = await axios.post(
+      'https://api.twitch.tv/helix/clips',
+      { broadcaster_id: channelId },
+      {
+        headers: {
+          'Client-ID': config.clientId,
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const clipId = response.data?.data?.[0]?.id;
+    if (!clipId) {
+      console.error('[DEBUG] Clip API returned no clip ID. Response:', response.data);
+      return { error: 'Clip API returned no clip ID' };
+    }
+
     const clipUrl = `https://clips.twitch.tv/${clipId}`;
-    return clipUrl;
+    console.log('[DEBUG] Clip created successfully. ID:', clipId, 'URL:', clipUrl);
+    return { success: true, url: clipUrl };
   } catch (error) {
-    console.error('Failed to create clip:', error.message);
-    return null;
+    console.error('Failed to create clip:', error?.response?.data || error);
+    const errorMsg = (error?.response?.data?.message) || error.message || error.toString();
+    return { error: errorMsg };
   }
 }
 
@@ -180,13 +224,23 @@ async function getFollowAge(username) {
     const user = await apiClient.users.getUserByName(username);
     if (!user) return null;
 
-    const follows = await apiClient.channels.getChannelFollowers(broadcasterId, user.id);
+    // getChannelFollowers returns a paginated result with a 'data' property
+    const followsResult = await apiClient.channels.getChannelFollowers(broadcasterId, user.id);
+    const follows = followsResult?.data || [];
 
     if (!follows || follows.length === 0) {
       return 'not following';
     }
 
-    const followedAt = new Date(follows[0].followedAt);
+    // Debug log to check the follower data structure
+    console.log('[DEBUG] Follower data:', follows[0]);
+    
+    const followedAt = new Date(follows[0].followDate || follows[0].followedAt);
+    if (isNaN(followedAt.getTime())) {
+      console.error('[DEBUG] Invalid followedAt date:', follows[0]);
+      return null;
+    }
+    
     const now = new Date();
     const diff = now - followedAt;
     
@@ -266,12 +320,12 @@ chatClient.onMessage(async (channel, user, message, msg) => {
   
   // !clip command
   if (text === '!clip') {
-    const clipUrl = await createClip();
-    if (clipUrl) {
-      chatClient.say(channel, `@${username} Clip created! ${clipUrl}`);
+    const result = await createClip();
+    if (result.success) {
+      chatClient.say(channel, `@${username} Clip created! ${result.url}`);
       logCommand(username, '!clip', channel, true);
     } else {
-      chatClient.say(channel, `@${username} Failed to create clip. Make sure the stream is live!`);
+      chatClient.say(channel, `@${username} Failed to create clip: ${result.error}`);
       logCommand(username, '!clip', channel, false);
     }
   }
