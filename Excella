@@ -1,6 +1,7 @@
 const { StaticAuthProvider } = require('@twurple/auth');
 const { ChatClient } = require('@twurple/chat');
 const { ApiClient } = require('@twurple/api');
+const { EventSubWsListener } = require('@twurple/eventsub-ws');
 const axios = require('axios');
 require('dotenv').config();
 
@@ -48,6 +49,80 @@ let botStartTime = Date.now();
 let initComplete = false;
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
+let eventSub = null;
+
+// Announcement scheduler config
+const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
+const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
+let announcementTimer = null;
+
+async function startAnnouncements() {
+  if (!ANNOUNCEMENTS.length || ANNOUNCEMENT_INTERVAL_MS < 60000) return;
+  if (announcementTimer) clearInterval(announcementTimer);
+  let idx = 0;
+  announcementTimer = setInterval(async () => {
+    try {
+      const msg = ANNOUNCEMENTS[idx % ANNOUNCEMENTS.length];
+      idx++;
+      for (const channel of config.channels) {
+        // Use chat announcement if available, else regular say
+        try {
+          await apiClient.chat.createAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+        } catch {
+          chatClient.say(channel, msg);
+        }
+      }
+    } catch (e) {
+      // ignore announcement errors
+    }
+  }, ANNOUNCEMENT_INTERVAL_MS);
+}
+
+function setupEventSub() {
+  if (eventSub) return;
+  if (!tokenUserId) {
+    console.warn('EventSub disabled: no user token context');
+    return;
+  }
+  try {
+    eventSub = new EventSubWsListener({ apiClient });
+    eventSub.start();
+
+    // Stream online/offline
+    eventSub.onStreamOnline(broadcasterId, ev => {
+      console.log('EventSub: Stream online');
+      config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
+    });
+    eventSub.onStreamOffline(broadcasterId, ev => {
+      console.log('EventSub: Stream offline');
+    });
+
+    // Follows
+    eventSub.onChannelFollow(broadcasterId, ev => {
+      const name = ev.userDisplayName || ev.userName || 'someone';
+      config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
+    });
+
+    // Raids
+    eventSub.onChannelRaidTo(broadcasterId, ev => {
+      const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
+      const viewers = ev.viewers ?? '?';
+      config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
+    });
+
+    // Channel Points redemptions
+    eventSub.onChannelRedemptionAdd(broadcasterId, async ev => {
+      const reward = ev.rewardTitle || 'Reward';
+      const user = ev.userDisplayName || ev.userName;
+      const input = ev.userInput || '';
+      console.log('Redemption:', reward, 'by', user, 'input:', input);
+      // Basic mapping: echo to chat
+      config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+    });
+  } catch (err) {
+    console.error('EventSub setup failed:', err?.message || err);
+  }
+}
 const commandCooldowns = new Map();
 
 function formatResponse(template, ctx) {
@@ -153,7 +228,10 @@ async function init() {
       throw new Error(`Broadcaster "${config.broadcasterName}" not found. Check your .env TWITCH_BROADCASTER_NAME`);
     }
     
-    broadcasterId = user.id;
+    broadcasterId = String(user.id);
+    if (!/^\d+$/.test(broadcasterId)) {
+      throw new Error(`Resolved broadcasterId is non-numeric: ${broadcasterId}`);
+    }
     console.log(`✓ Got broadcaster ID: ${broadcasterId}`);
     console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
     console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
@@ -161,37 +239,43 @@ async function init() {
     // Update dashboard
     updateDashboard();
     initComplete = true;
+    setupEventSub();
+    startAnnouncements();
   } catch (error) {
     console.error('Failed to initialize bot:', error.message);
     broadcasterId = null;
+    if (!broadcasterId || !/^\d+$/.test(String(broadcasterId))) {
+      console.warn('EventSub disabled: broadcasterId invalid or non-numeric', broadcasterId);
+      return;
+    }
     initComplete = true;
   }
 }
 
 // Create a clip
-async function createClip() {
+      eventSub.onStreamOnline(String(broadcasterId), ev => {
   try {
     if (!initComplete) {
       return { error: 'Bot is still initializing. Please try again in a moment.' };
-    }
+      eventSub.onStreamOffline(String(broadcasterId), ev => {
 
     if (!broadcasterId) {
       return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
     }
-
+      eventSub.onChannelFollow(String(broadcasterId), ev => {
     // Check if required scope is present
     if (!config.scopes.includes('clips:edit')) {
       console.error('Missing required scope: clips:edit');
       return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
-
+      eventSub.onChannelRaidTo(String(broadcasterId), ev => {
     // Ensure broadcasterId is a string
     const channelId = String(broadcasterId);
     console.log('[DEBUG] Calling create clip via Helix API. channelId:', channelId, 'scopes:', config.scopes);
 
     // Call Twitch Helix API directly to avoid extractUserId issues in Twurple clips API
     const response = await axios.post(
-      'https://api.twitch.tv/helix/clips',
+      eventSub.onChannelRedemptionAdd(String(broadcasterId), async ev => {
       { broadcaster_id: channelId },
       {
         headers: {
@@ -345,6 +429,64 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     }
     logCommand(username, `!followage ${targetUser}`, channel, followAge !== null);
   }
+
+  // !poll command (start/end)
+  if (text.startsWith('!poll ')) {
+    const raw = message.trim();
+    const isStart = raw.toLowerCase().startsWith('!poll start');
+    try {
+      if (isStart) {
+        // Usage: !poll start "Title" option1;option2;option3 [durationSeconds]
+        const match = raw.match(/!poll start\s+"([^"]+)"\s+([^\s]+)(?:\s+(\d+))?/i);
+        if (!match) {
+          chatClient.say(channel, `@${username} Usage: !poll start "Title" option1;option2;option3 [durationSeconds]`);
+        } else {
+          const title = match[1];
+          const options = match[2].split(';').slice(0, 5);
+          const duration = Number(match[3] || 60);
+          await apiClient.polls.createPoll(broadcasterId, {
+            title,
+            choices: options.map(o => ({ title: o })),
+            duration
+          });
+          chatClient.say(channel, `Poll started: ${title}`);
+        }
+      } else if (raw.toLowerCase().startsWith('!poll end')) {
+        chatClient.say(channel, `@${username} Ending polls requires specifying poll ID (UI support TBD).`);
+      }
+    } catch (e) {
+      chatClient.say(channel, `@${username} Failed to manage poll: ${e.message}`);
+    }
+  }
+
+  // !prediction command (start/resolve)
+  if (text.startsWith('!prediction ')) {
+    const raw = message.trim();
+    const isStart = raw.toLowerCase().startsWith('!prediction start');
+    try {
+      if (isStart) {
+        // Usage: !prediction start "Title" outcomeA;outcomeB [durationSeconds]
+        const match = raw.match(/!prediction start\s+"([^"]+)"\s+([^\s]+)(?:\s+(\d+))?/i);
+        if (!match) {
+          chatClient.say(channel, `@${username} Usage: !prediction start "Title" A;B [durationSeconds]`);
+        } else {
+          const title = match[1];
+          const outcomes = match[2].split(';').slice(0, 2);
+          const duration = Number(match[3] || 120);
+          await apiClient.predictions.createPrediction(broadcasterId, {
+            title,
+            outcomes: outcomes.map(o => ({ title: o })),
+            predictionWindow: duration
+          });
+          chatClient.say(channel, `Prediction started: ${title}`);
+        }
+      } else if (raw.toLowerCase().startsWith('!prediction resolve')) {
+        chatClient.say(channel, `@${username} Resolving predictions requires outcome ID (UI support TBD).`);
+      }
+    } catch (e) {
+      chatClient.say(channel, `@${username} Failed to manage prediction: ${e.message}`);
+    }
+  }
   
   // !shoutout command (mods and broadcaster only)
   if (text.startsWith('!shoutout') || text.startsWith('!so')) {
@@ -377,7 +519,7 @@ chatClient.onMessage(async (channel, user, message, msg) => {
   
   // !commands - help command
   if (text === '!commands' || text === '!help') {
-    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods only), !commands');
+    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods only), !poll, !prediction, !commands');
     logCommand(username, '!commands', channel, true);
     return;
   }

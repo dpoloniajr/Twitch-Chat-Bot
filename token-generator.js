@@ -126,6 +126,19 @@ const SCOPE_CATEGORIES = {
 // Flatten all scopes
 const ALL_SCOPES = Object.values(SCOPE_CATEGORIES).flatMap(cat => cat.map(s => s.scope));
 
+// Recommended default scopes for this bot
+const DEFAULT_SCOPES = [
+  'chat:read',
+  'chat:edit',
+  'clips:edit',
+  'channel:read:redemptions',
+  'channel:manage:redemptions',
+  'channel:manage:polls',
+  'channel:manage:predictions',
+  'moderator:manage:announcements',
+  'channel:moderate'
+];
+
 // Home page - show scope selection and authorization link
 app.get('/', (req, res) => {
   console.log('Home page requested');
@@ -396,6 +409,18 @@ app.get('/', (req, res) => {
             alert('Error generating authorization URL');
           }
         });
+
+        // Preselect recommended scopes if not present
+        (function preselectRecommended() {
+          const existing = ${JSON.stringify(DEFAULT_SCOPES)};
+          existing.forEach(scope => {
+            const checkbox = document.querySelector('input.scope-checkbox[value="' + scope + '"]');
+            if (checkbox && !checkbox.checked) {
+              checkbox.checked = true;
+            }
+          });
+          updateCount();
+        })();
 
         updateCount();
       </script>
