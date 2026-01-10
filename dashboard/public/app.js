@@ -270,8 +270,10 @@ function renderCustomCommands() {
     .map(cmd => `
       <tr>
         <td>${cmd.name}</td>
-        <td>${cmd.response}</td>
+        <td>${cmd.response || ''}</td>
         <td>${cmd.level}</td>
+        <td>${cmd.fetchEnabled ? 'Yes' : 'No'}</td>
+        <td>${cmd.cooldownSeconds || 0}s</td>
         <td>
           <button class="btn btn-secondary" onclick="prefillCommand('${cmd.name.replace(/'/g, "\\'")}')">Edit</button>
           <button class="btn btn-danger" onclick="deleteCommand('${cmd.name.replace(/'/g, "\\'")}')">Delete</button>
@@ -284,21 +286,27 @@ async function saveCommand() {
   const name = document.getElementById('ccName').value.trim();
   const response = document.getElementById('ccResponse').value.trim();
   const level = document.getElementById('ccLevel').value;
+  const fetchUrl = document.getElementById('ccFetchUrl').value.trim();
+  const fetchEnabled = document.getElementById('ccFetchEnabled').value === 'true';
+  const cooldownSeconds = Number(document.getElementById('ccCooldown').value) || 0;
 
   if (!name || !response) {
-    alert('Command name and response are required');
+    alert('Command name and response are required (response can be blank if fetch is enabled with {data}).');
     return;
   }
 
   await fetch('/api/custom-commands', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, response, level })
+    body: JSON.stringify({ name, response, level, fetchUrl, fetchEnabled, cooldownSeconds })
   });
 
   document.getElementById('ccName').value = '';
   document.getElementById('ccResponse').value = '';
   document.getElementById('ccLevel').value = 'everyone';
+  document.getElementById('ccFetchUrl').value = '';
+  document.getElementById('ccFetchEnabled').value = 'false';
+  document.getElementById('ccCooldown').value = '0';
   loadCustomCommands();
 }
 
@@ -308,6 +316,9 @@ function prefillCommand(name) {
   document.getElementById('ccName').value = cmd.name;
   document.getElementById('ccResponse').value = cmd.response;
   document.getElementById('ccLevel').value = cmd.level || 'everyone';
+   document.getElementById('ccFetchUrl').value = cmd.fetchUrl || '';
+   document.getElementById('ccFetchEnabled').value = cmd.fetchEnabled ? 'true' : 'false';
+   document.getElementById('ccCooldown').value = cmd.cooldownSeconds || 0;
 }
 
 async function deleteCommand(name) {

@@ -135,7 +135,25 @@
 
       <div class="form-group">
         <label>Response</label>
-        <textarea id="ccResponse" placeholder="Use {user}, {displayname}, {channel}, {target}"></textarea>
+        <textarea id="ccResponse" placeholder="Use {user}, {displayname}, {channel}, {target}, {data}"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Fetch URL (optional) - if set, the response can use {data} from GET response</label>
+        <input type="text" id="ccFetchUrl" placeholder="https://api.example.com/quote">
+      </div>
+
+      <div class="form-group">
+        <label>Enable Fetch</label>
+        <select id="ccFetchEnabled">
+          <option value="false">Disabled</option>
+          <option value="true">Enabled (GET)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Cooldown (seconds)</label>
+        <input type="number" id="ccCooldown" min="0" value="0" placeholder="0">
       </div>
 
       <div class="form-group">

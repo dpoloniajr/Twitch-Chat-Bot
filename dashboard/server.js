@@ -143,18 +143,26 @@ app.get('/api/custom-commands', async (req, res) => {
 
 app.post('/api/custom-commands', async (req, res) => {
   try {
-    const { name, response, level } = req.body;
-    if (!name || !response) {
-      return res.status(400).json({ error: 'name and response are required' });
+    const { name, response, level, fetchUrl, fetchEnabled, cooldownSeconds } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
     }
 
     const normalizedName = name.trim().toLowerCase().startsWith('!') ? name.trim().toLowerCase() : `!${name.trim().toLowerCase()}`;
     const allowedLevels = ['everyone', 'mod', 'broadcaster'];
     const finalLevel = allowedLevels.includes(level) ? level : 'everyone';
+    const finalCooldown = Number.isFinite(Number(cooldownSeconds)) && Number(cooldownSeconds) > 0 ? Number(cooldownSeconds) : 0;
 
     const commands = JSON.parse(await fs.readFile(customCommandsFile, 'utf8'));
     const filtered = commands.filter(cmd => cmd.name !== normalizedName);
-    filtered.push({ name: normalizedName, response: response.trim(), level: finalLevel });
+    filtered.push({
+      name: normalizedName,
+      response: (response || '').trim(),
+      level: finalLevel,
+      fetchEnabled: !!fetchEnabled,
+      fetchUrl: (fetchUrl || '').trim(),
+      cooldownSeconds: finalCooldown
+    });
 
     await fs.writeFile(customCommandsFile, JSON.stringify(filtered, null, 2));
     broadcastState({ type: 'customCommands', data: filtered });

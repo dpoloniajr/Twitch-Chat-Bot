@@ -47,6 +47,7 @@ let tokenUserId = null;
 let botStartTime = Date.now();
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
+const commandCooldowns = new Map();
 
 function formatResponse(template, ctx) {
   return template
@@ -54,6 +55,7 @@ function formatResponse(template, ctx) {
     .replace(/\{displayname\}/gi, ctx.displayName || ctx.user || '')
     .replace(/\{channel\}/gi, ctx.channel || '')
     .replace(/\{target\}/gi, ctx.target || '')
+    .replace(/\{data\}/gi, ctx.data || '')
     .trim();
 }
 
@@ -103,6 +105,33 @@ async function loadCustomCommands() {
   } catch (error) {
     customCommands = [];
   }
+}
+
+function isOnCooldown(cmdName, cooldownSeconds) {
+  if (!cooldownSeconds || cooldownSeconds <= 0) return false;
+  const last = commandCooldowns.get(cmdName) || 0;
+  return Date.now() - last < cooldownSeconds * 1000;
+}
+
+function setCooldown(cmdName) {
+  commandCooldowns.set(cmdName, Date.now());
+}
+
+async function renderCustomCommand(cmd, context) {
+  let data = '';
+
+  if (cmd.fetchEnabled && cmd.fetchUrl) {
+    try {
+      const resp = await axios.get(cmd.fetchUrl, { timeout: 5000 });
+      data = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+    } catch (err) {
+      return { error: `Failed to fetch URL: ${err.message}` };
+    }
+  }
+
+  const template = (cmd.response && cmd.response.trim().length > 0) ? cmd.response : '{data}';
+  const rendered = formatResponse(template, { ...context, data });
+  return { rendered };
 }
 
 // Get broadcaster ID
@@ -225,7 +254,7 @@ async function sendShoutout(targetUsername) {
 
 // Message handler
 chatClient.onMessage(async (channel, user, message, msg) => {
-  const username = user || msg.userInfo?.userName;
+  const username = msg.userInfo?.userName || msg.userInfo?.displayName || user || 'unknown';
   const text = message.trim().toLowerCase();
 
   // push raw chat to dashboard feed
@@ -300,7 +329,8 @@ chatClient.onMessage(async (channel, user, message, msg) => {
   }
 
   // Custom commands
-  const matched = customCommands.find(cmd => cmd.name === text);
+  const cmdName = text.split(' ')[0];
+  const matched = customCommands.find(cmd => cmd.name === cmdName);
   if (matched) {
     const isMod = msg.userInfo.isMod;
     const isBroadcaster = msg.userInfo.isBroadcaster;
@@ -315,14 +345,29 @@ chatClient.onMessage(async (channel, user, message, msg) => {
       return;
     }
 
-    const rendered = formatResponse(matched.response, {
-      user: username,
-      displayName: msg.userInfo.displayName,
+    if (isOnCooldown(matched.name, matched.cooldownSeconds)) {
+      const remainingMs = matched.cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get(matched.name) || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      chatClient.say(channel, `@${username} That command is on cooldown. Try again in ${remainingSec}s.`);
+      logCommand(username, matched.name, channel, false);
+      return;
+    }
+
+    const renderResult = await renderCustomCommand(matched, {
+      user: msg.userInfo?.userName || username,
+      displayName: msg.userInfo?.displayName || username,
       channel: channel.replace('#', ''),
-      target: text.split(' ')[1] || ''
+      target: (message.split(' ')[1] || '').replace('@', '')
     });
 
-    chatClient.say(channel, rendered);
+    if (renderResult.error) {
+      chatClient.say(channel, `@${username} ${renderResult.error}`);
+      logCommand(username, matched.name, channel, false);
+      return;
+    }
+
+    chatClient.say(channel, renderResult.rendered);
+    setCooldown(matched.name);
     logCommand(username, matched.name, channel, true);
   }
 });
