@@ -329,8 +329,13 @@ chatClient.onMessage(async (channel, user, message, msg) => {
   }
 
   // Custom commands
-  const cmdName = text.split(' ')[0];
-  const matched = customCommands.find(cmd => cmd.name === cmdName);
+  const token = text.split(' ')[0];
+  const tokenLc = token.toLowerCase();
+  const tokenNoBang = tokenLc.startsWith('!') ? tokenLc.slice(1) : tokenLc;
+  let matched = customCommands.find(cmd => cmd.name === tokenLc);
+  if (!matched) {
+    matched = customCommands.find(cmd => cmd.name === tokenNoBang);
+  }
   if (matched) {
     const isMod = msg.userInfo.isMod;
     const isBroadcaster = msg.userInfo.isBroadcaster;

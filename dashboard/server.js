@@ -148,7 +148,7 @@ app.post('/api/custom-commands', async (req, res) => {
       return res.status(400).json({ error: 'name is required' });
     }
 
-    const normalizedName = name.trim().toLowerCase().startsWith('!') ? name.trim().toLowerCase() : `!${name.trim().toLowerCase()}`;
+    const normalizedName = name.trim().toLowerCase();
     const allowedLevels = ['everyone', 'mod', 'broadcaster'];
     const finalLevel = allowedLevels.includes(level) ? level : 'everyone';
     const finalCooldown = Number.isFinite(Number(cooldownSeconds)) && Number(cooldownSeconds) > 0 ? Number(cooldownSeconds) : 0;
