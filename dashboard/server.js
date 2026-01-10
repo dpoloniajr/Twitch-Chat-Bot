@@ -21,6 +21,37 @@ const customCommandsFile = path.join(logsDir, 'customCommands.json');
 const announcementsFile = path.join(logsDir, 'announcements.json');
 const redemptionsFile = path.join(logsDir, 'redemptions.json');
 const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
+const envPath = path.join(__dirname, '..', '.env');
+
+// Helper to upsert a key in the .env file
+async function upsertEnvValue(key, value) {
+  const line = `${key}=${value}`;
+  try {
+    let envContent = '';
+    try {
+      envContent = await fs.readFile(envPath, 'utf8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    if (envContent) {
+      const regex = new RegExp(`^${key}=.*$`, 'm');
+      if (regex.test(envContent)) {
+        envContent = envContent.replace(regex, line);
+      } else {
+        envContent = envContent.trimEnd();
+        envContent += (envContent.endsWith('\n') ? '' : '\n') + line + '\n';
+      }
+    } else {
+      envContent = line + '\n';
+    }
+
+    await fs.writeFile(envPath, envContent);
+  } catch (error) {
+    console.error(`Failed to update ${key} in .env:`, error);
+    throw error;
+  }
+}
 
 // Initialize logs directory
 async function initLogs() {
@@ -275,6 +306,7 @@ app.post('/api/announcements', async (req, res) => {
   try {
     const { announcements } = req.body;
     await fs.writeFile(announcementsFile, JSON.stringify(announcements, null, 2));
+    await upsertEnvValue('ANNOUNCEMENTS', (announcements || []).join('|'));
     broadcastState({ type: 'announcements', data: announcements });
     res.json({ success: true });
   } catch (error) {
