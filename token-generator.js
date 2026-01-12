@@ -143,11 +143,14 @@ const DEFAULT_SCOPES = [
 app.get('/', (req, res) => {
   console.log('Home page requested');
 
+  const accountType = req.query.account || 'bot';
+
   // Read current scopes from .env if they exist
   let currentScopes = [];
   try {
     const envContent = fs.readFileSync('.env', 'utf8');
-    const scopesMatch = envContent.match(/TWITCH_SCOPES=(.+)/);
+    const scopeKey = accountType === 'broadcaster' ? 'TWITCH_BROADCASTER_SCOPES' : 'TWITCH_SCOPES';
+    const scopesMatch = envContent.match(new RegExp(`${scopeKey}=(.+)`));
     if (scopesMatch && scopesMatch[1]) {
       currentScopes = scopesMatch[1].trim().split(' ').filter(s => s);
     }
@@ -155,7 +158,7 @@ app.get('/', (req, res) => {
     // .env might not exist yet, that's okay
   }
 
-  console.log('Current scopes in .env:', currentScopes);
+  console.log(`Current scopes in .env for ${accountType}:`, currentScopes);
 
   res.send(`
     <!DOCTYPE html>
@@ -327,7 +330,20 @@ app.get('/', (req, res) => {
           <p>Select the scopes your bot needs and authorize</p>
         </div>
         <div class="content">
+          <div class="info-box" style="margin-bottom: 20px;">
+            <strong>🔐 Account Type:</strong> 
+            <select id="accountTypeSelect" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #bee5eb; margin-left: 10px;" onchange="window.location.href='/?account=' + this.value">
+              <option value="bot" ${accountType === 'bot' ? 'selected' : ''}>Bot Account (mistressexcella)</option>
+              <option value="broadcaster" ${accountType === 'broadcaster' ? 'selected' : ''}>Broadcaster Account (ronin_style)</option>
+            </select>
+            <div style="margin-top: 10px; font-size: 12px;">
+              ${accountType === 'bot' 
+                ? '✅ Bot Account: For chat commands, clips, and moderation actions' 
+                : '✅ Broadcaster Account: For EventSub (follows, raids, redemptions, etc.)'}
+            </div>
+          </div>
           <form id="scopeForm">
+            <input type="hidden" id="accountType" value="${accountType}">
             <div class="selected-count">
               Scopes selected: <span id="selectedCount">0</span> / ${ALL_SCOPES.length}
             </div>
@@ -389,6 +405,8 @@ app.get('/', (req, res) => {
           
           const selectedScopes = Array.from(document.querySelectorAll('.scope-checkbox:checked'))
             .map(cb => cb.value);
+          
+          const accountType = document.getElementById('accountType').value;
 
           if (selectedScopes.length === 0) {
             alert('Please select at least one scope');
@@ -399,7 +417,7 @@ app.get('/', (req, res) => {
           const response = await fetch('/generate-auth-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scopes: selectedScopes })
+            body: JSON.stringify({ scopes: selectedScopes, accountType })
           });
 
           const data = await response.json();
@@ -431,20 +449,22 @@ app.get('/', (req, res) => {
 
 // Generate authorization URL with selected scopes
 app.post('/generate-auth-url', (req, res) => {
-  const { scopes } = req.body;
+  const { scopes, accountType } = req.body;
 
   if (!scopes || !Array.isArray(scopes) || scopes.length === 0) {
     return res.status(400).json({ error: 'No scopes provided' });
   }
 
   const scopeString = scopes.join(' ');
+  const state = accountType || 'bot'; // Pass account type in state parameter
   const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
     `client_id=${CLIENT_ID}&` +
     `redirect_uri=http://localhost:${PORT}/callback&` +
     `response_type=code&` +
-    `scope=${encodeURIComponent(scopeString)}`;
+    `scope=${encodeURIComponent(scopeString)}&` +
+    `state=${state}`;
 
-  console.log('Generated auth URL with scopes:', scopes.join(', '));
+  console.log(`Generated auth URL with scopes for ${accountType}:`, scopes.join(', '));
 
   res.json({ authUrl });
 });
@@ -453,7 +473,8 @@ app.post('/generate-auth-url', (req, res) => {
 app.get('/callback', async (req, res) => {
   console.log('Callback received with query:', req.query);
 
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, state } = req.query;
+  const accountType = state || 'bot'; // Get account type from state parameter
 
   if (error) {
     console.log('Authorization error:', error, error_description);
@@ -470,7 +491,7 @@ app.get('/callback', async (req, res) => {
     return res.send('<h1>Error: No authorization code received</h1>');
   }
 
-  console.log('Received authorization code, exchanging for tokens...');
+  console.log(`Received authorization code for ${accountType} account, exchanging for tokens...`);
 
   try {
     const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
@@ -514,10 +535,33 @@ app.get('/callback', async (req, res) => {
     // Update the .env file with tokens and scopes
     // Ensure scopes are space-separated, not comma-separated
     const scopeString = Array.isArray(scope) ? scope.join(' ') : (scope || '');
-    const updatedEnv = envContent
-      .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
-      .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
-      .replace(/TWITCH_SCOPES=.*/, `TWITCH_SCOPES=${scopeString}`);
+    
+    // Determine which keys to update based on account type
+    let updatedEnv;
+    if (accountType === 'broadcaster') {
+      console.log('Updating broadcaster account tokens in .env');
+      updatedEnv = envContent
+        .replace(/TWITCH_BROADCASTER_ACCESS_TOKEN=.*/, `TWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`)
+        .replace(/TWITCH_BROADCASTER_REFRESH_TOKEN=.*/, `TWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`)
+        .replace(/TWITCH_BROADCASTER_SCOPES=.*/, `TWITCH_BROADCASTER_SCOPES=${scopeString}`);
+      
+      // If keys don't exist, append them
+      if (!envContent.includes('TWITCH_BROADCASTER_ACCESS_TOKEN=')) {
+        updatedEnv += `\nTWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`;
+      }
+      if (!envContent.includes('TWITCH_BROADCASTER_REFRESH_TOKEN=')) {
+        updatedEnv += `\nTWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`;
+      }
+      if (!envContent.includes('TWITCH_BROADCASTER_SCOPES=')) {
+        updatedEnv += `\nTWITCH_BROADCASTER_SCOPES=${scopeString}`;
+      }
+    } else {
+      console.log('Updating bot account tokens in .env');
+      updatedEnv = envContent
+        .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
+        .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
+        .replace(/TWITCH_SCOPES=.*/, `TWITCH_SCOPES=${scopeString}`);
+    }
 
     try {
       fs.writeFileSync('.env', updatedEnv);
@@ -545,13 +589,16 @@ app.get('/callback', async (req, res) => {
       </head>
       <body>
         <h1 class="success">Success! 🎉</h1>
-        <p>Your tokens have been saved to the .env file.</p>
+        <p>Your <strong>${accountType}</strong> account tokens have been saved to the .env file.</p>
         <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
         <p><strong>Refresh Token:</strong> ${refresh_token.substring(0, 20)}...</p>
         <p><strong>Granted Scopes:</strong></p>
         <p style="word-break: break-all; font-size: 12px;">${grantedScopes}</p>
+        <p>${accountType === 'broadcaster' 
+          ? '✅ EventSub is now ready! Remove <code>DISABLE_EVENTSUB=1</code> from .env and restart the bot.' 
+          : '✅ Bot account configured! Now generate tokens for the broadcaster account to enable EventSub.'}</p>
         <p>You can now close this window and start your bot!</p>
-        <script>setTimeout(() => window.close(), 5000);</script>
+        <script>setTimeout(() => window.close(), 8000);</script>
       </body>
       </html>
     `);
