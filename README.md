@@ -117,6 +117,15 @@ TWITCH_CHANNELS=channel1,channel2,channel3
 # Optional settings
 DISABLE_EVENTSUB=true
 DASHBOARD_PORT=3001
+
+# Chat Filtering (optional)
+CHAT_FILTER_WORDS=badword1|badword2|etc
+CHAT_FILTER_URLS=true
+CHAT_FILTER_ALLCAPS=true
+CHAT_FILTER_REPEAT=true
+CHAT_FILTER_SPAM=true
+CHAT_FILTER_ACTION=warn
+CHAT_FILTER_TIMEOUT_SEC=60
 ```
 
 ### Step 3: Generate Tokens
@@ -276,6 +285,82 @@ Response: @username Stream game updated to: Valorant
 **Required Scope:** `channel:manage:broadcast`
 
 The bot will search Twitch's game database and update the category. If an exact match is not found, it will attempt to find a similar category.
+
+### !addfilter <word>
+
+Adds a word to the chat blacklist filter. Must be a moderator or broadcaster.
+
+```
+Usage: !addfilter badword
+Response: @username Added "badword" to the filter blacklist.
+```
+
+**Permission:** Moderator or Broadcaster only
+
+### !removefilter <word>
+
+Removes a word from the chat blacklist filter. Must be a moderator or broadcaster.
+
+```
+Usage: !removefilter badword
+Response: @username Removed "badword" from the filter blacklist.
+```
+
+**Permission:** Moderator or Broadcaster only
+
+### !filters
+
+Shows the current chat filter status and active filters. Must be a moderator or broadcaster.
+
+```
+Usage: !filters
+Response: @username Active filters: URLs, ALL CAPS, Repeated chars, Spam detection | Blacklist words: 5 | Action: warn
+```
+
+**Permission:** Moderator or Broadcaster only
+
+## Chat Filtering
+
+The bot includes a comprehensive chat filtering system to keep your community safe.
+
+### Filter Types
+
+- **Blacklist Words**: Filter specific words (configurable per-stream via `!addfilter` / `!removefilter`)
+- **URL Filtering**: Block messages containing links (enable via `CHAT_FILTER_URLS=true`)
+- **ALL CAPS**: Warn/timeout users posting in all caps (enable via `CHAT_FILTER_ALLCAPS=true`)
+- **Repeated Characters**: Block excessive repeated characters like "sssssss" (enable via `CHAT_FILTER_REPEAT=true`)
+- **Spam Detection**: Prevent rapid duplicate messages from the same user (enable via `CHAT_FILTER_SPAM=true`)
+
+### Configuration
+
+Set these in your `.env` file:
+
+```env
+# Pipe-separated list of words to block (case-insensitive)
+CHAT_FILTER_WORDS=badword1|badword2|racist|nsfw
+
+# Enable/disable specific filters
+CHAT_FILTER_URLS=true
+CHAT_FILTER_ALLCAPS=true
+CHAT_FILTER_REPEAT=true
+CHAT_FILTER_SPAM=true
+
+# Action to take: 'warn' (default), 'timeout', or 'delete'
+CHAT_FILTER_ACTION=warn
+
+# Timeout duration in seconds (for timeout action)
+CHAT_FILTER_TIMEOUT_SEC=60
+```
+
+### Filter Actions
+
+- **warn**: Send a warning message to the user in chat
+- **timeout**: Automatically timeout (mute) the user for the specified duration
+- **delete**: Silently block the message (requires `moderator:manage:chat_messages` scope)
+
+### Moderator Bypass
+
+Moderators and the broadcaster can bypass filters and are never subject to filtering.
 
 ### !commands / !help
 

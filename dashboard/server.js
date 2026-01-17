@@ -120,6 +120,17 @@ let botState = {
   ]
 };
 
+// Chat filter state - will be synced with bot
+let chatFilters = {
+  blacklistWords: (process.env.CHAT_FILTER_WORDS || '').split('|').map(w => w.trim()).filter(Boolean),
+  filterUrls: process.env.CHAT_FILTER_URLS === 'true' || process.env.CHAT_FILTER_URLS === '1',
+  filterAllCaps: process.env.CHAT_FILTER_ALLCAPS === 'true' || process.env.CHAT_FILTER_ALLCAPS === '1',
+  filterRepeatChars: process.env.CHAT_FILTER_REPEAT === 'true' || process.env.CHAT_FILTER_REPEAT === '1',
+  filterSpam: process.env.CHAT_FILTER_SPAM === 'true' || process.env.CHAT_FILTER_SPAM === '1',
+  timeoutDurationSeconds: Number(process.env.CHAT_FILTER_TIMEOUT_SEC || 60),
+  filterAction: process.env.CHAT_FILTER_ACTION || 'warn'
+};
+
 // Broadcast state to all connected WebSocket clients
 function broadcastState(data) {
   wss.clients.forEach(client => {
@@ -365,6 +376,89 @@ app.get('/api/eventsub-events', async (req, res) => {
   try {
     const data = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Chat Filters API
+
+// Get current filter configuration
+app.get('/api/filters', (req, res) => {
+  res.json(chatFilters);
+});
+
+// Update filter settings
+app.post('/api/filters', async (req, res) => {
+  try {
+    const { filterUrls, filterAllCaps, filterRepeatChars, filterSpam, filterAction, timeoutDurationSeconds } = req.body;
+    
+    // Update in-memory state
+    if (filterUrls !== undefined) {
+      chatFilters.filterUrls = !!filterUrls;
+      await upsertEnvValue('CHAT_FILTER_URLS', chatFilters.filterUrls ? 'true' : 'false');
+    }
+    if (filterAllCaps !== undefined) {
+      chatFilters.filterAllCaps = !!filterAllCaps;
+      await upsertEnvValue('CHAT_FILTER_ALLCAPS', chatFilters.filterAllCaps ? 'true' : 'false');
+    }
+    if (filterRepeatChars !== undefined) {
+      chatFilters.filterRepeatChars = !!filterRepeatChars;
+      await upsertEnvValue('CHAT_FILTER_REPEAT', chatFilters.filterRepeatChars ? 'true' : 'false');
+    }
+    if (filterSpam !== undefined) {
+      chatFilters.filterSpam = !!filterSpam;
+      await upsertEnvValue('CHAT_FILTER_SPAM', chatFilters.filterSpam ? 'true' : 'false');
+    }
+    if (filterAction !== undefined && ['warn', 'timeout', 'delete'].includes(filterAction)) {
+      chatFilters.filterAction = filterAction;
+      await upsertEnvValue('CHAT_FILTER_ACTION', filterAction);
+    }
+    if (timeoutDurationSeconds !== undefined) {
+      const seconds = Math.max(10, Math.min(3600, Number(timeoutDurationSeconds)));
+      chatFilters.timeoutDurationSeconds = seconds;
+      await upsertEnvValue('CHAT_FILTER_TIMEOUT_SEC', String(seconds));
+    }
+
+    broadcastState({ type: 'filters', data: chatFilters });
+    res.json({ success: true, filters: chatFilters });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add word to filter blacklist
+app.post('/api/filters/words', async (req, res) => {
+  try {
+    const { word } = req.body;
+    if (!word || typeof word !== 'string' || word.trim().length === 0) {
+      return res.status(400).json({ error: 'Word must be a non-empty string' });
+    }
+    
+    const normalized = word.trim().toLowerCase();
+    if (!chatFilters.blacklistWords.includes(normalized)) {
+      chatFilters.blacklistWords.push(normalized);
+      const wordsStr = chatFilters.blacklistWords.join('|');
+      await upsertEnvValue('CHAT_FILTER_WORDS', wordsStr);
+    }
+
+    broadcastState({ type: 'filters', data: chatFilters });
+    res.json({ success: true, words: chatFilters.blacklistWords });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove word from filter blacklist
+app.delete('/api/filters/words/:word', async (req, res) => {
+  try {
+    const wordToRemove = decodeURIComponent(req.params.word).toLowerCase();
+    chatFilters.blacklistWords = chatFilters.blacklistWords.filter(w => w !== wordToRemove);
+    const wordsStr = chatFilters.blacklistWords.join('|');
+    await upsertEnvValue('CHAT_FILTER_WORDS', wordsStr);
+
+    broadcastState({ type: 'filters', data: chatFilters });
+    res.json({ success: true, words: chatFilters.blacklistWords });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

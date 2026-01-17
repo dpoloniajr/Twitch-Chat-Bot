@@ -17,6 +17,7 @@
         <li><a href="#announcements" onclick="showPage('announcements')" class="nav-link">Announcements</a></li>
         <li><a href="#events" onclick="showPage('events')" class="nav-link">Polls/Predictions</a></li>
         <li><a href="#redemptions" onclick="showPage('redemptions')" class="nav-link">Redemptions</a></li>
+        <li><a href="#filters" onclick="showPage('filters')" class="nav-link">Chat Filters</a></li>
         <li><a href="#custom" onclick="showPage('custom')" class="nav-link">Custom Commands</a></li>
         <li><a href="#logs" onclick="showPage('logs')" class="nav-link">Logs</a></li>
         <li><a href="#stats" onclick="showPage('stats')" class="nav-link">Stats</a></li>
@@ -215,6 +216,61 @@
       </div>
 
       <p class="info-text">⚠️ To modify settings, edit your .env file and restart the bot.</p>
+    </div>
+  </div>
+
+  <!-- Chat Filters Page -->
+  <div id="filters" class="page">
+    <div class="container">
+      <h2>Chat Filters</h2>
+      
+      <div class="filters-section">
+        <h3>Filter Configuration</h3>
+        <div class="filter-options">
+          <label class="filter-toggle">
+            <input type="checkbox" id="filterUrls" onchange="updateFilterSetting('filterUrls', this.checked)">
+            <span>🔗 Filter URLs</span>
+          </label>
+          <label class="filter-toggle">
+            <input type="checkbox" id="filterAllCaps" onchange="updateFilterSetting('filterAllCaps', this.checked)">
+            <span>🔤 Filter ALL CAPS</span>
+          </label>
+          <label class="filter-toggle">
+            <input type="checkbox" id="filterRepeatChars" onchange="updateFilterSetting('filterRepeatChars', this.checked)">
+            <span>🔤 Filter Repeated Chars (sssss)</span>
+          </label>
+          <label class="filter-toggle">
+            <input type="checkbox" id="filterSpam" onchange="updateFilterSetting('filterSpam', this.checked)">
+            <span>⚡ Filter Spam Detection</span>
+          </label>
+        </div>
+
+        <div class="filter-settings">
+          <div class="setting-group">
+            <label for="filterAction">Filter Action:</label>
+            <select id="filterAction" onchange="updateFilterSetting('filterAction', this.value)">
+              <option value="warn">Warn User</option>
+              <option value="timeout">Timeout User</option>
+              <option value="delete">Delete Message</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label for="timeoutDuration">Timeout Duration (seconds):</label>
+            <input type="number" id="timeoutDuration" min="10" max="3600" value="60" onchange="updateFilterSetting('timeoutDurationSeconds', parseInt(this.value))">
+          </div>
+        </div>
+      </div>
+
+      <div class="filters-section">
+        <h3>Word Blacklist</h3>
+        <div class="word-input-group">
+          <input type="text" id="newWord" placeholder="Enter word to filter..." onkeypress="if(event.key==='Enter') addFilterWord()">
+          <button onclick="addFilterWord()" class="btn btn-primary">Add Word</button>
+        </div>
+        <div id="blacklistContainer" class="blacklist-words">
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
     </div>
   </div>
 

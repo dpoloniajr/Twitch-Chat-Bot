@@ -51,6 +51,72 @@ const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}
 let customCommands = [];
 let eventSub = null;
 
+// Chat filtering system
+const chatFilters = {
+  blacklistWords: new Set((process.env.CHAT_FILTER_WORDS || '').split('|').map(w => w.trim().toLowerCase()).filter(Boolean)),
+  filterUrls: process.env.CHAT_FILTER_URLS === 'true' || process.env.CHAT_FILTER_URLS === '1',
+  filterAllCaps: process.env.CHAT_FILTER_ALLCAPS === 'true' || process.env.CHAT_FILTER_ALLCAPS === '1',
+  filterRepeatChars: process.env.CHAT_FILTER_REPEAT === 'true' || process.env.CHAT_FILTER_REPEAT === '1',
+  filterSpam: process.env.CHAT_FILTER_SPAM === 'true' || process.env.CHAT_FILTER_SPAM === '1',
+  timeoutDurationSeconds: Number(process.env.CHAT_FILTER_TIMEOUT_SEC || 60),
+  filterAction: process.env.CHAT_FILTER_ACTION || 'warn' // 'warn', 'timeout', 'delete'
+};
+const messageHistory = new Map(); // Track user messages for spam detection
+
+function checkChatFilters(message, username) {
+  const text = message.toLowerCase().trim();
+  const violations = [];
+
+  // Check blacklist words
+  if (chatFilters.blacklistWords.size > 0) {
+    const words = text.split(/\s+/);
+    for (const word of words) {
+      const cleaned = word.replace(/[^\w]/g, '');
+      if (chatFilters.blacklistWords.has(cleaned)) {
+        violations.push('blacklist_word');
+        break;
+      }
+    }
+  }
+
+  // Check for URLs
+  if (chatFilters.filterUrls && /https?:\/\/|www\./i.test(message)) {
+    violations.push('url');
+  }
+
+  // Check all caps (if more than 50% caps and at least 5 chars)
+  if (chatFilters.filterAllCaps && message.length >= 5) {
+    const capsCount = (message.match(/[A-Z]/g) || []).length;
+    if (capsCount / message.length >= 0.5) {
+      violations.push('all_caps');
+    }
+  }
+
+  // Check repeated characters (3+ same char in a row)
+  if (chatFilters.filterRepeatChars && /(.)\1{2,}/.test(message)) {
+    violations.push('repeat_chars');
+  }
+
+  // Check spam (same message within 5 seconds from same user)
+  if (chatFilters.filterSpam) {
+    const now = Date.now();
+    if (messageHistory.has(username)) {
+      const lastMsg = messageHistory.get(username);
+      if (lastMsg.text === text && now - lastMsg.time < 5000) {
+        violations.push('spam');
+      }
+    }
+    messageHistory.set(username, { text, time: now });
+    // Clean up old entries
+    if (messageHistory.size > 1000) {
+      const oldest = Array.from(messageHistory.entries()).sort((a, b) => a[1].time - b[1].time)[0];
+      messageHistory.delete(oldest[0]);
+    }
+  }
+
+  return violations;
+}
+
 // Announcement scheduler config
 const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
@@ -509,11 +575,85 @@ async function updateStreamGame(gameName) {
   }
 }
 
+// Timeout a user for violating chat filters
+async function timeoutUser(channel, username, durationSeconds) {
+  try {
+    if (!tokenUserId || !broadcasterId) return;
+    if (!config.scopes.includes('moderator:manage:banned_users')) return;
+
+    // Use Twitch API to timeout the user
+    await axios.post(
+      `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${broadcasterId}&moderator_id=${tokenUserId}`,
+      {
+        user_id: (await apiClient.users.getUserByName(username))?.id || 0,
+        duration: durationSeconds
+      },
+      {
+        headers: {
+          'Client-ID': config.clientId,
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+  } catch (error) {
+    console.error(`Failed to timeout ${username}:`, error.message);
+  }
+}
+
+// Add word to blacklist filter
+async function addFilterWord(word) {
+  if (!word || word.trim().length === 0) return false;
+  chatFilters.blacklistWords.add(word.trim().toLowerCase());
+  return true;
+}
+
+// Remove word from blacklist filter
+async function removeFilterWord(word) {
+  if (!word || word.trim().length === 0) return false;
+  chatFilters.blacklistWords.delete(word.trim().toLowerCase());
+  return true;
+}
+
+// Get filter status
+function getFilterStatus() {
+  return {
+    blacklistWords: Array.from(chatFilters.blacklistWords),
+    filterUrls: chatFilters.filterUrls,
+    filterAllCaps: chatFilters.filterAllCaps,
+    filterRepeatChars: chatFilters.filterRepeatChars,
+    filterSpam: chatFilters.filterSpam,
+    timeoutDurationSeconds: chatFilters.timeoutDurationSeconds,
+    filterAction: chatFilters.filterAction
+  };
+}
+
 // Message handler
 chatClient.onMessage(async (channel, user, message, msg) => {
   const username = msg.userInfo?.userName || msg.userInfo?.displayName || user || 'unknown';
   const text = message.trim().toLowerCase();
   const raw = message.trim();
+
+  // Check chat filters (skip for moderators and broadcaster)
+  const isMod = msg.userInfo.isMod;
+  const isBroadcaster = msg.userInfo.isBroadcaster;
+  
+  if (!isMod && !isBroadcaster) {
+    const violations = checkChatFilters(raw, username);
+    if (violations.length > 0) {
+      console.log(`Chat filter violation from ${username}: ${violations.join(', ')}`);
+      if (chatFilters.filterAction === 'timeout') {
+        await timeoutUser(channel, username, chatFilters.timeoutDurationSeconds);
+        chatClient.say(channel, `@${username} Your message violated chat rules and you have been timed out.`);
+      } else if (chatFilters.filterAction === 'warn') {
+        chatClient.say(channel, `@${username} Your message violated chat rules. Please be respectful.`);
+      }
+      // Don't process the message further if filter action is 'delete'
+      if (chatFilters.filterAction === 'delete') {
+        return;
+      }
+    }
+  }
 
   // push raw chat to dashboard feed
   axios.post(`${dashboardBaseUrl}/api/chat`, {
@@ -674,9 +814,59 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     }
   }
   
+  // !addfilter command (mods/broadcaster only)
+  if (text.startsWith('!addfilter ')) {
+    if (!isMod && !isBroadcaster) {
+      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
+      return;
+    }
+    const word = raw.slice('!addfilter '.length).trim();
+    if (word) {
+      await addFilterWord(word);
+      chatClient.say(channel, `@${username} Added "${word}" to the filter blacklist.`);
+      logCommand(username, `!addfilter ${word}`, channel, true);
+    } else {
+      chatClient.say(channel, `@${username} Usage: !addfilter <word>`);
+    }
+  }
+
+  // !removefilter command (mods/broadcaster only)
+  if (text.startsWith('!removefilter ')) {
+    if (!isMod && !isBroadcaster) {
+      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
+      return;
+    }
+    const word = raw.slice('!removefilter '.length).trim();
+    if (word) {
+      await removeFilterWord(word);
+      chatClient.say(channel, `@${username} Removed "${word}" from the filter blacklist.`);
+      logCommand(username, `!removefilter ${word}`, channel, true);
+    } else {
+      chatClient.say(channel, `@${username} Usage: !removefilter <word>`);
+    }
+  }
+
+  // !filters command (mods/broadcaster only)
+  if (text === '!filters') {
+    if (!isMod && !isBroadcaster) {
+      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
+      return;
+    }
+    const status = getFilterStatus();
+    const activeFilters = [];
+    if (status.filterUrls) activeFilters.push('URLs');
+    if (status.filterAllCaps) activeFilters.push('ALL CAPS');
+    if (status.filterRepeatChars) activeFilters.push('Repeated chars');
+    if (status.filterSpam) activeFilters.push('Spam detection');
+    const wordCount = status.blacklistWords.length;
+    const filterList = activeFilters.length > 0 ? activeFilters.join(', ') : 'none';
+    chatClient.say(channel, `@${username} Active filters: ${filterList} | Blacklist words: ${wordCount} | Action: ${status.filterAction}`);
+    logCommand(username, '!filters', channel, true);
+  }
+  
   // !commands - help command
   if (text === '!commands' || text === '!help') {
-    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods only), !poll, !prediction, !title "new title" (mods), !game <name> (mods), !commands');
+    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods), !poll, !prediction, !title (mods), !game (mods), !addfilter (mods), !removefilter (mods), !filters (mods), !commands');
     logCommand(username, '!commands', channel, true);
     return;
   }

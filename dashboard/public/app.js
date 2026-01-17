@@ -31,6 +31,8 @@ function initWebSocket() {
       loadEventSubEvents();
     } else if (message.type === 'announcements') {
       loadAnnouncements();
+    } else if (message.type === 'filters') {
+      loadFilters();
     }
   };
   
@@ -501,4 +503,120 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAnnouncements();
   loadRedemptions();
   loadEventSubEvents();
+  loadFilters();
 });
+
+// Chat Filters Functions
+
+function loadFilters() {
+  fetch('/api/filters')
+    .then(res => res.json())
+    .then(filters => {
+      document.getElementById('filterUrls').checked = filters.filterUrls;
+      document.getElementById('filterAllCaps').checked = filters.filterAllCaps;
+      document.getElementById('filterRepeatChars').checked = filters.filterRepeatChars;
+      document.getElementById('filterSpam').checked = filters.filterSpam;
+      document.getElementById('filterAction').value = filters.filterAction;
+      document.getElementById('timeoutDuration').value = filters.timeoutDurationSeconds;
+      renderBlacklist(filters.blacklistWords);
+    })
+    .catch(err => console.error('Failed to load filters:', err));
+}
+
+function updateFilterSetting(setting, value) {
+  const payload = {};
+  
+  // Map setting names
+  if (setting === 'filterUrls') payload.filterUrls = value;
+  else if (setting === 'filterAllCaps') payload.filterAllCaps = value;
+  else if (setting === 'filterRepeatChars') payload.filterRepeatChars = value;
+  else if (setting === 'filterSpam') payload.filterSpam = value;
+  else if (setting === 'filterAction') payload.filterAction = value;
+  else if (setting === 'timeoutDurationSeconds') payload.timeoutDurationSeconds = value;
+  
+  fetch('/api/filters', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('Filter setting updated:', setting, value);
+      } else {
+        console.error('Failed to update filter:', data.error);
+        loadFilters(); // Reload to show actual state
+      }
+    })
+    .catch(err => {
+      console.error('Error updating filter:', err);
+      loadFilters();
+    });
+}
+
+function addFilterWord() {
+  const input = document.getElementById('newWord');
+  const word = input.value.trim();
+  
+  if (!word) {
+    alert('Please enter a word to filter');
+    return;
+  }
+  
+  fetch('/api/filters/words', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        input.value = '';
+        renderBlacklist(data.words);
+      } else {
+        alert('Error adding word: ' + data.error);
+      }
+    })
+    .catch(err => {
+      console.error('Error adding word:', err);
+      alert('Failed to add word');
+    });
+}
+
+function removeFilterWord(word) {
+  if (!confirm(`Remove "${word}" from filter?`)) return;
+  
+  fetch(`/api/filters/words/${encodeURIComponent(word)}`, {
+    method: 'DELETE'
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        renderBlacklist(data.words);
+      } else {
+        alert('Error removing word: ' + data.error);
+      }
+    })
+    .catch(err => {
+      console.error('Error removing word:', err);
+      alert('Failed to remove word');
+    });
+}
+
+function renderBlacklist(words) {
+  const container = document.getElementById('blacklistContainer');
+  
+  if (!words || words.length === 0) {
+    container.innerHTML = '<p class="info-text">No words in blacklist yet.</p>';
+    return;
+  }
+  
+  container.innerHTML = words
+    .map(word => `
+      <div class="blacklist-word">
+        <span>${word}</span>
+        <button onclick="removeFilterWord('${word}')" class="btn btn-small btn-danger">Remove</button>
+      </div>
+    `)
+    .join('');
+}
