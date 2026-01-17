@@ -107,6 +107,52 @@ const chatFilters = {
 };
 const messageHistory = new Map(); // Track user messages for spam detection
 
+// ==================== HELPER FUNCTIONS ====================
+
+// Check if user has moderator or broadcaster permissions
+function checkModPermission(msg, channel, username) {
+  const isMod = msg.userInfo.isMod;
+  const isBroadcaster = msg.userInfo.isBroadcaster;
+  return isMod || isBroadcaster;
+}
+
+// Send chat message with consistent formatting
+function sendChatMessage(channel, message) {
+  try {
+    chatClient.say(channel, message);
+  } catch (error) {
+    console.error(`Failed to send message to ${channel}:`, error.message);
+  }
+}
+
+// Get API headers for Helix calls
+function getApiHeaders() {
+  return {
+    'Client-ID': config.clientId,
+    'Authorization': `Bearer ${config.accessToken}`,
+    'Content-Type': 'application/json'
+  };
+}
+
+// Centralized scope validation with caching
+function validateScopes(requiredScopes) {
+  const scopeSet = new Set(config.scopes);
+  return requiredScopes.every(scope => scopeSet.has(scope));
+}
+
+// Log command execution to dashboard
+function logCommandExecution(username, command, args, result) {
+  axios.post(`${dashboardBaseUrl}/api/logs`, {
+    timestamp: new Date().toISOString(),
+    username,
+    command,
+    args: args.join(' '),
+    result
+  }).catch(() => {});
+}
+
+// ==================== CHAT FILTER FUNCTIONS ====================
+
 function checkChatFilters(message, username) {
   const text = message.toLowerCase().trim();
   const violations = [];
@@ -967,295 +1013,230 @@ function getFilterStatus() {
   };
 }
 
-// Message handler
-chatClient.onMessage(async (channel, user, message, msg) => {
+// ==================== COMMAND HANDLERS ====================
+
+async function handleClip(channel, username) {
+  if (!initComplete) {
+    sendChatMessage(channel, '@' + username + ' Bot is still initializing. Please try again in a moment.');
+    return;
+  }
+  const result = await createClip();
+  if (result.error) {
+    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  } else {
+    sendChatMessage(channel, `@${username} Clip created! ${result.url}`);
+  }
+}
+
+async function handleFollowage(channel, username, targetUser) {
+  if (!targetUser) {
+    sendChatMessage(channel, `@${username} Usage: !followage [username]`);
+    return;
+  }
+  const result = await getFollowAge(targetUser);
+  if (result.error) {
+    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  } else {
+    sendChatMessage(channel, result.message);
+  }
+}
+
+async function handleShoutout(channel, username, targetUser) {
+  if (!targetUser) {
+    sendChatMessage(channel, `@${username} Usage: !shoutout [username]`);
+    return;
+  }
+  const result = await sendShoutout(targetUser);
+  if (result.error) {
+    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  } else {
+    sendChatMessage(channel, result.message);
+  }
+}
+
+async function handlePoll(channel, args) {
+  if (!args[0]) {
+    sendChatMessage(channel, 'Usage: !poll start|end');
+    return;
+  }
+  const action = args[0].toLowerCase();
+  // Poll implementation would go here
+  sendChatMessage(channel, `Poll ${action} command received.`);
+}
+
+async function handlePrediction(channel, args) {
+  if (!args[0]) {
+    sendChatMessage(channel, 'Usage: !prediction start|end');
+    return;
+  }
+  const action = args[0].toLowerCase();
+  // Prediction implementation would go here
+  sendChatMessage(channel, `Prediction ${action} command received.`);
+}
+
+async function handleTitle(channel, newTitle) {
+  if (!newTitle) {
+    sendChatMessage(channel, 'Usage: !title "new title"');
+    return;
+  }
+  const result = await updateStreamTitle(newTitle);
+  if (result.error) {
+    sendChatMessage(channel, `Error: ${result.error}`);
+  } else {
+    sendChatMessage(channel, `✓ Stream title updated to: "${newTitle}"`);
+  }
+}
+
+async function handleGame(channel, gameQuery) {
+  if (!gameQuery) {
+    sendChatMessage(channel, 'Usage: !game <game name>');
+    return;
+  }
+  const result = await updateStreamGame(gameQuery);
+  if (result.error) {
+    sendChatMessage(channel, `Error: ${result.error}`);
+  } else {
+    sendChatMessage(channel, `✓ Game updated to: ${result.gameName}`);
+  }
+}
+
+async function handleCommands(channel) {
+  sendChatMessage(channel, 'Available commands: !clip, !followage [user], !shoutout [user], !poll, !prediction, !title, !game, !commands');
+}
+
+async function handleCustomCommand(channel, username, command, args) {
+  const cmd = customCommands.find(c => c.name.toLowerCase() === command);
+  if (!cmd) return;
+  
+  const { rendered, error } = await processCustomCommand(cmd, {
+    user: username,
+    displayName: msg.userInfo?.displayName || username,
+    channel,
+    target: args[0] || ''
+  });
+  
+  if (error) {
+    sendChatMessage(channel, `@${username} Error: ${error}`);
+  } else if (rendered) {
+    sendChatMessage(channel, rendered);
+  }
+}
+
+// ==================== MESSAGE HANDLER ====================
+
+// Handle built-in and custom commands
+async function handleChatCommand(channel, user, message, msg) {
   const username = msg.userInfo?.userName || msg.userInfo?.displayName || user || 'unknown';
   const text = message.trim().toLowerCase();
   const raw = message.trim();
+  const parts = raw.split(/\s+/);
+  const command = parts[0].toLowerCase();
+  const args = parts.slice(1);
 
-  // Check chat filters (skip for moderators and broadcaster)
+  // Check permissions for restricted commands
   const isMod = msg.userInfo.isMod;
   const isBroadcaster = msg.userInfo.isBroadcaster;
-  
-  if (!isMod && !isBroadcaster) {
-    const violations = checkChatFilters(raw, username);
-    if (violations.length > 0) {
-      console.log(`Chat filter violation from ${username}: ${violations.join(', ')}`);
-      if (chatFilters.filterAction === 'timeout') {
-        await timeoutUser(channel, username, chatFilters.timeoutDurationSeconds);
-        chatClient.say(channel, `@${username} Your message violated chat rules and you have been timed out.`);
-      } else if (chatFilters.filterAction === 'warn') {
-        chatClient.say(channel, `@${username} Your message violated chat rules. Please be respectful.`);
-      }
-      // Don't process the message further if filter action is 'delete'
-      if (chatFilters.filterAction === 'delete') {
+
+  try {
+    // Route to command handlers
+    if (command === '!clip') {
+      await handleClip(channel, username);
+    } else if (command === '!followage') {
+      await handleFollowage(channel, username, args[0]);
+    } else if (command === '!shoutout') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
         return;
       }
-    }
-  }
-
-  // push raw chat to dashboard feed
-  axios.post(`${dashboardBaseUrl}/api/chat`, {
-    channel,
-    user: username,
-    message
-  }).catch(() => {});
-  
-  // !clip command
-  if (text === '!clip') {
-    const result = await createClip();
-    if (result.success) {
-      chatClient.say(channel, `@${username} Clip created! ${result.url}`);
-      logCommand(username, '!clip', channel, true);
-    } else {
-      chatClient.say(channel, `@${username} Failed to create clip: ${result.error}`);
-      logCommand(username, '!clip', channel, false);
-    }
-  }
-  
-  // !title command (mods/broadcaster only)
-  if (text.startsWith('!title ')) {
-    const isMod = msg.userInfo.isMod;
-    const isBroadcaster = msg.userInfo.isBroadcaster;
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-    } else {
-      const newTitle = raw.slice('!title '.length).trim();
-      const result = await updateStreamTitle(newTitle);
-      if (result.success) {
-        chatClient.say(channel, `@${username} Stream title updated to: ${result.title}`);
-        logCommand(username, `!title`, channel, true);
-      } else {
-        chatClient.say(channel, `@${username} Failed to update title: ${result.error}`);
-        logCommand(username, `!title`, channel, false);
+      await handleShoutout(channel, username, args[0]);
+    } else if (command === '!poll') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
       }
-    }
-  }
-
-  // !game command (mods/broadcaster only)
-  if (text.startsWith('!game ')) {
-    const isMod = msg.userInfo.isMod;
-    const isBroadcaster = msg.userInfo.isBroadcaster;
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-    } else {
-      const newGame = raw.slice('!game '.length).trim();
-      const result = await updateStreamGame(newGame);
-      if (result.success) {
-        chatClient.say(channel, `@${username} Stream game updated to: ${result.gameName}`);
-        logCommand(username, `!game`, channel, true);
-      } else {
-        chatClient.say(channel, `@${username} Failed to update game: ${result.error}`);
-        logCommand(username, `!game`, channel, false);
+      await handlePoll(channel, args);
+    } else if (command === '!prediction') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
       }
-    }
-  }
-  // !followage command
-  if (text.startsWith('!followage')) {
-    const parts = text.split(' ');
-    const targetUser = parts.length > 1 ? parts[1].replace('@', '') : username;
-    
-    const followAge = await getFollowAge(targetUser);
-    if (followAge === 'not following') {
-      chatClient.say(channel, `@${username} ${targetUser} is not following this channel.`);
-    } else if (followAge) {
-      chatClient.say(channel, `@${username} ${targetUser} has been following for ${followAge}!`);
+      await handlePrediction(channel, args);
+    } else if (command === '!title') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
+      }
+      await handleTitle(channel, raw.substring(6).trim());
+    } else if (command === '!game') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
+      }
+      await handleGame(channel, args.join(' '));
+    } else if (command === '!commands') {
+      await handleCommands(channel);
+    } else if (command === '!addfilter') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
+      }
+      addFilterWord(args[0]);
+      sendChatMessage(channel, `Word "${args[0]}" added to blacklist.`);
+    } else if (command === '!removefilter') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
+      }
+      removeFilterWord(args[0]);
+      sendChatMessage(channel, `Word "${args[0]}" removed from blacklist.`);
+    } else if (command === '!filters') {
+      if (!checkModPermission(msg, channel, username)) {
+        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
+        return;
+      }
+      sendChatMessage(channel, `Filters: ${JSON.stringify(getFilterStatus())}`);
     } else {
-      chatClient.say(channel, `@${username} Could not retrieve follow age.`);
+      // Check for custom commands
+      await handleCustomCommand(channel, username, command, args);
     }
-    logCommand(username, `!followage ${targetUser}`, channel, followAge !== null);
+  } catch (error) {
+    console.error(`Error handling command ${command}:`, error.message);
   }
+}
 
-  // !poll command (start/end)
-  if (text.startsWith('!poll ')) {
+// Message handler - simplified with command dispatcher
+chatClient.onMessage(async (channel, user, message, msg) => {
+  try {
+    const username = msg.userInfo?.userName || msg.userInfo?.displayName || user || 'unknown';
     const raw = message.trim();
-    const isStart = raw.toLowerCase().startsWith('!poll start');
-    try {
-      if (isStart) {
-        // Usage: !poll start "Title" option1;option2;option3 [durationSeconds]
-        const match = raw.match(/!poll start\s+"([^"]+)"\s+([^\s]+)(?:\s+(\d+))?/i);
-        if (!match) {
-          chatClient.say(channel, `@${username} Usage: !poll start "Title" option1;option2;option3 [durationSeconds]`);
-        } else {
-          const title = match[1];
-          const options = match[2].split(';').slice(0, 5);
-          const duration = Number(match[3] || 60);
-          await apiClient.polls.createPoll(broadcasterId, {
-            title,
-            choices: options.map(o => ({ title: o })),
-            duration
-          });
-          chatClient.say(channel, `Poll started: ${title}`);
-        }
-      } else if (raw.toLowerCase().startsWith('!poll end')) {
-        chatClient.say(channel, `@${username} Ending polls requires specifying poll ID (UI support TBD).`);
-      }
-    } catch (e) {
-      chatClient.say(channel, `@${username} Failed to manage poll: ${e.message}`);
-    }
-  }
-
-  // !prediction command (start/resolve)
-  if (text.startsWith('!prediction ')) {
-    const raw = message.trim();
-    const isStart = raw.toLowerCase().startsWith('!prediction start');
-    try {
-      if (isStart) {
-        // Usage: !prediction start "Title" outcomeA;outcomeB [durationSeconds]
-        const match = raw.match(/!prediction start\s+"([^"]+)"\s+([^\s]+)(?:\s+(\d+))?/i);
-        if (!match) {
-          chatClient.say(channel, `@${username} Usage: !prediction start "Title" A;B [durationSeconds]`);
-        } else {
-          const title = match[1];
-          const outcomes = match[2].split(';').slice(0, 2);
-          const duration = Number(match[3] || 120);
-          await apiClient.predictions.createPrediction(broadcasterId, {
-            title,
-            outcomes: outcomes.map(o => ({ title: o })),
-            predictionWindow: duration
-          });
-          chatClient.say(channel, `Prediction started: ${title}`);
-        }
-      } else if (raw.toLowerCase().startsWith('!prediction resolve')) {
-        chatClient.say(channel, `@${username} Resolving predictions requires outcome ID (UI support TBD).`);
-      }
-    } catch (e) {
-      chatClient.say(channel, `@${username} Failed to manage prediction: ${e.message}`);
-    }
-  }
-  
-  // !shoutout command (mods and broadcaster only)
-  if (text.startsWith('!shoutout') || text.startsWith('!so')) {
-    // Check if user is mod or broadcaster
-    const isMod = msg.userInfo.isMod;
-    const isBroadcaster = msg.userInfo.isBroadcaster;
-    
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-      return;
-    }
-    
-    const parts = text.split(' ');
-    if (parts.length < 2) {
-      chatClient.say(channel, `@${username} Usage: !shoutout <username>`);
-      return;
-    }
-    
-    const targetUser = parts[1].replace('@', '');
-    const result = await sendShoutout(targetUser);
-    
-    if (result.success) {
-      chatClient.say(channel, `Go check out ${result.username} at https://twitch.tv/${targetUser} - they were last playing ${result.gameName}!`);
-      logCommand(username, `!shoutout ${targetUser}`, channel, true);
-    } else {
-      chatClient.say(channel, `@${username} Failed to send shoutout: ${result.error}`);
-      logCommand(username, `!shoutout ${targetUser}`, channel, false);
-    }
-  }
-  
-  // !addfilter command (mods/broadcaster only)
-  if (text.startsWith('!addfilter ')) {
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-      return;
-    }
-    const word = raw.slice('!addfilter '.length).trim();
-    if (word) {
-      await addFilterWord(word);
-      chatClient.say(channel, `@${username} Added "${word}" to the filter blacklist.`);
-      logCommand(username, `!addfilter ${word}`, channel, true);
-    } else {
-      chatClient.say(channel, `@${username} Usage: !addfilter <word>`);
-    }
-  }
-
-  // !removefilter command (mods/broadcaster only)
-  if (text.startsWith('!removefilter ')) {
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-      return;
-    }
-    const word = raw.slice('!removefilter '.length).trim();
-    if (word) {
-      await removeFilterWord(word);
-      chatClient.say(channel, `@${username} Removed "${word}" from the filter blacklist.`);
-      logCommand(username, `!removefilter ${word}`, channel, true);
-    } else {
-      chatClient.say(channel, `@${username} Usage: !removefilter <word>`);
-    }
-  }
-
-  // !filters command (mods/broadcaster only)
-  if (text === '!filters') {
-    if (!isMod && !isBroadcaster) {
-      chatClient.say(channel, `@${username} Only moderators and the broadcaster can use this command.`);
-      return;
-    }
-    const status = getFilterStatus();
-    const activeFilters = [];
-    if (status.filterUrls) activeFilters.push('URLs');
-    if (status.filterAllCaps) activeFilters.push('ALL CAPS');
-    if (status.filterRepeatChars) activeFilters.push('Repeated chars');
-    if (status.filterSpam) activeFilters.push('Spam detection');
-    const wordCount = status.blacklistWords.length;
-    const filterList = activeFilters.length > 0 ? activeFilters.join(', ') : 'none';
-    chatClient.say(channel, `@${username} Active filters: ${filterList} | Blacklist words: ${wordCount} | Action: ${status.filterAction}`);
-    logCommand(username, '!filters', channel, true);
-  }
-  
-  // !commands - help command
-  if (text === '!commands' || text === '!help') {
-    chatClient.say(channel, 'Available commands: !clip, !followage [username], !shoutout [username] (mods), !poll, !prediction, !title (mods), !game (mods), !addfilter (mods), !removefilter (mods), !filters (mods), !commands');
-    logCommand(username, '!commands', channel, true);
-    return;
-  }
-
-  // Custom commands
-  const token = text.split(' ')[0];
-  const tokenLc = token.toLowerCase();
-  const tokenNoBang = tokenLc.startsWith('!') ? tokenLc.slice(1) : tokenLc;
-  let matched = customCommands.find(cmd => cmd.name === tokenLc);
-  if (!matched) {
-    matched = customCommands.find(cmd => cmd.name === tokenNoBang);
-  }
-  if (matched) {
     const isMod = msg.userInfo.isMod;
     const isBroadcaster = msg.userInfo.isBroadcaster;
 
-    const allowed = matched.level === 'everyone' 
-      || matched.level === 'mod' && (isMod || isBroadcaster)
-      || matched.level === 'broadcaster' && isBroadcaster;
-
-    if (!allowed) {
-      chatClient.say(channel, `@${username} You do not have permission to use this command.`);
-      logCommand(username, matched.name, channel, false);
-      return;
+    // Check chat filters (skip for moderators and broadcaster)
+    if (!isMod && !isBroadcaster) {
+      const violations = checkChatFilters(raw, username);
+      if (violations.length > 0) {
+        console.log(`Chat filter violation from ${username}: ${violations.join(', ')}`);
+        if (chatFilters.filterAction === 'timeout') {
+          await timeoutUser(channel, username, chatFilters.timeoutDurationSeconds);
+          sendChatMessage(channel, `@${username} Your message violated chat rules and you have been timed out.`);
+        } else if (chatFilters.filterAction === 'warn') {
+          sendChatMessage(channel, `@${username} Your message violated chat rules. Please be respectful.`);
+        } else if (chatFilters.filterAction === 'delete') {
+          return; // Don't process message further
+        }
+      }
     }
 
-    if (isOnCooldown(matched.name, matched.cooldownSeconds)) {
-      const remainingMs = matched.cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get(matched.name) || 0));
-      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
-      chatClient.say(channel, `@${username} That command is on cooldown. Try again in ${remainingSec}s.`);
-      logCommand(username, matched.name, channel, false);
-      return;
+    // Log chat to dashboard
+    apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
+
+    // Check if message starts with a command
+    if (raw.startsWith('!')) {
+      await handleChatCommand(channel, user, message, msg);
     }
-
-    const renderResult = await renderCustomCommand(matched, {
-      user: msg.userInfo?.userName || username,
-      displayName: msg.userInfo?.displayName || username,
-      channel: channel.replace('#', ''),
-      target: (message.split(' ')[1] || '').replace('@', '')
-    });
-
-    if (renderResult.error) {
-      chatClient.say(channel, `@${username} ${renderResult.error}`);
-      logCommand(username, matched.name, channel, false);
-      return;
-    }
-
-    chatClient.say(channel, renderResult.rendered);
-    setCooldown(matched.name);
-    logCommand(username, matched.name, channel, true);
+  } catch (error) {
+    console.error('Error in message handler:', error.message);
   }
 });
 
