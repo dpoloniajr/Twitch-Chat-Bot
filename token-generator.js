@@ -969,11 +969,43 @@ function generateHTML() {
       unban_requests: false
     };
 
+    // Load current scopes from .env and pre-select them
+    async function loadCurrentScopes() {
+      try {
+        const response = await fetch('/api/current-tokens');
+        const tokens = await response.json();
+        
+        // Clear all checkboxes first
+        document.querySelectorAll('input[type="checkbox"][id^="scope-"]').forEach(cb => cb.checked = false);
+        
+        // Get scopes based on current account type
+        const accountType = document.getElementById('accountType').value;
+        const scopes = accountType === 'bot' ? tokens.botScopes : tokens.broadcasterScopes;
+        
+        // Pre-select checkboxes for current scopes
+        if (scopes && Array.isArray(scopes)) {
+          scopes.forEach(scope => {
+            const checkboxId = 'scope-' + scope.replace(/:/g, '-');
+            const checkbox = document.getElementById(checkboxId);
+            if (checkbox) {
+              checkbox.checked = true;
+            }
+          });
+        }
+        
+        updateScopeCounter();
+      } catch (error) {
+        console.error('Failed to load current scopes:', error);
+      }
+    }
+
     // Load presets and scope categories
     async function initPage() {
       await loadPresets();
       await loadScopeCategories();
       updateAccountContext();
+      // Load and pre-select current scopes from .env
+      setTimeout(loadCurrentScopes, 100); // Wait for checkboxes to be created
     }
 
     async function loadPresets() {
@@ -1257,6 +1289,8 @@ function generateHTML() {
       } else {
         contextEl.innerHTML = '📺 <strong>Broadcaster Account:</strong> Used for EventSub subscriptions (follows, raids, channel points). Log in as <strong>ronin_style</strong>.';
       }
+      // Reload scopes when account type changes
+      loadCurrentScopes();
     }
 
     function updateScopeCounter() {
