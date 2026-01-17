@@ -50,11 +50,26 @@ let initComplete = false;
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
 let eventSub = null;
+let broadcasterEventSub = null;
 
 // Expose clients for easy access
 const authProvider = global.authProvider;
 const apiClient = global.apiClient;
 const chatClient = global.chatClient;
+
+// Setup broadcaster auth provider if broadcaster token is available
+let broadcasterAuthProvider = null;
+let broadcasterApiClient = null;
+
+if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+  const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || 'moderator:read:followers channel:read:redemptions').split(' ').filter(s => s);
+  broadcasterAuthProvider = new StaticAuthProvider(
+    config.clientId,
+    process.env.TWITCH_BROADCASTER_ACCESS_TOKEN,
+    broadcasterScopes
+  );
+  broadcasterApiClient = new ApiClient({ authProvider: broadcasterAuthProvider });
+}
 
 // Chat filtering system
 const chatFilters = {
@@ -179,7 +194,7 @@ function setupEventSub() {
 
     // Stream online/offline
     const subId = String(broadcasterId);
-    console.log('[EventSub] Subscribing with broadcasterId:', subId, 'isNumeric:', /^\d+$/.test(subId), 'tokenUserId:', tokenUserId);
+    console.log('[EventSub-Bot] Subscribing with broadcasterId:', subId, 'isNumeric:', /^\d+$/.test(subId), 'tokenUserId:', tokenUserId);
     
     // These subscriptions work with bot token
     try {
@@ -188,7 +203,7 @@ function setupEventSub() {
         config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
       });
     } catch (err) {
-      console.warn('[EventSub] Stream online subscription failed:', err.message);
+      console.warn('[EventSub-Bot] Stream online subscription failed:', err.message);
     }
     
     try {
@@ -196,28 +211,7 @@ function setupEventSub() {
         console.log('EventSub: Stream offline');
       });
     } catch (err) {
-      console.warn('[EventSub] Stream offline subscription failed:', err.message);
-    }
-
-    // Follows (requires broadcaster auth - will fail silently with bot token)
-    try {
-      eventSub.onChannelFollow(subId, ev => {
-        const name = ev.userDisplayName || ev.userName || 'someone';
-        config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
-      });
-    } catch (err) {
-      console.warn('[EventSub] Follow subscription requires broadcaster token:', err.message);
-    }
-
-    // Raids
-    try {
-      eventSub.onChannelRaidTo(subId, ev => {
-        const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
-        const viewers = ev.viewers ?? '?';
-        config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
-      });
-    } catch (err) {
-      console.warn('[EventSub] Raid subscription failed:', err.message);
+      console.warn('[EventSub-Bot] Stream offline subscription failed:', err.message);
     }
 
     // Channel Points redemptions
@@ -235,12 +229,68 @@ function setupEventSub() {
         config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
       });
     } catch (err) {
-      console.warn('[EventSub] Redemption subscription failed:', err.message);
+      console.warn('[EventSub-Bot] Redemption subscription failed:', err.message);
     }
     
-    console.log('✓ EventSub initialized successfully');
+    console.log('✓ Bot EventSub listener initialized successfully');
   } catch (err) {
-    console.error('EventSub setup failed:', err?.message || err);
+    console.error('Bot EventSub setup failed:', err?.message || err);
+  }
+}
+
+// Setup separate EventSub listener for broadcaster account (for follows, raids, etc.)
+function setupBroadcasterEventSub() {
+  if (broadcasterEventSub) return;
+  
+  // Guard: broadcaster auth required
+  if (!broadcasterAuthProvider || !broadcasterApiClient) {
+    console.log('[EventSub-Broadcaster] Broadcaster token not available. Skipping broadcaster EventSub setup.');
+    return;
+  }
+  
+  if (process.env.DISABLE_EVENTSUB === '1') {
+    console.log('[EventSub-Broadcaster] EventSub disabled via DISABLE_EVENTSUB=1');
+    return;
+  }
+  
+  if (!broadcasterId || !/^\d+$/.test(String(broadcasterId))) {
+    console.warn('[EventSub-Broadcaster] broadcasterId invalid or non-numeric', broadcasterId);
+    return;
+  }
+  
+  try {
+    broadcasterEventSub = new EventSubWsListener({ apiClient: broadcasterApiClient });
+    broadcasterEventSub.start();
+
+    const subId = String(broadcasterId);
+    console.log('[EventSub-Broadcaster] Subscribing with broadcasterId:', subId);
+    
+    // Follows (requires broadcaster auth)
+    try {
+      broadcasterEventSub.onChannelFollow(subId, ev => {
+        const name = ev.userDisplayName || ev.userName || 'someone';
+        config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
+      });
+      console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
+    } catch (err) {
+      console.warn('[EventSub-Broadcaster] Follow subscription failed:', err.message);
+    }
+
+    // Raids (requires broadcaster auth)
+    try {
+      broadcasterEventSub.onChannelRaidTo(subId, ev => {
+        const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
+        const viewers = ev.viewers ?? '?';
+        config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
+      });
+      console.log('[EventSub-Broadcaster] ✓ Raid subscription active');
+    } catch (err) {
+      console.warn('[EventSub-Broadcaster] Raid subscription failed:', err.message);
+    }
+    
+    console.log('✓ Broadcaster EventSub listener initialized successfully');
+  } catch (err) {
+    console.error('Broadcaster EventSub setup failed:', err?.message || err);
   }
 }
 const commandCooldowns = new Map();
@@ -410,8 +460,21 @@ function recreateAuthProvider() {
     channels: config.channels 
   });
   
+  // Recreate broadcaster auth provider if broadcaster token exists
+  if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+    const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || 'moderator:read:followers channel:read:redemptions').split(' ').filter(s => s);
+    broadcasterAuthProvider = new StaticAuthProvider(
+      config.clientId,
+      process.env.TWITCH_BROADCASTER_ACCESS_TOKEN,
+      broadcasterScopes
+    );
+    broadcasterApiClient = new ApiClient({ authProvider: broadcasterAuthProvider });
+    console.log('✓ Broadcaster auth provider recreated with new tokens');
+  }
+  
   console.log('✓ Auth provider recreated with new tokens');
 }
+
 
 // Validate a token with Twitch
 async function validateToken(token) {
@@ -524,6 +587,7 @@ async function init() {
     updateDashboard();
     initComplete = true;
     setupEventSub();
+    setupBroadcasterEventSub();
     startAnnouncements();
   } catch (error) {
     console.error('Failed to initialize bot:', error.message);
