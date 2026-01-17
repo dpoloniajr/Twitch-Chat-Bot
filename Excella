@@ -3,7 +3,17 @@ const { ChatClient } = require('@twurple/chat');
 const { ApiClient } = require('@twurple/api');
 const { EventSubWsListener } = require('@twurple/eventsub-ws');
 const axios = require('axios');
+const fs = require('fs');
 require('dotenv').config();
+
+// Constants for Twitch API
+const TWITCH_API_BASE = 'https://id.twitch.tv/oauth2';
+const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
+const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
+const API_TIMEOUT = 5000;
+
+// Global axios instance with consistent timeout
+const apiClient_axios = axios.create({ timeout: API_TIMEOUT });
 
 // Configuration
 const config = {
@@ -52,6 +62,19 @@ const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}
 let customCommands = [];
 let eventSub = null;
 let broadcasterEventSub = null;
+
+// Token validation caching (avoid repeated HTTP calls)
+let cachedTokenValidation = {
+  bot: { lastCheck: 0, isValid: false, expiresAt: 0 },
+  broadcaster: { lastCheck: 0, isValid: false, expiresAt: 0 }
+};
+const TOKEN_CACHE_DURATION = 3600000; // 1 hour
+
+// Scope validation caching
+let cachedScopeValidation = {};
+let filterStatusCache = null;
+let filterStatusCacheTime = 0;
+const CACHE_DURATION = 300000; // 5 minutes
 
 // Expose clients for easy access
 const authProvider = global.authProvider;
@@ -128,10 +151,13 @@ function checkChatFilters(message, username) {
       }
     }
     messageHistory.set(username, { text, time: now });
-    // Clean up old entries
-    if (messageHistory.size > 1000) {
-      const oldest = Array.from(messageHistory.entries()).sort((a, b) => a[1].time - b[1].time)[0];
-      messageHistory.delete(oldest[0]);
+    
+    // Time-based cleanup: remove messages older than 10 minutes
+    const tenMinutesAgo = now - 600000;
+    for (const [user, msg] of messageHistory.entries()) {
+      if (msg.time < tenMinutesAgo) {
+        messageHistory.delete(user);
+      }
     }
   }
 
@@ -243,8 +269,8 @@ function setupBroadcasterEventSub() {
   
   // Check broadcaster token scopes
   const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
-  const hasFollowersScope = broadcasterScopes.includes('moderator:read:followers');
-  const hasRedemptionsScope = broadcasterScopes.includes('channel:read:redemptions');
+  const hasFollowersScope = hasScope(broadcasterScopes, 'moderator:read:followers');
+  const hasRedemptionsScope = hasScope(broadcasterScopes, 'channel:read:redemptions');
   
   if (!hasFollowersScope && !hasRedemptionsScope) {
     console.warn('[EventSub-Broadcaster] ⚠️  Broadcaster token missing required scopes:');
@@ -417,7 +443,7 @@ async function validateAndRefreshTokens() {
   
   // Validate bot token
   console.log('Checking bot account token...');
-  const botTokenValid = await validateToken(config.accessToken);
+  const botTokenValid = await validateTokenCached(config.accessToken, 'bot');
   
   if (!botTokenValid) {
     console.log('⚠️  Bot token is invalid or expired. Attempting to refresh...');
@@ -425,6 +451,7 @@ async function validateAndRefreshTokens() {
     if (refreshedBot) {
       config.accessToken = refreshedBot;
       process.env.TWITCH_ACCESS_TOKEN = refreshedBot;
+      cachedTokenValidation.bot.lastCheck = 0; // Clear cache to revalidate
       console.log('✓ Bot token refreshed successfully');
       tokensUpdated = true;
     } else {
@@ -438,7 +465,7 @@ async function validateAndRefreshTokens() {
   // Validate broadcaster token if it exists
   if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
     console.log('Checking broadcaster account token...');
-    const broadcasterTokenValid = await validateToken(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN);
+    const broadcasterTokenValid = await validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster');
     
     if (!broadcasterTokenValid) {
       console.log('⚠️  Broadcaster token is invalid or expired. Attempting to refresh...');
@@ -449,6 +476,7 @@ async function validateAndRefreshTokens() {
       );
       if (refreshedBroadcaster) {
         process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster;
+        cachedTokenValidation.broadcaster.lastCheck = 0; // Clear cache to revalidate
         console.log('✓ Broadcaster token refreshed successfully');
         tokensUpdated = true;
       } else {
@@ -502,29 +530,62 @@ function recreateAuthProvider() {
 
 
 // Validate a token with Twitch
-async function validateToken(token) {
+// Check if a scope exists in the given scope list (cached)
+function hasScope(scopeList, targetScope) {
+  const scopes = scopeList || [];
+  return scopes.includes(targetScope);
+}
+
+// Check multiple scopes at once (cached)
+function hasScopeList(scopeList, targetScopes) {
+  const scopes = new Set(scopeList || []);
+  return targetScopes.every(s => scopes.has(s));
+}
+
+// Validate token with caching (avoid repeated HTTP calls)
+async function validateTokenCached(token, accountType = 'bot') {
+  const now = Date.now();
+  const cache = cachedTokenValidation[accountType];
+  
+  // Return cached result if still fresh
+  if (cache.lastCheck > 0 && now - cache.lastCheck < TOKEN_CACHE_DURATION && cache.expiresAt > now + 1800000) {
+    return cache.isValid;
+  }
+  
   try {
-    const response = await axios.get('https://id.twitch.tv/oauth2/validate', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      timeout: 5000
+    const response = await apiClient_axios.get(TWITCH_VALIDATE_URL, {
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     
     const tokenInfo = response.data;
     const expiresIn = tokenInfo.expires_in;
     
+    cache.lastCheck = now;
+    cache.expiresAt = now + (expiresIn * 1000);
+    
     if (expiresIn < 3600) {
       console.log(`  Token expires in ${Math.floor(expiresIn / 60)} minutes`);
-      return false; // Token needs refresh if expires in < 1 hour
+      cache.isValid = false;
+      return false;
     }
     
+    cache.isValid = true;
     return true;
   } catch (error) {
+    cache.lastCheck = now;
+    cache.isValid = false;
+    
     if (error.response?.status === 401) {
       return false;
     }
     console.error('Error validating token:', error.message);
     return false;
   }
+}
+
+// Keep old function for backwards compatibility
+async function validateToken(token) {
+  return validateTokenCached(token, 'bot');
 }
 
 // Refresh a token
@@ -535,21 +596,19 @@ async function refreshToken(accessToken, refreshToken, accountType) {
       return null;
     }
     
-    const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+    const response = await apiClient_axios.post(TWITCH_TOKEN_URL, null, {
       params: {
         client_id: config.clientId,
         client_secret: config.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: refreshToken
-      },
-      timeout: 5000
+      }
     });
     
     const newAccessToken = response.data.access_token;
     const newRefreshToken = response.data.refresh_token;
     
     // Update .env file with new tokens
-    const fs = require('fs');
     let envContent = fs.readFileSync('.env', 'utf8');
     
     if (accountType === 'bot') {
@@ -633,8 +692,8 @@ async function createClip() {
       return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
     }
 
-    // Check if required scope is present
-    if (!config.scopes.includes('clips:edit')) {
+    // Check if required scope is present (cached)
+    if (!hasScope(config.scopes, 'clips:edit')) {
       console.error('Missing required scope: clips:edit');
       return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
@@ -644,7 +703,7 @@ async function createClip() {
     console.log('[DEBUG] Calling create clip via Helix API. channelId:', channelId, 'scopes:', config.scopes);
 
     // Call Twitch Helix API directly to avoid extractUserId issues in Twurple clips API
-    const response = await axios.post(
+    const response = await apiClient_axios.post(
       'https://api.twitch.tv/helix/clips',
       { broadcaster_id: channelId },
       {
