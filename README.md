@@ -213,6 +213,70 @@ Response: @username username has been following for 2 years 3 months 5 days!
 
 **Required Scope:** `moderator:read:followers`
 
+### !shoutout [username] / !so [username]
+
+Shouts out another streamer in chat. Must be a moderator or broadcaster.
+
+```
+Usage: !shoutout @username
+Usage: !so @username
+Response: Go check out username at https://twitch.tv/username - they were last playing Game Name!
+```
+
+**Permission:** Moderator or Broadcaster only  
+**Required Scope:** `moderator:manage:shoutouts`
+
+### !poll
+
+Manages channel polls (create/start).
+
+```
+Usage: !poll start "Poll Question?" option1;option2;option3 [durationSeconds]
+Example: !poll start "What should I play next?" Valorant;CS2;Overwatch 120
+```
+
+**Permission:** Moderator or Broadcaster recommended  
+**Required Scope:** `channel:manage:polls`
+
+### !prediction
+
+Manages channel predictions (create/start).
+
+```
+Usage: !prediction start "Title" Outcome1;Outcome2 [durationSeconds]
+Example: !prediction start "Will I clutch?" Yes;No 300
+```
+
+**Permission:** Moderator or Broadcaster recommended  
+**Required Scope:** `channel:manage:predictions`
+
+### !title "new title"
+
+Updates the stream title. Must be a moderator or broadcaster.
+
+```
+Usage: !title "My New Stream Title"
+Response: @username Stream title updated to: My New Stream Title
+```
+
+**Permission:** Moderator or Broadcaster only  
+**Required Scope:** `channel:manage:broadcast`
+
+### !game <game name>
+
+Updates the stream game/category. Must be a moderator or broadcaster.
+
+```
+Usage: !game Valorant
+Usage: !game "Just Chatting"
+Response: @username Stream game updated to: Valorant
+```
+
+**Permission:** Moderator or Broadcaster only  
+**Required Scope:** `channel:manage:broadcast`
+
+The bot will search Twitch's game database and update the category. If an exact match is not found, it will attempt to find a similar category.
+
 ### !commands / !help
 
 Displays available bot commands.
@@ -220,7 +284,7 @@ Displays available bot commands.
 ```
 Usage: !commands
 Usage: !help
-Response: Available commands: !clip, !followage [username], !commands
+Response: Available commands: !clip, !followage [username], !shoutout [username] (mods only), !poll, !prediction, !title "new title" (mods), !game <name> (mods), !commands
 ```
 
 ## Token Management
