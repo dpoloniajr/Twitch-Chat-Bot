@@ -1,10 +1,12 @@
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const PORT = 3000;
+const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 
 // Middleware to parse JSON
 app.use(express.json());
@@ -139,313 +141,1257 @@ const DEFAULT_SCOPES = [
   'channel:moderate'
 ];
 
-// Home page - show scope selection and authorization link
-app.get('/', (req, res) => {
-  console.log('Home page requested');
+// ==================== API ENDPOINTS ====================
 
-  const accountType = req.query.account || 'bot';
-
-  // Read current scopes from .env if they exist
-  let currentScopes = [];
-  try {
-    const envContent = fs.readFileSync('.env', 'utf8');
-    const scopeKey = accountType === 'broadcaster' ? 'TWITCH_BROADCASTER_SCOPES' : 'TWITCH_SCOPES';
-    const scopesMatch = envContent.match(new RegExp(`${scopeKey}=(.+)`));
-    if (scopesMatch && scopesMatch[1]) {
-      currentScopes = scopesMatch[1].trim().split(' ').filter(s => s);
-    }
-  } catch (err) {
-    // .env might not exist yet, that's okay
+// Token validation endpoint
+app.get('/api/validate-token', async (req, res) => {
+  const { token } = req.query;
+  
+  if (!token) {
+    return res.json({ valid: false, error: 'No token provided' });
   }
 
-  console.log(`Current scopes in .env for ${accountType}:`, currentScopes);
+  try {
+    // Validate token with Twitch
+    const tokenInfoResponse = await axios.get('https://id.twitch.tv/oauth2/validate', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
 
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Twitch Bot Token Generator</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          min-height: 100vh;
-          padding: 20px;
-        }
-        .container { 
-          max-width: 900px; 
-          margin: 0 auto; 
-          background: white;
-          border-radius: 10px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-          overflow: hidden;
-        }
-        .header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 30px;
-          text-align: center;
-        }
-        .header h1 { font-size: 28px; margin-bottom: 10px; }
-        .header p { font-size: 14px; opacity: 0.9; }
-        .content { padding: 30px; }
-        .section { margin-bottom: 30px; }
-        .section-title {
-          font-size: 16px;
-          font-weight: 600;
-          color: #333;
-          margin-bottom: 15px;
-          padding-bottom: 10px;
-          border-bottom: 2px solid #667eea;
-        }
-        .scope-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: 12px;
-          margin-bottom: 20px;
-        }
-        .scope-item {
-          padding: 12px;
-          border: 2px solid #e0e0e0;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          background: white;
-        }
-        .scope-item:hover {
-          border-color: #667eea;
-          background: #f5f7ff;
-        }
-        .scope-item input[type="checkbox"] {
-          margin-right: 10px;
-          cursor: pointer;
-          width: 18px;
-          height: 18px;
-        }
-        .scope-item input[type="checkbox"]:checked + .scope-text {
-          color: #667eea;
-        }
-        .scope-item label {
-          cursor: pointer;
-          display: flex;
-          align-items: flex-start;
-          gap: 10px;
-        }
-        .scope-text {
-          flex: 1;
-        }
-        .scope-name {
-          font-weight: 600;
-          color: #333;
-          font-size: 13px;
-          font-family: 'Courier New', monospace;
-          color: #764ba2;
-        }
-        .scope-desc {
-          font-size: 12px;
-          color: #666;
-          margin-top: 4px;
-        }
-        .button-group {
-          display: flex;
-          gap: 10px;
-          margin-top: 20px;
-          justify-content: center;
-        }
-        button {
-          padding: 12px 24px;
-          font-size: 14px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-weight: 600;
-          transition: all 0.2s ease;
-        }
-        .btn-select-all {
-          background: #667eea;
-          color: white;
-        }
-        .btn-select-all:hover {
-          background: #5568d3;
-        }
-        .btn-clear {
-          background: #f0f0f0;
-          color: #333;
-        }
-        .btn-clear:hover {
-          background: #e0e0e0;
-        }
-        .btn-authorize {
-          background: #00a86b;
-          color: white;
-          padding: 14px 40px;
-          font-size: 16px;
-          width: 100%;
-          margin-top: 20px;
-        }
-        .btn-authorize:hover {
-          background: #008c5a;
-        }
-        .btn-authorize:disabled {
-          background: #ccc;
-          cursor: not-allowed;
-        }
-        .selected-count {
-          text-align: center;
-          padding: 15px;
-          background: #f5f7ff;
-          border-radius: 6px;
-          font-size: 14px;
-          color: #667eea;
-          margin-bottom: 20px;
-          font-weight: 600;
-        }
-        .note {
-          background: #fff3cd;
-          border: 1px solid #ffc107;
-          border-radius: 6px;
-          padding: 12px;
-          margin-top: 20px;
-          font-size: 13px;
-          color: #856404;
-          line-height: 1.5;
-        }
-        .info-box {
-          background: #d1ecf1;
-          border: 1px solid #bee5eb;
-          border-radius: 6px;
-          padding: 12px;
-          margin-bottom: 20px;
-          font-size: 13px;
-          color: #0c5460;
-          line-height: 1.5;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🤖 Twitch Bot Token Generator</h1>
-          <p>Select the scopes your bot needs and authorize</p>
+    const tokenInfo = tokenInfoResponse.data;
+    
+    // Get user info
+    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Client-ID': CLIENT_ID
+      }
+    });
+
+    const user = userResponse.data.data[0];
+
+    res.json({
+      valid: true,
+      username: user.display_name,
+      userId: user.id,
+      scopes: tokenInfo.scopes || [],
+      expiresIn: tokenInfo.expires_in,
+      clientId: tokenInfo.client_id
+    });
+  } catch (error) {
+    res.json({
+      valid: false,
+      error: error.response?.data?.message || 'Invalid or expired token'
+    });
+  }
+});
+
+// Get current tokens from .env
+app.get('/api/current-tokens', (req, res) => {
+  const envPath = path.join(__dirname, '.env');
+  let envContent = '';
+  
+  try {
+    envContent = fs.readFileSync(envPath, 'utf-8');
+  } catch (error) {
+    return res.json({
+      botToken: null,
+      botScopes: [],
+      broadcasterToken: null,
+      broadcasterScopes: []
+    });
+  }
+
+  const lines = envContent.split('\n');
+  const tokens = {
+    botToken: null,
+    botScopes: [],
+    broadcasterToken: null,
+    broadcasterScopes: []
+  };
+
+  lines.forEach(line => {
+    if (line.startsWith('TWITCH_ACCESS_TOKEN=')) {
+      tokens.botToken = line.split('=')[1]?.trim();
+    }
+    if (line.startsWith('TWITCH_SCOPES=')) {
+      tokens.botScopes = line.split('=')[1]?.trim().split(' ').filter(Boolean);
+    }
+    if (line.startsWith('TWITCH_BROADCASTER_ACCESS_TOKEN=')) {
+      tokens.broadcasterToken = line.split('=')[1]?.trim();
+    }
+    if (line.startsWith('TWITCH_BROADCASTER_SCOPES=')) {
+      tokens.broadcasterScopes = line.split('=')[1]?.trim().split(' ').filter(Boolean);
+    }
+  });
+
+  res.json(tokens);
+});
+
+// Scope presets endpoint
+app.get('/api/scope-presets', (req, res) => {
+  const presets = {
+    'basic-bot': {
+      name: 'Basic Bot',
+      description: 'Minimal scopes for chat only',
+      scopes: ['chat:read', 'chat:edit']
+    },
+    'full-moderation': {
+      name: 'Full Moderation',
+      description: 'All moderation and chat management',
+      scopes: [
+        'chat:read',
+        'chat:edit',
+        'moderator:manage:shoutouts',
+        'moderator:manage:announcements',
+        'moderator:read:followers',
+        'channel:moderate'
+      ]
+    },
+    'eventsub-complete': {
+      name: 'EventSub Complete',
+      description: 'All EventSub-related scopes',
+      scopes: [
+        'moderator:read:followers',
+        'channel:read:redemptions'
+      ]
+    },
+    'streamer-tools': {
+      name: 'Streamer Tools',
+      description: 'Polls, predictions, channel points',
+      scopes: [
+        'channel:manage:polls',
+        'channel:manage:predictions',
+        'channel:manage:redemptions',
+        'channel:read:redemptions'
+      ]
+    },
+    'bot-recommended': {
+      name: 'Bot Account (Recommended)',
+      description: 'Recommended scopes for bot account based on your features',
+      scopes: [
+        'chat:read',
+        'chat:edit',
+        'clips:edit',
+        'moderator:manage:shoutouts',
+        'channel:manage:polls',
+        'channel:manage:predictions',
+        'moderator:manage:announcements'
+      ]
+    },
+    'broadcaster-recommended': {
+      name: 'Broadcaster Account (Recommended)',
+      description: 'Recommended scopes for broadcaster account (EventSub)',
+      scopes: [
+        'moderator:read:followers',
+        'channel:read:redemptions'
+      ]
+    }
+  };
+
+  res.json(presets);
+});
+
+// ==================== HOME PAGE ====================
+
+app.get('/', (req, res) => {
+  res.send(generateHTML());
+});
+
+function generateHTML() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twitch Bot Token Generator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #9146ff 0%, #772ce8 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #9146ff 0%, #772ce8 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 { margin-bottom: 10px; font-size: 28px; }
+    .header p { opacity: 0.9; }
+    .tabs {
+      display: flex;
+      background: #f5f5f5;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab {
+      flex: 1;
+      padding: 15px;
+      text-align: center;
+      cursor: pointer;
+      background: #f5f5f5;
+      border: none;
+      font-size: 16px;
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+    .tab:hover { background: #e0e0e0; }
+    .tab.active {
+      background: white;
+      border-bottom: 3px solid #9146ff;
+      color: #9146ff;
+    }
+    .tab-content {
+      display: none;
+      padding: 30px;
+      animation: fadeIn 0.3s;
+    }
+    .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid #9146ff;
+    }
+    .section h3 { margin-bottom: 15px; color: #333; }
+    .section p { color: #666; line-height: 1.6; margin-bottom: 15px; }
+    .wizard-steps {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      position: relative;
+    }
+    .wizard-steps::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #ddd;
+      z-index: 0;
+    }
+    .wizard-step {
+      flex: 1;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    .wizard-step-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #ddd;
+      color: #999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 10px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .wizard-step.active .wizard-step-circle {
+      background: #9146ff;
+      color: white;
+      transform: scale(1.1);
+    }
+    .wizard-step.completed .wizard-step-circle {
+      background: #4caf50;
+      color: white;
+    }
+    .wizard-step-label { font-size: 14px; color: #666; }
+    .wizard-step.active .wizard-step-label { color: #9146ff; font-weight: bold; }
+    .wizard-content {
+      display: none;
+    }
+    .wizard-content.active { display: block; }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .feature-box {
+      padding: 15px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .feature-box:hover {
+      border-color: #9146ff;
+      background: #f3e5ff;
+    }
+    .feature-box.selected {
+      border-color: #9146ff;
+      background: #9146ff;
+      color: white;
+    }
+    .feature-box input[type="checkbox"] {
+      margin: 0;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .scope-presets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .preset-card {
+      padding: 15px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .preset-card:hover {
+      border-color: #9146ff;
+      box-shadow: 0 4px 12px rgba(145,70,255,0.2);
+    }
+    .preset-card.active {
+      border-color: #9146ff;
+      background: #f3e5ff;
+    }
+    .preset-card h4 { color: #9146ff; margin-bottom: 5px; }
+    .preset-card p { font-size: 14px; color: #666; margin-bottom: 10px; }
+    .preset-card .scope-count { font-size: 12px; color: #999; }
+    .token-status {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .token-card {
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      border: 2px solid #ddd;
+    }
+    .token-card.valid { border-color: #4caf50; background: #f1f8f4; }
+    .token-card.invalid { border-color: #f44336; background: #fef1f0; }
+    .token-card.loading { border-color: #ff9800; background: #fff8f0; }
+    .token-card h4 {
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .status-badge.valid { background: #4caf50; color: white; }
+    .status-badge.invalid { background: #f44336; color: white; }
+    .status-badge.loading { background: #ff9800; color: white; }
+    .token-info {
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+    }
+    .token-info div {
+      margin: 5px 0;
+      padding: 5px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 4px;
+    }
+    .account-selector {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #e8f4fd;
+      border-radius: 8px;
+      border: 2px solid #2196f3;
+    }
+    .account-selector label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #1976d2;
+    }
+    .account-selector select {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 2px solid #2196f3;
+      border-radius: 5px;
+    }
+    .btn {
+      padding: 12px 30px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: bold;
+    }
+    .btn-primary {
+      background: #9146ff;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #772ce8;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(145,70,255,0.3);
+    }
+    .btn-secondary {
+      background: #666;
+      color: white;
+    }
+    .btn-secondary:hover { background: #555; }
+    .btn-success {
+      background: #4caf50;
+      color: white;
+    }
+    .btn-success:hover { background: #45a049; }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: center;
+    }
+    .scope-category {
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .scope-category-header {
+      background: #9146ff;
+      color: white;
+      padding: 12px 15px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s;
+    }
+    .scope-category-header:hover { background: #772ce8; }
+    .scope-category-content {
+      padding: 15px;
+      background: white;
+    }
+    .scope-category-content.collapsed { display: none; }
+    .scope-item {
+      padding: 10px;
+      margin: 5px 0;
+      background: #f9f9f9;
+      border-radius: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .scope-item input[type="checkbox"] {
+      margin-top: 4px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .scope-item label {
+      cursor: pointer;
+      flex: 1;
+    }
+    .scope-item strong {
+      color: #9146ff;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+    .selected-count {
+      display: inline-block;
+      background: #4caf50;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    .auth-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .auth-button {
+      padding: 15px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.3s;
+    }
+    .auth-button:hover {
+      border-color: #9146ff;
+      box-shadow: 0 4px 12px rgba(145,70,255,0.2);
+    }
+    .auth-button-text h4 {
+      margin-bottom: 5px;
+      color: #333;
+    }
+    .auth-button-text p {
+      font-size: 13px;
+      color: #666;
+    }
+    .auth-button-arrow {
+      font-size: 24px;
+      color: #9146ff;
+    }
+    input[type="text"], input[type="password"], select {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎮 Twitch Bot Token Generator</h1>
+      <p>Advanced token management with dual-account support and scope validation</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab(event, 'wizard')">🧙 Setup Wizard</button>
+      <button class="tab" onclick="switchTab(event, 'manual')">⚙️ Manual Setup</button>
+      <button class="tab" onclick="switchTab(event, 'validate')">✅ Token Validator</button>
+    </div>
+
+    <!-- WIZARD TAB -->
+    <div id="wizard-tab" class="tab-content active">
+      <div class="wizard-steps">
+        <div class="wizard-step active" id="step1">
+          <div class="wizard-step-circle">1</div>
+          <div class="wizard-step-label">Choose Features</div>
         </div>
-        <div class="content">
-          <div class="info-box" style="margin-bottom: 20px;">
-            <strong>🔐 Account Type:</strong> 
-            <select id="accountTypeSelect" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #bee5eb; margin-left: 10px;" onchange="window.location.href='/?account=' + this.value">
-              <option value="bot" ${accountType === 'bot' ? 'selected' : ''}>Bot Account (mistressexcella)</option>
-              <option value="broadcaster" ${accountType === 'broadcaster' ? 'selected' : ''}>Broadcaster Account (ronin_style)</option>
-            </select>
-            <div style="margin-top: 10px; font-size: 12px;">
-              ${accountType === 'bot' 
-                ? '✅ Bot Account: For chat commands, clips, and moderation actions' 
-                : '✅ Broadcaster Account: For EventSub (follows, raids, redemptions, etc.)'}
-            </div>
-          </div>
-          <form id="scopeForm">
-            <input type="hidden" id="accountType" value="${accountType}">
-            <div class="selected-count">
-              Scopes selected: <span id="selectedCount">0</span> / ${ALL_SCOPES.length}
-            </div>
-
-            <div class="info-box">
-              ℹ️ <strong>Currently authorized scopes:</strong> <span id="currentScopes">${currentScopes.length > 0 ? currentScopes.join(', ') : 'None'}</span>
-            </div>
-
-            <div style="display: flex; gap: 10px; margin-bottom: 30px;">
-              <button type="button" class="btn-select-all" onclick="selectAllScopes()">Select All</button>
-              <button type="button" class="btn-clear" onclick="clearAllScopes()">Clear All</button>
-            </div>
-
-            ${Object.entries(SCOPE_CATEGORIES).map(([category, scopes]) => `
-              <div class="section">
-                <div class="section-title">${category}</div>
-                <div class="scope-grid">
-                  ${scopes.map(s => `
-                    <div class="scope-item">
-                      <label>
-                        <input type="checkbox" name="scope" value="${s.scope}" class="scope-checkbox" onchange="updateCount()" ${currentScopes.includes(s.scope) ? 'checked' : ''}>
-                        <div class="scope-text">
-                          <div class="scope-name">${s.scope}</div>
-                          <div class="scope-desc">${s.description}</div>
-                        </div>
-                      </label>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            `).join('')}
-
-            <button type="submit" class="btn-authorize">Authorize with Selected Scopes →</button>
-            <div class="note">
-              💡 <strong>Note:</strong> Select only the scopes your bot actually needs. Requesting excessive scopes may result in app suspension. You can easily add or remove scopes anytime by coming back here.
-            </div>
-          </form>
+        <div class="wizard-step" id="step2">
+          <div class="wizard-step-circle">2</div>
+          <div class="wizard-step-label">Review Scopes</div>
+        </div>
+        <div class="wizard-step" id="step3">
+          <div class="wizard-step-circle">3</div>
+          <div class="wizard-step-label">Authorize</div>
         </div>
       </div>
 
-      <script>
-        function updateCount() {
-          const checked = document.querySelectorAll('.scope-checkbox:checked').length;
-          document.getElementById('selectedCount').textContent = checked;
-        }
+      <!-- Step 1: Features -->
+      <div class="wizard-content active" id="wizard-step-1">
+        <div class="section">
+          <h3>Which features does your bot need?</h3>
+          <p>Select the features and we'll automatically configure the required scopes.</p>
+          <div class="feature-grid">
+            <div class="feature-box selected" onclick="toggleFeature('chat', this)">
+              <input type="checkbox" id="feat-chat" checked disabled>
+              <label for="feat-chat">💬 Chat</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('clips', this)">
+              <input type="checkbox" id="feat-clips" checked>
+              <label for="feat-clips">🎬 Clips</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('shoutouts', this)">
+              <input type="checkbox" id="feat-shoutouts" checked>
+              <label for="feat-shoutouts">📢 Shoutouts</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('followage', this)">
+              <input type="checkbox" id="feat-followage" checked>
+              <label for="feat-followage">👥 Followage</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('polls', this)">
+              <input type="checkbox" id="feat-polls" checked>
+              <label for="feat-polls">📊 Polls</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('predictions', this)">
+              <input type="checkbox" id="feat-predictions" checked>
+              <label for="feat-predictions">🎲 Predictions</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('announcements', this)">
+              <input type="checkbox" id="feat-announcements" checked>
+              <label for="feat-announcements">📣 Announcements</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('eventsub', this)">
+              <input type="checkbox" id="feat-eventsub" checked>
+              <label for="feat-eventsub">🔔 EventSub</label>
+            </div>
+            <div class="feature-box selected" onclick="toggleFeature('redemptions', this)">
+              <input type="checkbox" id="feat-redemptions" checked>
+              <label for="feat-redemptions">⭐ Channel Points</label>
+            </div>
+            <!-- Moderation -->
+            <div class="feature-box" onclick="toggleFeature('ban_timeout', this)">
+              <input type="checkbox" id="feat-ban_timeout">
+              <label for="feat-ban_timeout">🚫 Ban/Timeout Users</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('delete_messages', this)">
+              <input type="checkbox" id="feat-delete_messages">
+              <label for="feat-delete_messages">🗑️ Delete Messages</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('automod', this)">
+              <input type="checkbox" id="feat-automod">
+              <label for="feat-automod">⚙️ AutoMod Control</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('shield_mode', this)">
+              <input type="checkbox" id="feat-shield_mode">
+              <label for="feat-shield_mode">🛡️ Shield Mode</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('warnings', this)">
+              <input type="checkbox" id="feat-warnings">
+              <label for="feat-warnings">⚠️ User Warnings</label>
+            </div>
+            <!-- VIP/Moderator Management -->
+            <div class="feature-box" onclick="toggleFeature('vip_management', this)">
+              <input type="checkbox" id="feat-vip_management">
+              <label for="feat-vip_management">👑 VIP Management</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('moderator_management', this)">
+              <input type="checkbox" id="feat-moderator_management">
+              <label for="feat-moderator_management">🔧 Moderator Mgmt</label>
+            </div>
+            <!-- Channel Management -->
+            <div class="feature-box" onclick="toggleFeature('channel_updates', this)">
+              <input type="checkbox" id="feat-channel_updates">
+              <label for="feat-channel_updates">📝 Update Title/Game</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('schedule_management', this)">
+              <input type="checkbox" id="feat-schedule_management">
+              <label for="feat-schedule_management">📅 Stream Schedule</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('ads_management', this)">
+              <input type="checkbox" id="feat-ads_management">
+              <label for="feat-ads_management">📺 Ads Management</label>
+            </div>
+            <!-- Analytics & Info -->
+            <div class="feature-box" onclick="toggleFeature('hype_trains', this)">
+              <input type="checkbox" id="feat-hype_trains">
+              <label for="feat-hype_trains">🚂 Hype Trains</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('bits', this)">
+              <input type="checkbox" id="feat-bits">
+              <label for="feat-bits">💎 Bits Info</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('subscriptions', this)">
+              <input type="checkbox" id="feat-subscriptions">
+              <label for="feat-subscriptions">📬 Subscriptions</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('follows_read', this)">
+              <input type="checkbox" id="feat-follows_read">
+              <label for="feat-follows_read">👀 Read Followers</label>
+            </div>
+            <!-- Advanced Features -->
+            <div class="feature-box" onclick="toggleFeature('guest_star', this)">
+              <input type="checkbox" id="feat-guest_star">
+              <label for="feat-guest_star">⭐ Guest Star</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('unban_requests', this)">
+              <input type="checkbox" id="feat-unban_requests">
+              <label for="feat-unban_requests">✋ Unban Requests</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('whispers', this)">
+              <input type="checkbox" id="feat-whispers">
+              <label for="feat-whispers">💬 Whispers</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('user_email', this)">
+              <input type="checkbox" id="feat-user_email">
+              <label for="feat-user_email">📧 User Email</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('extensions', this)">
+              <input type="checkbox" id="feat-extensions">
+              <label for="feat-extensions">🧩 Extensions</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('analytics', this)">
+              <input type="checkbox" id="feat-analytics">
+              <label for="feat-analytics">📊 Analytics</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('charity', this)">
+              <input type="checkbox" id="feat-charity">
+              <label for="feat-charity">❤️ Charity</label>
+            </div>
+            <div class="feature-box" onclick="toggleFeature('goals', this)">
+              <input type="checkbox" id="feat-goals">
+              <label for="feat-goals">🏅 Creator Goals</label>
+            </div>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="wizardNext(1)">Next: Review Scopes →</button>
+        </div>
+      </div>
 
-        function selectAllScopes() {
-          document.querySelectorAll('.scope-checkbox').forEach(cb => cb.checked = true);
-          updateCount();
-        }
+      <!-- Step 2: Review Scopes -->
+      <div class="wizard-content" id="wizard-step-2">
+        <div class="section">
+          <h3>Review Required Scopes</h3>
+          <p>Based on your selected features, here are the required scopes:</p>
+          <div id="wizard-scope-summary" style="margin-top: 20px;"></div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-secondary" onclick="wizardPrev(2)">← Back</button>
+          <button class="btn btn-primary" onclick="wizardNext(2)">Next: Authorize →</button>
+        </div>
+      </div>
 
-        function clearAllScopes() {
-          document.querySelectorAll('.scope-checkbox').forEach(cb => cb.checked = false);
-          updateCount();
-        }
+      <!-- Step 3: Authorize -->
+      <div class="wizard-content" id="wizard-step-3">
+        <div class="section">
+          <h3>Authorize Your Accounts</h3>
+          <p>Click the buttons below to authorize each account. You'll need to log in as the respective account:</p>
+          <div class="auth-buttons" id="wizard-auth-buttons"></div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-secondary" onclick="wizardPrev(3)">← Back</button>
+          <button class="btn btn-success" onclick="wizardComplete()">Complete Setup ✓</button>
+        </div>
+      </div>
+    </div>
 
-        document.getElementById('scopeForm').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          
-          const selectedScopes = Array.from(document.querySelectorAll('.scope-checkbox:checked'))
-            .map(cb => cb.value);
-          
-          const accountType = document.getElementById('accountType').value;
+    <!-- MANUAL TAB -->
+    <div id="manual-tab" class="tab-content">
+      <div class="section">
+        <h3>Quick Presets</h3>
+        <p>Select a preset to quickly configure common scope combinations:</p>
+        <div class="scope-presets" id="scope-presets"></div>
+      </div>
 
-          if (selectedScopes.length === 0) {
-            alert('Please select at least one scope');
-            return;
-          }
+      <div class="account-selector">
+        <label>Which account are you setting up?</label>
+        <select id="accountType" onchange="updateAccountContext()">
+          <option value="bot">🤖 Bot Account (mistressexcella) - Chat commands & actions</option>
+          <option value="broadcaster">📺 Broadcaster Account (ronin_style) - EventSub subscriptions</option>
+        </select>
+        <p id="account-context" style="margin-top: 10px; font-size: 14px;"></p>
+      </div>
 
-          // Send selected scopes to server
-          const response = await fetch('/generate-auth-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scopes: selectedScopes, accountType })
-          });
+      <div class="section">
+        <h3>Select Scopes</h3>
+        <p>Choose which permissions your bot needs. <span class="selected-count" id="scope-counter">0 selected</span></p>
+        <div style="margin-top: 20px; display: flex; gap: 10px;">
+          <button class="btn btn-primary" onclick="selectAll()">✓ Select All</button>
+          <button class="btn btn-secondary" onclick="clearAll()">✗ Clear All</button>
+        </div>
+        <div id="scope-categories" style="margin-top: 20px;"></div>
+      </div>
 
-          const data = await response.json();
-          if (data.authUrl) {
-            window.location.href = data.authUrl;
-          } else {
-            alert('Error generating authorization URL');
-          }
+      <div style="text-align: center; margin-top: 30px;">
+        <button class="btn btn-primary" onclick="generateTokens()" style="font-size: 18px; padding: 15px 40px;">
+          Generate Tokens 🚀
+        </button>
+      </div>
+    </div>
+
+    <!-- VALIDATOR TAB -->
+    <div id="validate-tab" class="tab-content">
+      <div class="section">
+        <h3>Token Status</h3>
+        <p>Check the status and validity of your current tokens:</p>
+        <button class="btn btn-primary" onclick="validateTokens()" style="margin: 20px 0;">
+          🔍 Check Token Status
+        </button>
+        <div class="token-status" id="token-validation">
+          <div class="token-card loading">
+            <h4>Bot Account <span class="status-badge loading">checking...</span></h4>
+            <p>Click "Check Token Status" to validate</p>
+          </div>
+          <div class="token-card loading">
+            <h4>Broadcaster Account <span class="status-badge loading">checking...</span></h4>
+            <p>Click "Check Token Status" to validate</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Scope Comparison</h3>
+        <p>Compare your current scopes against requirements:</p>
+        <div id="scope-comparison" style="margin-top: 20px;">
+          <p style="color: #999;">Run token validation above to see details</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CLIENT_ID = '${CLIENT_ID}';
+    const REDIRECT_URI = '${REDIRECT_URI}';
+    let currentWizardStep = 1;
+    let selectedFeatures = {
+      // Core
+      chat: true,
+      // Content
+      clips: true, announcements: true, whispers: false,
+      // Engagement
+      shoutouts: true, followage: true, polls: true, predictions: true,
+      eventsub: true, redemptions: true,
+      // Moderation
+      ban_timeout: false, delete_messages: false, automod: false, shield_mode: false, warnings: false,
+      // VIP/Moderator Management
+      vip_management: false, moderator_management: false,
+      // Channel Management
+      channel_updates: false, schedule_management: false, ads_management: false,
+      // User Analytics
+      hype_trains: false, bits: false, subscriptions: false, follows_read: false,
+      // Advanced
+      user_email: false, extensions: false, analytics: false, charity: false, goals: false,
+      // Guest Star
+      guest_star: false,
+      // Unban/Warnings
+      unban_requests: false
+    };
+
+    // Load presets and scope categories
+    async function initPage() {
+      await loadPresets();
+      await loadScopeCategories();
+      updateAccountContext();
+    }
+
+    async function loadPresets() {
+      try {
+        const response = await fetch('/api/scope-presets');
+        const presets = await response.json();
+        const container = document.getElementById('scope-presets');
+        container.innerHTML = Object.entries(presets).map(([key, preset]) => \`
+          <div class="preset-card" onclick="applyPreset('\${key}')">
+            <h4>\${preset.name}</h4>
+            <p>\${preset.description}</p>
+            <div class="scope-count">\${preset.scopes.length} scopes</div>
+          </div>
+        \`).join('');
+      } catch (error) {
+        console.error('Failed to load presets:', error);
+      }
+    }
+
+    async function loadScopeCategories() {
+      const container = document.getElementById('scope-categories');
+      const categories = ${JSON.stringify(SCOPE_CATEGORIES)};
+      
+      container.innerHTML = Object.entries(categories).map(([category, scopes]) => \`
+        <div class="scope-category">
+          <div class="scope-category-header" onclick="toggleCategory(this)">
+            \${category}
+            <span class="selected-count" id="\${category.replace(/\\s+/g, '-')}-count">0</span>
+          </div>
+          <div class="scope-category-content">
+            \${scopes.map(s => \`
+              <div class="scope-item">
+                <input type="checkbox" id="scope-\${s.scope.replace(/:/g, '-')}" class="scope-checkbox" onchange="updateScopeCounter()">
+                <label for="scope-\${s.scope.replace(/:/g, '-')}">
+                  <strong>\${s.scope}</strong><br>
+                  <span style="font-size: 12px; color: #999;">\${s.description}</span>
+                </label>
+              </div>
+            \`).join('')}
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    function switchTab(e, tabName) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      e.target.classList.add('active');
+      document.getElementById(tabName + '-tab').classList.add('active');
+    }
+
+    function toggleFeature(feature, element) {
+      const checkbox = document.getElementById('feat-' + feature);
+      if (feature === 'chat') return; // Chat is always required
+      
+      checkbox.checked = !checkbox.checked;
+      selectedFeatures[feature] = checkbox.checked;
+      element.classList.toggle('selected', checkbox.checked);
+    }
+
+    function toggleCategory(header) {
+      const content = header.nextElementSibling;
+      content.classList.toggle('collapsed');
+    }
+
+    function wizardNext(step) {
+      document.getElementById('wizard-step-' + step).classList.remove('active');
+      document.getElementById('step' + step).classList.add('completed');
+      document.getElementById('step' + step).classList.remove('active');
+      
+      currentWizardStep = step + 1;
+      
+      document.getElementById('wizard-step-' + currentWizardStep).classList.add('active');
+      document.getElementById('step' + currentWizardStep).classList.add('active');
+      
+      if (currentWizardStep === 2) updateWizardScopeSummary();
+      if (currentWizardStep === 3) updateWizardAuthButtons();
+    }
+
+    function wizardPrev(step) {
+      document.getElementById('wizard-step-' + step).classList.remove('active');
+      document.getElementById('step' + step).classList.remove('active', 'completed');
+      
+      currentWizardStep = step - 1;
+      
+      document.getElementById('wizard-step-' + currentWizardStep).classList.add('active');
+      document.getElementById('step' + currentWizardStep).classList.add('active');
+    }
+
+    function updateWizardScopeSummary() {
+      const botScopes = [];
+      const broadcasterScopes = [];
+      
+      // Core - always included
+      if (selectedFeatures.chat) { botScopes.push('chat:read', 'chat:edit'); }
+      
+      // Content
+      if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
+      if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
+      if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read', 'whispers:edit'); }
+      
+      // Engagement
+      if (selectedFeatures.shoutouts) { botScopes.push('moderator:manage:shoutouts'); }
+      if (selectedFeatures.followage) { botScopes.push('moderator:read:followers'); }
+      if (selectedFeatures.polls) { botScopes.push('channel:manage:polls'); }
+      if (selectedFeatures.predictions) { botScopes.push('channel:manage:predictions'); }
+      if (selectedFeatures.redemptions) { broadcasterScopes.push('channel:read:redemptions'); }
+      
+      // Moderation
+      if (selectedFeatures.ban_timeout) { botScopes.push('moderator:manage:banned_users'); }
+      if (selectedFeatures.delete_messages) { botScopes.push('moderator:manage:chat_messages'); }
+      if (selectedFeatures.automod) { botScopes.push('moderator:manage:automod', 'moderator:manage:automod_settings'); }
+      if (selectedFeatures.shield_mode) { botScopes.push('moderator:manage:shield_mode'); }
+      if (selectedFeatures.warnings) { botScopes.push('moderator:manage:warnings'); }
+      if (selectedFeatures.unban_requests) { botScopes.push('moderator:manage:unban_requests'); }
+      
+      // VIP/Moderator Management
+      if (selectedFeatures.vip_management) { botScopes.push('channel:manage:vips'); }
+      if (selectedFeatures.moderator_management) { botScopes.push('moderation:read', 'moderator:manage:moderators'); }
+      
+      // Channel Management
+      if (selectedFeatures.channel_updates) { botScopes.push('channel:manage:broadcast'); }
+      if (selectedFeatures.schedule_management) { botScopes.push('channel:manage:schedule'); }
+      if (selectedFeatures.ads_management) { botScopes.push('channel:manage:ads'); }
+      if (selectedFeatures.guest_star) { botScopes.push('channel:manage:guest_star'); }
+      
+      // User/Account
+      if (selectedFeatures.user_email) { botScopes.push('user:read:email'); }
+      if (selectedFeatures.extensions) { botScopes.push('channel:manage:extensions'); }
+      
+      // Analytics & Info - Broadcaster
+      if (selectedFeatures.hype_trains) { broadcasterScopes.push('channel:read:hype_train'); }
+      if (selectedFeatures.bits) { broadcasterScopes.push('bits:read'); }
+      if (selectedFeatures.subscriptions) { broadcasterScopes.push('channel:read:subscriptions'); }
+      if (selectedFeatures.follows_read) { broadcasterScopes.push('user:read:follows'); }
+      if (selectedFeatures.analytics) { broadcasterScopes.push('analytics:read:games'); }
+      if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
+      if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
+      
+      // EventSub requires broadcaster context
+      if (selectedFeatures.eventsub) { broadcasterScopes.push('moderator:read:followers'); }
+      
+      const html = \`
+        <div style="display: grid; grid-template-columns: 1fr \${broadcasterScopes.length > 0 ? '1fr' : ''}; gap: 20px;">
+          <div>
+            <h4>Bot Account (\${botScopes.length} scopes)</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+              \${botScopes.map(s => \`<span style="background: #9146ff; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px;">\${s}</span>\`).join('')}
+            </div>
+          </div>
+          \${broadcasterScopes.length > 0 ? \`
+            <div>
+              <h4>Broadcaster Account (\${broadcasterScopes.length} scopes)</h4>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+                \${broadcasterScopes.map(s => \`<span style="background: #2196f3; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px;">\${s}</span>\`).join('')}
+              </div>
+            </div>
+          \` : ''}
+        </div>
+      \`;
+      document.getElementById('wizard-scope-summary').innerHTML = html;
+    }
+
+    function updateWizardAuthButtons() {
+      const botScopes = [];
+      const broadcasterScopes = [];
+      
+      // Core - always included
+      if (selectedFeatures.chat) { botScopes.push('chat:read', 'chat:edit'); }
+      
+      // Content
+      if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
+      if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
+      if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read', 'whispers:edit'); }
+      
+      // Engagement
+      if (selectedFeatures.shoutouts) { botScopes.push('moderator:manage:shoutouts'); }
+      if (selectedFeatures.followage) { botScopes.push('moderator:read:followers'); }
+      if (selectedFeatures.polls) { botScopes.push('channel:manage:polls'); }
+      if (selectedFeatures.predictions) { botScopes.push('channel:manage:predictions'); }
+      if (selectedFeatures.redemptions) { broadcasterScopes.push('channel:read:redemptions'); }
+      
+      // Moderation
+      if (selectedFeatures.ban_timeout) { botScopes.push('moderator:manage:banned_users'); }
+      if (selectedFeatures.delete_messages) { botScopes.push('moderator:manage:chat_messages'); }
+      if (selectedFeatures.automod) { botScopes.push('moderator:manage:automod', 'moderator:manage:automod_settings'); }
+      if (selectedFeatures.shield_mode) { botScopes.push('moderator:manage:shield_mode'); }
+      if (selectedFeatures.warnings) { botScopes.push('moderator:manage:warnings'); }
+      if (selectedFeatures.unban_requests) { botScopes.push('moderator:manage:unban_requests'); }
+      
+      // VIP/Moderator Management
+      if (selectedFeatures.vip_management) { botScopes.push('channel:manage:vips'); }
+      if (selectedFeatures.moderator_management) { botScopes.push('moderation:read', 'moderator:manage:moderators'); }
+      
+      // Channel Management
+      if (selectedFeatures.channel_updates) { botScopes.push('channel:manage:broadcast'); }
+      if (selectedFeatures.schedule_management) { botScopes.push('channel:manage:schedule'); }
+      if (selectedFeatures.ads_management) { botScopes.push('channel:manage:ads'); }
+      if (selectedFeatures.guest_star) { botScopes.push('channel:manage:guest_star'); }
+      
+      // User/Account
+      if (selectedFeatures.user_email) { botScopes.push('user:read:email'); }
+      if (selectedFeatures.extensions) { botScopes.push('channel:manage:extensions'); }
+      
+      // Analytics & Info - Broadcaster
+      if (selectedFeatures.hype_trains) { broadcasterScopes.push('channel:read:hype_train'); }
+      if (selectedFeatures.bits) { broadcasterScopes.push('bits:read'); }
+      if (selectedFeatures.subscriptions) { broadcasterScopes.push('channel:read:subscriptions'); }
+      if (selectedFeatures.follows_read) { broadcasterScopes.push('user:read:follows'); }
+      if (selectedFeatures.analytics) { broadcasterScopes.push('analytics:read:games'); }
+      if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
+      if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
+      
+      // EventSub requires broadcaster context
+      if (selectedFeatures.eventsub) { broadcasterScopes.push('moderator:read:followers'); }
+      
+      const botAuthUrl = \`https://id.twitch.tv/oauth2/authorize?client_id=\${CLIENT_ID}&redirect_uri=\${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=\${botScopes.join('+')}&state=bot\`;
+      const broadcasterAuthUrl = broadcasterScopes.length > 0 ? 
+        \`https://id.twitch.tv/oauth2/authorize?client_id=\${CLIENT_ID}&redirect_uri=\${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=\${broadcasterScopes.join('+')}&state=broadcaster\` : null;
+      
+      let html = \`
+        <a href="\${botAuthUrl}" class="auth-button">
+          <div class="auth-button-text">
+            <h4>🤖 Bot Account</h4>
+            <p>Log in as mistressexcella</p>
+          </div>
+          <div class="auth-button-arrow">→</div>
+        </a>
+      \`;
+      
+      if (broadcasterAuthUrl) {
+        html += \`
+          <a href="\${broadcasterAuthUrl}" class="auth-button">
+            <div class="auth-button-text">
+              <h4>📺 Broadcaster Account</h4>
+              <p>Log in as ronin_style</p>
+            </div>
+            <div class="auth-button-arrow">→</div>
+          </a>
+        \`;
+      }
+      
+      document.getElementById('wizard-auth-buttons').innerHTML = html;
+    }
+
+    function wizardComplete() {
+      alert('Setup complete! Your tokens have been saved. Restart the bot to apply changes.');
+      switchTab({ target: document.querySelectorAll('.tab')[2] }, 'validate');
+      validateTokens();
+    }
+
+    async function applyPreset(presetKey) {
+      try {
+        const response = await fetch('/api/scope-presets');
+        const presets = await response.json();
+        const preset = presets[presetKey];
+        
+        document.querySelectorAll('input[type="checkbox"][id^="scope-"]').forEach(cb => cb.checked = false);
+        
+        preset.scopes.forEach(scope => {
+          const checkbox = document.getElementById('scope-' + scope.replace(/:/g, '-'));
+          if (checkbox) checkbox.checked = true;
         });
+        
+        updateScopeCounter();
+        
+        document.querySelectorAll('.preset-card').forEach(card => card.classList.remove('active'));
+        event.target.closest('.preset-card').classList.add('active');
+      } catch (error) {
+        console.error('Failed to apply preset:', error);
+      }
+    }
 
-        // Preselect recommended scopes if not present
-        (function preselectRecommended() {
-          const existing = ${JSON.stringify(DEFAULT_SCOPES)};
-          existing.forEach(scope => {
-            const checkbox = document.querySelector('input.scope-checkbox[value="' + scope + '"]');
-            if (checkbox && !checkbox.checked) {
-              checkbox.checked = true;
-            }
-          });
-          updateCount();
-        })();
+    function updateAccountContext() {
+      const accountType = document.getElementById('accountType').value;
+      const contextEl = document.getElementById('account-context');
+      
+      if (accountType === 'bot') {
+        contextEl.innerHTML = '🤖 <strong>Bot Account:</strong> Used for chat commands, clips, shoutouts, polls, predictions, announcements. Log in as <strong>mistressexcella</strong>.';
+      } else {
+        contextEl.innerHTML = '📺 <strong>Broadcaster Account:</strong> Used for EventSub subscriptions (follows, raids, channel points). Log in as <strong>ronin_style</strong>.';
+      }
+    }
 
-        updateCount();
-      </script>
-    </body>
-    </html>
-  `);
-});
+    function updateScopeCounter() {
+      const checked = document.querySelectorAll('input[type="checkbox"][id^="scope-"]:checked').length;
+      document.getElementById('scope-counter').textContent = checked + ' selected';
+    }
+
+    function selectAll() {
+      document.querySelectorAll('input[type="checkbox"][id^="scope-"]').forEach(cb => cb.checked = true);
+      updateScopeCounter();
+    }
+
+    function clearAll() {
+      document.querySelectorAll('input[type="checkbox"][id^="scope-"]').forEach(cb => cb.checked = false);
+      updateScopeCounter();
+    }
+
+    function generateTokens() {
+      const accountType = document.getElementById('accountType').value;
+      const scopes = [];
+      
+      document.querySelectorAll('input[type="checkbox"][id^="scope-"]:checked').forEach(cb => {
+        const scopeName = cb.id.replace('scope-', '').replace(/-/g, ':');
+        scopes.push(scopeName);
+      });
+      
+      if (scopes.length === 0) {
+        alert('Please select at least one scope!');
+        return;
+      }
+      
+      const authUrl = \`https://id.twitch.tv/oauth2/authorize?client_id=\${CLIENT_ID}&redirect_uri=\${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=\${scopes.join('+')}&state=\${accountType}\`;
+      window.location.href = authUrl;
+    }
+
+    async function validateTokens() {
+      const container = document.getElementById('token-validation');
+      container.innerHTML = \`
+        <div class="token-card loading"><h4>Bot Account <span class="status-badge loading">validating...</span></h4></div>
+        <div class="token-card loading"><h4>Broadcaster Account <span class="status-badge loading">validating...</span></h4></div>
+      \`;
+
+      try {
+        const tokensResponse = await fetch('/api/current-tokens');
+        const tokens = await tokensResponse.json();
+        
+        let botHtml = '';
+        if (tokens.botToken) {
+          const validation = await fetch(\`/api/validate-token?token=\${tokens.botToken}\`);
+          const data = await validation.json();
+          
+          if (data.valid) {
+            const expiresHours = Math.floor(data.expiresIn / 3600);
+            botHtml = \`
+              <div class="token-card valid">
+                <h4>Bot Account <span class="status-badge valid">✓ Valid</span></h4>
+                <div class="token-info">
+                  <div><strong>Username:</strong> \${data.username}</div>
+                  <div><strong>User ID:</strong> \${data.userId}</div>
+                  <div><strong>Expires In:</strong> \${expiresHours} hours</div>
+                  <div><strong>Scopes:</strong> \${data.scopes.length}</div>
+                </div>
+              </div>
+            \`;
+          } else {
+            botHtml = \`
+              <div class="token-card invalid">
+                <h4>Bot Account <span class="status-badge invalid">✗ Invalid</span></h4>
+                <p style="color: #f44336; margin-top: 10px;">\${data.error}</p>
+              </div>
+            \`;
+          }
+        } else {
+          botHtml = \`
+            <div class="token-card invalid">
+              <h4>Bot Account <span class="status-badge invalid">Not Found</span></h4>
+              <p>No token configured</p>
+            </div>
+          \`;
+        }
+
+        let broadcasterHtml = '';
+        if (tokens.broadcasterToken) {
+          const validation = await fetch(\`/api/validate-token?token=\${tokens.broadcasterToken}\`);
+          const data = await validation.json();
+          
+          if (data.valid) {
+            const expiresHours = Math.floor(data.expiresIn / 3600);
+            broadcasterHtml = \`
+              <div class="token-card valid">
+                <h4>Broadcaster Account <span class="status-badge valid">✓ Valid</span></h4>
+                <div class="token-info">
+                  <div><strong>Username:</strong> \${data.username}</div>
+                  <div><strong>User ID:</strong> \${data.userId}</div>
+                  <div><strong>Expires In:</strong> \${expiresHours} hours</div>
+                  <div><strong>Scopes:</strong> \${data.scopes.length}</div>
+                </div>
+              </div>
+            \`;
+          } else {
+            broadcasterHtml = \`
+              <div class="token-card invalid">
+                <h4>Broadcaster Account <span class="status-badge invalid">✗ Invalid</span></h4>
+                <p style="color: #f44336; margin-top: 10px;">\${data.error}</p>
+              </div>
+            \`;
+          }
+        } else {
+          broadcasterHtml = \`
+            <div class="token-card invalid">
+              <h4>Broadcaster Account <span class="status-badge invalid">Not Found</span></h4>
+              <p>EventSub features will be disabled</p>
+            </div>
+          \`;
+        }
+
+        container.innerHTML = botHtml + broadcasterHtml;
+      } catch (error) {
+        container.innerHTML = \`
+          <div class="token-card invalid">
+            <h4>Error</h4>
+            <p style="color: #f44336;">\${error.message}</p>
+          </div>
+        \`;
+      }
+    }
+
+    // Initialize page
+    initPage();
+  </script>
+</body>
+</html>`;
+}
+
+// ==================== AUTHORIZATION & CALLBACK ====================
 
 // Generate authorization URL with selected scopes
 app.post('/generate-auth-url', (req, res) => {
@@ -456,25 +1402,23 @@ app.post('/generate-auth-url', (req, res) => {
   }
 
   const scopeString = scopes.join(' ');
-  const state = accountType || 'bot'; // Pass account type in state parameter
+  const state = accountType || 'bot';
   const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
     `client_id=${CLIENT_ID}&` +
-    `redirect_uri=http://localhost:${PORT}/callback&` +
+    `redirect_uri=${encodeURIComponent(REDIRECT_URI)}&` +
     `response_type=code&` +
     `scope=${encodeURIComponent(scopeString)}&` +
     `state=${state}`;
 
-  console.log(`Generated auth URL with scopes for ${accountType}:`, scopes.join(', '));
+  console.log(`Generated auth URL for ${accountType} account with ${scopes.length} scopes`);
 
   res.json({ authUrl });
 });
 
 // Callback handler
 app.get('/callback', async (req, res) => {
-  console.log('Callback received with query:', req.query);
-
   const { code, error, error_description, state } = req.query;
-  const accountType = state || 'bot'; // Get account type from state parameter
+  const accountType = state || 'bot';
 
   if (error) {
     console.log('Authorization error:', error, error_description);
@@ -491,7 +1435,7 @@ app.get('/callback', async (req, res) => {
     return res.send('<h1>Error: No authorization code received</h1>');
   }
 
-  console.log(`Received authorization code for ${accountType} account, exchanging for tokens...`);
+  console.log(`Received authorization code for ${accountType} account`);
 
   try {
     const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
@@ -500,23 +1444,15 @@ app.get('/callback', async (req, res) => {
         client_secret: CLIENT_SECRET,
         code: code,
         grant_type: 'authorization_code',
-        redirect_uri: `http://localhost:${PORT}/callback`
+        redirect_uri: REDIRECT_URI
       }
     });
 
     const { access_token, refresh_token, expires_in, scope } = response.data;
     console.log('Token exchange successful!');
     
-    // Handle scope information (can be string or array)
-    let grantedScopes = 'No scope info';
-    if (scope) {
-      if (typeof scope === 'string') {
-        grantedScopes = scope.split(' ').join(', ');
-      } else if (Array.isArray(scope)) {
-        grantedScopes = scope.join(', ');
-      }
-    }
-    console.log('Granted scopes:', grantedScopes);
+    let grantedScopes = scope ? (typeof scope === 'string' ? scope.split(' ') : scope) : [];
+    grantedScopes = Array.isArray(grantedScopes) ? grantedScopes.join(', ') : grantedScopes;
 
     // Read current .env file
     let envContent;
@@ -528,24 +1464,20 @@ app.get('/callback', async (req, res) => {
       return res.send(`
         <h1>Error reading .env file</h1>
         <p>${readError.message}</p>
-        <p>Make sure the .env file exists in the same directory as this script.</p>
       `);
     }
 
-    // Update the .env file with tokens and scopes
-    // Ensure scopes are space-separated, not comma-separated
+    // Update .env with new tokens
     const scopeString = Array.isArray(scope) ? scope.join(' ') : (scope || '');
     
-    // Determine which keys to update based on account type
     let updatedEnv;
     if (accountType === 'broadcaster') {
-      console.log('Updating broadcaster account tokens in .env');
+      console.log('Updating broadcaster tokens');
       updatedEnv = envContent
         .replace(/TWITCH_BROADCASTER_ACCESS_TOKEN=.*/, `TWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`)
         .replace(/TWITCH_BROADCASTER_REFRESH_TOKEN=.*/, `TWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`)
         .replace(/TWITCH_BROADCASTER_SCOPES=.*/, `TWITCH_BROADCASTER_SCOPES=${scopeString}`);
       
-      // If keys don't exist, append them
       if (!envContent.includes('TWITCH_BROADCASTER_ACCESS_TOKEN=')) {
         updatedEnv += `\nTWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`;
       }
@@ -556,7 +1488,7 @@ app.get('/callback', async (req, res) => {
         updatedEnv += `\nTWITCH_BROADCASTER_SCOPES=${scopeString}`;
       }
     } else {
-      console.log('Updating bot account tokens in .env');
+      console.log('Updating bot tokens');
       updatedEnv = envContent
         .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
         .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
@@ -565,15 +1497,13 @@ app.get('/callback', async (req, res) => {
 
     try {
       fs.writeFileSync('.env', updatedEnv);
-      console.log('Tokens saved to .env file successfully');
+      console.log('Tokens saved successfully');
     } catch (writeError) {
       console.error('Error writing to .env file:', writeError.message);
       return res.send(`
         <h1>Error saving tokens</h1>
         <p>${writeError.message}</p>
-        <p>Access Token: ${access_token}</p>
-        <p>Refresh Token: ${refresh_token}</p>
-        <p>Please manually copy these to your .env file.</p>
+        <p>Please manually add these to your .env file</p>
       `);
     }
 
@@ -583,22 +1513,47 @@ app.get('/callback', async (req, res) => {
       <head>
         <title>Success!</title>
         <style>
-          body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
-          .success { color: #00A82D; font-size: 2em; margin: 20px 0; }
+          body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background: #f5f5f5;
+          }
+          .success {
+            color: #4caf50;
+            font-size: 2em;
+            margin: 20px 0;
+          }
+          .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          code {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 10px 0;
+          }
         </style>
       </head>
       <body>
-        <h1 class="success">Success! 🎉</h1>
-        <p>Your <strong>${accountType}</strong> account tokens have been saved to the .env file.</p>
-        <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
-        <p><strong>Refresh Token:</strong> ${refresh_token.substring(0, 20)}...</p>
-        <p><strong>Granted Scopes:</strong></p>
-        <p style="word-break: break-all; font-size: 12px;">${grantedScopes}</p>
-        <p>${accountType === 'broadcaster' 
-          ? '✅ EventSub is now ready! Remove <code>DISABLE_EVENTSUB=1</code> from .env and restart the bot.' 
-          : '✅ Bot account configured! Now generate tokens for the broadcaster account to enable EventSub.'}</p>
-        <p>You can now close this window and start your bot!</p>
-        <script>setTimeout(() => window.close(), 8000);</script>
+        <div class="container">
+          <h1 class="success">Success! 🎉</h1>
+          <p>Your <strong>${accountType}</strong> account tokens have been saved to .env</p>
+          <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
+          <p><strong>Granted Scopes:</strong></p>
+          <code>${grantedScopes}</code>
+          <p>${accountType === 'broadcaster' 
+            ? '✅ EventSub is ready! Remove DISABLE_EVENTSUB=1 from .env and restart the bot.' 
+            : '✅ Bot account configured! Generate broadcaster tokens next for EventSub support.'}</p>
+          <p>You can close this window.</p>
+          <script>setTimeout(() => window.close(), 10000);</script>
+        </div>
       </body>
       </html>
     `);
@@ -613,6 +1568,7 @@ app.get('/callback', async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`\n🚀 Token Generator Server running at http://localhost:${PORT}`);
   console.log('📱 Open this URL in your browser to generate tokens\n');

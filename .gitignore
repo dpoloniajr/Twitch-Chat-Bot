@@ -142,3 +142,5 @@ dist
 *.gif
 *.bmp
 *.tiff
+token-generator.js.backup
+PHASE7_COMPLETION_SUMMARY.md
