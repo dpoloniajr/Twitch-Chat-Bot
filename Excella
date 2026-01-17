@@ -72,9 +72,6 @@ const TOKEN_CACHE_DURATION = 3600000; // 1 hour
 
 // Scope validation caching
 let cachedScopeValidation = {};
-let filterStatusCache = null;
-let filterStatusCacheTime = 0;
-const CACHE_DURATION = 300000; // 5 minutes
 
 // Expose clients for easy access
 const authProvider = global.authProvider;
@@ -105,6 +102,12 @@ const chatFilters = {
   timeoutDurationSeconds: Number(process.env.CHAT_FILTER_TIMEOUT_SEC || 60),
   filterAction: process.env.CHAT_FILTER_ACTION || 'warn' // 'warn', 'timeout', 'delete'
 };
+
+// Filter status cache for performance optimization
+let filterStatusCache = null;
+let filterCacheTimestamp = 0;
+const FILTER_CACHE_TTL = 5000; // 5 second cache TTL
+
 const messageHistory = new Map(); // Track user messages for spam detection
 
 // ==================== HELPER FUNCTIONS ====================
@@ -427,30 +430,48 @@ async function updateDashboard() {
   }
 }
 
-// Log command to dashboard
-async function logCommand(username, command, channel, success = true) {
-  try {
-    await axios.post(`${dashboardBaseUrl}/api/logs`, {
-      user: username,
-      command: command,
-      channel: channel,
-      success: success
-    });
 
-    // Update user stats
-    await axios.post(`${dashboardBaseUrl}/api/stats/${username}`);
-  } catch (error) {
-    // Dashboard may not be running, silently fail
-  }
-}
 
-// Load custom commands from dashboard
+// Custom command caching with debouncing
+let customCommandsCache = null;
+let customCommandsCacheTime = 0;
+let customCommandsLoadPending = false;
+const CUSTOM_COMMANDS_CACHE_TTL = 60000; // 60 second cache TTL
+let customCommandsDebounceTimer = null;
+
+// Load custom commands from dashboard with caching and debouncing
 async function loadCustomCommands() {
+  // Clear any pending debounce
+  if (customCommandsDebounceTimer) {
+    clearTimeout(customCommandsDebounceTimer);
+  }
+  
+  // Return cache if still valid
+  if (customCommandsCache !== null && (Date.now() - customCommandsCacheTime) < CUSTOM_COMMANDS_CACHE_TTL) {
+    return;
+  }
+  
+  // Prevent duplicate simultaneous requests
+  if (customCommandsLoadPending) {
+    return;
+  }
+  
+  customCommandsLoadPending = true;
+  
   try {
-    const res = await axios.get(`${dashboardBaseUrl}/api/custom-commands`);
+    const res = await axios.get(`${dashboardBaseUrl}/api/custom-commands`, { timeout: 5000 });
     customCommands = res.data || [];
+    customCommandsCache = customCommands;
+    customCommandsCacheTime = Date.now();
   } catch (error) {
-    customCommands = [];
+    // Use cached value if available, even if expired
+    if (customCommandsCache !== null) {
+      customCommands = customCommandsCache;
+    } else {
+      customCommands = [];
+    }
+  } finally {
+    customCommandsLoadPending = false;
   }
 }
 
@@ -487,10 +508,23 @@ async function validateAndRefreshTokens() {
   
   let tokensUpdated = false;
   
-  // Validate bot token
-  console.log('Checking bot account token...');
-  const botTokenValid = await validateTokenCached(config.accessToken, 'bot');
+  // Parallelize token validation for bot and broadcaster
+  const validationTasks = [
+    validateTokenCached(config.accessToken, 'bot')
+  ];
   
+  if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+    validationTasks.push(
+      validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster')
+    );
+  }
+  
+  const results = await Promise.all(validationTasks);
+  const botTokenValid = results[0];
+  const broadcasterTokenValid = results[1];
+  
+  // Handle bot token
+  console.log('Checking bot account token...');
   if (!botTokenValid) {
     console.log('⚠️  Bot token is invalid or expired. Attempting to refresh...');
     const refreshedBot = await refreshToken(config.accessToken, config.refreshToken, 'bot');
@@ -508,11 +542,9 @@ async function validateAndRefreshTokens() {
     console.log('✓ Bot token is valid');
   }
   
-  // Validate broadcaster token if it exists
+  // Handle broadcaster token if it exists
   if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
     console.log('Checking broadcaster account token...');
-    const broadcasterTokenValid = await validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster');
-    
     if (!broadcasterTokenValid) {
       console.log('⚠️  Broadcaster token is invalid or expired. Attempting to refresh...');
       const refreshedBroadcaster = await refreshToken(
@@ -692,18 +724,22 @@ async function init() {
   try {
     console.log(`Initializing... (broadcaster: ${config.broadcasterName})`);
     
-    const tokenInfo = await apiClient.getTokenInfo();
+    // Parallelize API calls for faster initialization
+    const [tokenInfo, user] = await Promise.all([
+      apiClient.getTokenInfo(),
+      apiClient.users.getUserByName(config.broadcasterName)
+    ]);
+    
     tokenUserId = tokenInfo?.userId || null;
     if (!tokenUserId) {
       throw new Error('OAuth token missing userId; ensure the token is tied to a user account.');
     }
 
-    const tokenUser = await apiClient.users.getUserById(tokenUserId);
-    const user = await apiClient.users.getUserByName(config.broadcasterName);
-    
     if (!user) {
       throw new Error(`Broadcaster "${config.broadcasterName}" not found. Check your .env TWITCH_BROADCASTER_NAME`);
     }
+    
+    const tokenUser = await apiClient.users.getUserById(tokenUserId);
     
     broadcasterId = String(user.id);
     broadcasterUserId = String(user.id);
@@ -990,6 +1026,7 @@ async function timeoutUser(channel, username, durationSeconds) {
 async function addFilterWord(word) {
   if (!word || word.trim().length === 0) return false;
   chatFilters.blacklistWords.add(word.trim().toLowerCase());
+  invalidateFilterStatusCache();
   return true;
 }
 
@@ -997,12 +1034,21 @@ async function addFilterWord(word) {
 async function removeFilterWord(word) {
   if (!word || word.trim().length === 0) return false;
   chatFilters.blacklistWords.delete(word.trim().toLowerCase());
+  invalidateFilterStatusCache();
   return true;
 }
 
-// Get filter status
+// Get filter status with caching
 function getFilterStatus() {
-  return {
+  const now = Date.now();
+  
+  // Return cached result if still valid
+  if (filterStatusCache && (now - filterCacheTimestamp) < FILTER_CACHE_TTL) {
+    return filterStatusCache;
+  }
+  
+  // Regenerate cache
+  filterStatusCache = {
     blacklistWords: Array.from(chatFilters.blacklistWords),
     filterUrls: chatFilters.filterUrls,
     filterAllCaps: chatFilters.filterAllCaps,
@@ -1011,6 +1057,15 @@ function getFilterStatus() {
     timeoutDurationSeconds: chatFilters.timeoutDurationSeconds,
     filterAction: chatFilters.filterAction
   };
+  filterCacheTimestamp = now;
+  
+  return filterStatusCache;
+}
+
+// Invalidate filter status cache
+function invalidateFilterStatusCache() {
+  filterStatusCache = null;
+  filterCacheTimestamp = 0;
 }
 
 // ==================== COMMAND HANDLERS ====================
@@ -1023,8 +1078,10 @@ async function handleClip(channel, username) {
   const result = await createClip();
   if (result.error) {
     sendChatMessage(channel, `@${username} Error: ${result.error}`);
+    logCommandExecution(username, '!clip', [], 'failed');
   } else {
     sendChatMessage(channel, `@${username} Clip created! ${result.url}`);
+    logCommandExecution(username, '!clip', [], 'success');
   }
 }
 
@@ -1036,8 +1093,10 @@ async function handleFollowage(channel, username, targetUser) {
   const result = await getFollowAge(targetUser);
   if (result.error) {
     sendChatMessage(channel, `@${username} Error: ${result.error}`);
+    logCommandExecution(username, '!followage', [targetUser], 'failed');
   } else {
     sendChatMessage(channel, result.message);
+    logCommandExecution(username, '!followage', [targetUser], 'success');
   }
 }
 
@@ -1049,8 +1108,10 @@ async function handleShoutout(channel, username, targetUser) {
   const result = await sendShoutout(targetUser);
   if (result.error) {
     sendChatMessage(channel, `@${username} Error: ${result.error}`);
+    logCommandExecution(username, '!shoutout', [targetUser], 'failed');
   } else {
     sendChatMessage(channel, result.message);
+    logCommandExecution(username, '!shoutout', [targetUser], 'success');
   }
 }
 
@@ -1074,7 +1135,7 @@ async function handlePrediction(channel, args) {
   sendChatMessage(channel, `Prediction ${action} command received.`);
 }
 
-async function handleTitle(channel, newTitle) {
+async function handleTitle(channel, username, newTitle) {
   if (!newTitle) {
     sendChatMessage(channel, 'Usage: !title "new title"');
     return;
@@ -1082,12 +1143,14 @@ async function handleTitle(channel, newTitle) {
   const result = await updateStreamTitle(newTitle);
   if (result.error) {
     sendChatMessage(channel, `Error: ${result.error}`);
+    logCommandExecution(username, '!title', [newTitle], 'failed');
   } else {
     sendChatMessage(channel, `✓ Stream title updated to: "${newTitle}"`);
+    logCommandExecution(username, '!title', [newTitle], 'success');
   }
 }
 
-async function handleGame(channel, gameQuery) {
+async function handleGame(channel, username, gameQuery) {
   if (!gameQuery) {
     sendChatMessage(channel, 'Usage: !game <game name>');
     return;
@@ -1095,8 +1158,10 @@ async function handleGame(channel, gameQuery) {
   const result = await updateStreamGame(gameQuery);
   if (result.error) {
     sendChatMessage(channel, `Error: ${result.error}`);
+    logCommandExecution(username, '!game', [gameQuery], 'failed');
   } else {
     sendChatMessage(channel, `✓ Game updated to: ${result.gameName}`);
+    logCommandExecution(username, '!game', [gameQuery], 'success');
   }
 }
 
@@ -1166,13 +1231,13 @@ async function handleChatCommand(channel, user, message, msg) {
         sendChatMessage(channel, `@${username} Only moderators can use this command.`);
         return;
       }
-      await handleTitle(channel, raw.substring(6).trim());
+      await handleTitle(channel, username, raw.substring(6).trim());
     } else if (command === '!game') {
       if (!checkModPermission(msg, channel, username)) {
         sendChatMessage(channel, `@${username} Only moderators can use this command.`);
         return;
       }
-      await handleGame(channel, args.join(' '));
+      await handleGame(channel, username, args.join(' '));
     } else if (command === '!commands') {
       await handleCommands(channel);
     } else if (command === '!addfilter') {
@@ -1255,7 +1320,7 @@ async function start() {
   }
 
   await loadCustomCommands();
-  setInterval(loadCustomCommands, 30000);
+  setInterval(loadCustomCommands, 60000); // Load custom commands every 60s (with 60s cache TTL)
 
   await chatClient.connect();
 
