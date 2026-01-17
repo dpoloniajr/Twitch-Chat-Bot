@@ -30,16 +30,16 @@ const tokenData = {
 };
 
 // Setup auth provider using StaticAuthProvider
-const authProvider = new StaticAuthProvider(
+global.authProvider = new StaticAuthProvider(
   config.clientId,
   config.accessToken,
   config.scopes
 );
 
 // Create API and Chat clients
-const apiClient = new ApiClient({ authProvider });
-const chatClient = new ChatClient({ 
-  authProvider, 
+global.apiClient = new ApiClient({ authProvider: global.authProvider });
+global.chatClient = new ChatClient({ 
+  authProvider: global.authProvider, 
   channels: config.channels 
 });
 
@@ -50,6 +50,11 @@ let initComplete = false;
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
 let eventSub = null;
+
+// Expose clients for easy access
+const authProvider = global.authProvider;
+const apiClient = global.apiClient;
+const chatClient = global.chatClient;
 
 // Chat filtering system
 const chatFilters = {
@@ -175,40 +180,65 @@ function setupEventSub() {
     // Stream online/offline
     const subId = String(broadcasterId);
     console.log('[EventSub] Subscribing with broadcasterId:', subId, 'isNumeric:', /^\d+$/.test(subId), 'tokenUserId:', tokenUserId);
-    eventSub.onStreamOnline(subId, ev => {
-      console.log('EventSub: Stream online');
-      config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
-    });
-    eventSub.onStreamOffline(subId, ev => {
-      console.log('EventSub: Stream offline');
-    });
+    
+    // These subscriptions work with bot token
+    try {
+      eventSub.onStreamOnline(subId, ev => {
+        console.log('EventSub: Stream online');
+        config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
+      });
+    } catch (err) {
+      console.warn('[EventSub] Stream online subscription failed:', err.message);
+    }
+    
+    try {
+      eventSub.onStreamOffline(subId, ev => {
+        console.log('EventSub: Stream offline');
+      });
+    } catch (err) {
+      console.warn('[EventSub] Stream offline subscription failed:', err.message);
+    }
 
-    // Follows
-    eventSub.onChannelFollow(subId, ev => {
-      const name = ev.userDisplayName || ev.userName || 'someone';
-      config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
-    });
+    // Follows (requires broadcaster auth - will fail silently with bot token)
+    try {
+      eventSub.onChannelFollow(subId, ev => {
+        const name = ev.userDisplayName || ev.userName || 'someone';
+        config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
+      });
+    } catch (err) {
+      console.warn('[EventSub] Follow subscription requires broadcaster token:', err.message);
+    }
 
     // Raids
-    eventSub.onChannelRaidTo(subId, ev => {
-      const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
-      const viewers = ev.viewers ?? '?';
-      config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
-    });
+    try {
+      eventSub.onChannelRaidTo(subId, ev => {
+        const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
+        const viewers = ev.viewers ?? '?';
+        config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
+      });
+    } catch (err) {
+      console.warn('[EventSub] Raid subscription failed:', err.message);
+    }
 
     // Channel Points redemptions
-    eventSub.onChannelRedemptionAdd(subId, async ev => {
-      const reward = ev.rewardTitle || 'Reward';
-      const user = ev.userDisplayName || ev.userName;
-      const input = ev.userInput || '';
-      console.log('Redemption:', reward, 'by', user, 'input:', input);
-      // Log to dashboard
-      axios.post(`${dashboardBaseUrl}/api/redemptions`, {
-        user, reward, input
-      }).catch(() => {});
-      // Basic mapping: echo to chat
-      config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
-    });
+    try {
+      eventSub.onChannelRedemptionAdd(subId, async ev => {
+        const reward = ev.rewardTitle || 'Reward';
+        const user = ev.userDisplayName || ev.userName;
+        const input = ev.userInput || '';
+        console.log('Redemption:', reward, 'by', user, 'input:', input);
+        // Log to dashboard
+        axios.post(`${dashboardBaseUrl}/api/redemptions`, {
+          user, reward, input
+        }).catch(() => {});
+        // Basic mapping: echo to chat
+        config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+      });
+    } catch (err) {
+      console.warn('[EventSub] Redemption subscription failed:', err.message);
+    }
+    
+    console.log('✓ EventSub initialized successfully');
   } catch (err) {
     console.error('EventSub setup failed:', err?.message || err);
   }
@@ -302,6 +332,166 @@ async function renderCustomCommand(cmd, context) {
   const template = (cmd.response && cmd.response.trim().length > 0) ? cmd.response : '{data}';
   const rendered = formatResponse(template, { ...context, data });
   return { rendered };
+}
+
+// Validate and refresh tokens if needed
+async function validateAndRefreshTokens() {
+  console.log('\n🔍 Validating tokens...');
+  
+  let tokensUpdated = false;
+  
+  // Validate bot token
+  console.log('Checking bot account token...');
+  const botTokenValid = await validateToken(config.accessToken);
+  
+  if (!botTokenValid) {
+    console.log('⚠️  Bot token is invalid or expired. Attempting to refresh...');
+    const refreshedBot = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+    if (refreshedBot) {
+      config.accessToken = refreshedBot;
+      process.env.TWITCH_ACCESS_TOKEN = refreshedBot;
+      console.log('✓ Bot token refreshed successfully');
+      tokensUpdated = true;
+    } else {
+      console.error('✗ Failed to refresh bot token. Please visit http://localhost:3000 to generate new tokens.');
+      process.exit(1);
+    }
+  } else {
+    console.log('✓ Bot token is valid');
+  }
+  
+  // Validate broadcaster token if it exists
+  if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+    console.log('Checking broadcaster account token...');
+    const broadcasterTokenValid = await validateToken(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN);
+    
+    if (!broadcasterTokenValid) {
+      console.log('⚠️  Broadcaster token is invalid or expired. Attempting to refresh...');
+      const refreshedBroadcaster = await refreshToken(
+        process.env.TWITCH_BROADCASTER_ACCESS_TOKEN,
+        process.env.TWITCH_BROADCASTER_REFRESH_TOKEN,
+        'broadcaster'
+      );
+      if (refreshedBroadcaster) {
+        process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster;
+        console.log('✓ Broadcaster token refreshed successfully');
+        tokensUpdated = true;
+      } else {
+        console.warn('⚠️  Failed to refresh broadcaster token. EventSub features will be disabled.');
+        console.warn('Visit http://localhost:3000 to generate new broadcaster tokens.');
+      }
+    } else {
+      console.log('✓ Broadcaster token is valid');
+    }
+  }
+  
+  // If tokens were updated, recreate auth provider and clients
+  if (tokensUpdated) {
+    console.log('Recreating auth provider with refreshed tokens...');
+    recreateAuthProvider();
+  }
+  
+  console.log('');
+}
+
+// Recreate auth provider and clients with updated tokens
+function recreateAuthProvider() {
+  // Create new auth provider with updated token
+  global.authProvider = new StaticAuthProvider(
+    config.clientId,
+    config.accessToken,
+    config.scopes
+  );
+  
+  // Recreate API and Chat clients
+  global.apiClient = new ApiClient({ authProvider: global.authProvider });
+  global.chatClient = new ChatClient({ 
+    authProvider: global.authProvider, 
+    channels: config.channels 
+  });
+  
+  console.log('✓ Auth provider recreated with new tokens');
+}
+
+// Validate a token with Twitch
+async function validateToken(token) {
+  try {
+    const response = await axios.get('https://id.twitch.tv/oauth2/validate', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      timeout: 5000
+    });
+    
+    const tokenInfo = response.data;
+    const expiresIn = tokenInfo.expires_in;
+    
+    if (expiresIn < 3600) {
+      console.log(`  Token expires in ${Math.floor(expiresIn / 60)} minutes`);
+      return false; // Token needs refresh if expires in < 1 hour
+    }
+    
+    return true;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      return false;
+    }
+    console.error('Error validating token:', error.message);
+    return false;
+  }
+}
+
+// Refresh a token
+async function refreshToken(accessToken, refreshToken, accountType) {
+  try {
+    if (!refreshToken) {
+      console.log(`  No refresh token available for ${accountType} account`);
+      return null;
+    }
+    
+    const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+      params: {
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken
+      },
+      timeout: 5000
+    });
+    
+    const newAccessToken = response.data.access_token;
+    const newRefreshToken = response.data.refresh_token;
+    
+    // Update .env file with new tokens
+    const fs = require('fs');
+    let envContent = fs.readFileSync('.env', 'utf8');
+    
+    if (accountType === 'bot') {
+      envContent = envContent.replace(
+        /TWITCH_ACCESS_TOKEN=.*/,
+        `TWITCH_ACCESS_TOKEN=${newAccessToken}`
+      );
+      envContent = envContent.replace(
+        /TWITCH_REFRESH_TOKEN=.*/,
+        `TWITCH_REFRESH_TOKEN=${newRefreshToken}`
+      );
+    } else {
+      envContent = envContent.replace(
+        /TWITCH_BROADCASTER_ACCESS_TOKEN=.*/,
+        `TWITCH_BROADCASTER_ACCESS_TOKEN=${newAccessToken}`
+      );
+      envContent = envContent.replace(
+        /TWITCH_BROADCASTER_REFRESH_TOKEN=.*/,
+        `TWITCH_BROADCASTER_REFRESH_TOKEN=${newRefreshToken}`
+      );
+    }
+    
+    fs.writeFileSync('.env', envContent);
+    console.log(`  Updated ${accountType} tokens in .env`);
+    
+    return newAccessToken;
+  } catch (error) {
+    console.error(`Error refreshing ${accountType} token:`, error.message);
+    return null;
+  }
 }
 
 // Get broadcaster ID
@@ -923,6 +1113,9 @@ chatClient.onMessage(async (channel, user, message, msg) => {
 // Start the bot
 async function start() {
   console.log('Starting Twitch bot...');
+  
+  // Validate and refresh tokens before initializing
+  await validateAndRefreshTokens();
 
   if (!broadcasterId) {
     await init();
