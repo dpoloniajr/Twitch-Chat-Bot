@@ -145,7 +145,7 @@ function validateScopes(requiredScopes) {
 
 // Log command execution to dashboard
 function logCommandExecution(username, command, args, result) {
-  axios.post(`${dashboardBaseUrl}/api/logs`, {
+  apiClient_axios.post(`${dashboardBaseUrl}/api/logs`, {
     timestamp: new Date().toISOString(),
     username,
     command,
@@ -231,7 +231,7 @@ async function startAnnouncements() {
         try {
           await apiClient.chat.createAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
         } catch {
-          chatClient.say(channel, msg);
+          sendChatMessage(channel, msg);
         }
       }
     } catch (e) {
@@ -276,7 +276,7 @@ function setupEventSub() {
     try {
       eventSub.onStreamOnline(subId, ev => {
         console.log('EventSub: Stream online');
-        config.channels.forEach(ch => chatClient.say(ch, 'Stream is now live!'));
+        config.channels.forEach(ch => sendChatMessage(ch, 'Stream is now live!'));
       });
     } catch (err) {
       console.warn('[EventSub-Bot] Stream online subscription failed:', err.message);
@@ -343,7 +343,7 @@ function setupBroadcasterEventSub() {
         // Use broadcasterUserId since the broadcaster token is authorized to the broadcaster account
         broadcasterEventSub.onChannelFollow(subId, broadcasterUserId, ev => {
           const name = ev.userDisplayName || ev.userName || 'someone';
-          config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
+          config.channels.forEach(ch => sendChatMessage(ch, `Thanks for the follow, ${name}!`));
         });
         console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
       } catch (err) {
@@ -358,7 +358,7 @@ function setupBroadcasterEventSub() {
       broadcasterEventSub.onChannelRaidTo(subId, ev => {
         const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
         const viewers = ev.viewers ?? '?';
-        config.channels.forEach(ch => chatClient.say(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
+        config.channels.forEach(ch => sendChatMessage(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
       });
       console.log('[EventSub-Broadcaster] ✓ Raid subscription active');
     } catch (err) {
@@ -374,11 +374,11 @@ function setupBroadcasterEventSub() {
           const input = ev.userInput || '';
           console.log('[EventSub-Broadcaster] Redemption:', reward, 'by', user, 'input:', input);
           // Log to dashboard
-          axios.post(`${dashboardBaseUrl}/api/redemptions`, {
+          apiClient_axios.post(`${dashboardBaseUrl}/api/redemptions`, {
             user, reward, input
           }).catch(() => {});
           // Basic mapping: echo to chat
-          config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+          config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
         });
         console.log('[EventSub-Broadcaster] ✓ Channel Points redemption subscription active');
       } catch (err) {
@@ -408,7 +408,7 @@ function formatResponse(template, ctx) {
 // Update dashboard with bot state
 async function updateDashboard() {
   try {
-    await axios.post(`${dashboardBaseUrl}/api/update-state`, {
+    await apiClient_axios.post(`${dashboardBaseUrl}/api/update-state`, {
       isConnected: true,
       channels: config.channels,
       broadcasterName: config.broadcasterName,
@@ -459,7 +459,7 @@ async function loadCustomCommands() {
   customCommandsLoadPending = true;
   
   try {
-    const res = await axios.get(`${dashboardBaseUrl}/api/custom-commands`, { timeout: 5000 });
+    const res = await apiClient_axios.get(`${dashboardBaseUrl}/api/custom-commands`, { timeout: 5000 });
     customCommands = res.data || [];
     customCommandsCache = customCommands;
     customCommandsCacheTime = Date.now();
@@ -789,11 +789,7 @@ async function createClip() {
       'https://api.twitch.tv/helix/clips',
       { broadcaster_id: channelId },
       {
-        headers: {
-          'Client-ID': config.clientId,
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        }
+        headers: getApiHeaders()
       }
     );
 
@@ -918,11 +914,7 @@ async function updateStreamTitle(newTitle) {
       `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
       { title },
       {
-        headers: {
-          'Client-ID': config.clientId,
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        }
+        headers: getApiHeaders()
       }
     );
     return { success: true, title };
@@ -947,10 +939,7 @@ async function updateStreamGame(gameName) {
     }
 
     // Resolve game ID by name via Helix API
-    const headers = {
-      'Client-ID': config.clientId,
-      Authorization: `Bearer ${config.accessToken}`
-    };
+    const headers = getApiHeaders();
     let gameId = null;
     let resolvedName = name;
     try {
@@ -982,11 +971,7 @@ async function updateStreamGame(gameName) {
       `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
       { game_id: gameId },
       {
-        headers: {
-          'Client-ID': config.clientId,
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        }
+        headers: getApiHeaders()
       }
     );
     return { success: true, gameId, gameName: resolvedName };
@@ -1010,11 +995,7 @@ async function timeoutUser(channel, username, durationSeconds) {
         duration: durationSeconds
       },
       {
-        headers: {
-          'Client-ID': config.clientId,
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json'
-        }
+        headers: getApiHeaders()
       }
     );
   } catch (error) {
@@ -1075,6 +1056,14 @@ async function handleClip(channel, username) {
     sendChatMessage(channel, '@' + username + ' Bot is still initializing. Please try again in a moment.');
     return;
   }
+  // Built-in cooldown to prevent spam
+  const cooldownSeconds = 60;
+  if (isOnCooldown('clip', cooldownSeconds)) {
+    const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('clip') || 0));
+    const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+    sendChatMessage(channel, `@${username} !clip is on cooldown. Try again in ${remainingSec}s.`);
+    return;
+  }
   const result = await createClip();
   if (result.error) {
     sendChatMessage(channel, `@${username} Error: ${result.error}`);
@@ -1082,6 +1071,7 @@ async function handleClip(channel, username) {
   } else {
     sendChatMessage(channel, `@${username} Clip created! ${result.url}`);
     logCommandExecution(username, '!clip', [], 'success');
+    setCooldown('clip');
   }
 }
 
@@ -1166,16 +1156,16 @@ async function handleGame(channel, username, gameQuery) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Available commands: !clip, !followage [user], !shoutout [user], !poll, !prediction, !title, !game, !commands');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !shoutout [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
-async function handleCustomCommand(channel, username, command, args) {
+async function handleCustomCommand(channel, username, displayName, command, args) {
   const cmd = customCommands.find(c => c.name.toLowerCase() === command);
   if (!cmd) return;
   
   const { rendered, error } = await processCustomCommand(cmd, {
     user: username,
-    displayName: msg.userInfo?.displayName || username,
+    displayName: displayName || username,
     channel,
     target: args[0] || ''
   });
@@ -1188,6 +1178,53 @@ async function handleCustomCommand(channel, username, command, args) {
 }
 
 // ==================== MESSAGE HANDLER ====================
+
+// Command registry for cleaner routing and centralized permissions
+const commandRegistry = new Map([
+  ['!clip', { perm: 'everyone', handler: async ({ channel, username }) => {
+    await handleClip(channel, username);
+  }}],
+  ['!followage', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    await handleFollowage(channel, username, args[0]);
+  }}],
+  ['!shoutout', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleShoutout(channel, username, args[0]);
+  }}],
+  ['!poll', { perm: 'mod', handler: async ({ channel, args }) => {
+    await handlePoll(channel, args);
+  }}],
+  ['!prediction', { perm: 'mod', handler: async ({ channel, args }) => {
+    await handlePrediction(channel, args);
+  }}],
+  ['!title', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleTitle(channel, username, args.join(' '));
+  }}],
+  ['!game', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleGame(channel, username, args.join(' '));
+  }}],
+  ['!commands', { perm: 'everyone', handler: async ({ channel }) => {
+    await handleCommands(channel);
+  }}],
+  ['!addfilter', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    if (!args[0]) {
+      sendChatMessage(channel, `@${username} Usage: !addfilter <word>`);
+      return;
+    }
+    await addFilterWord(args[0]);
+    sendChatMessage(channel, `Word "${args[0]}" added to blacklist.`);
+  }}],
+  ['!removefilter', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    if (!args[0]) {
+      sendChatMessage(channel, `@${username} Usage: !removefilter <word>`);
+      return;
+    }
+    await removeFilterWord(args[0]);
+    sendChatMessage(channel, `Word "${args[0]}" removed from blacklist.`);
+  }}],
+  ['!filters', { perm: 'mod', handler: async ({ channel }) => {
+    sendChatMessage(channel, `Filters: ${JSON.stringify(getFilterStatus())}`);
+  }}]
+]);
 
 // Handle built-in and custom commands
 async function handleChatCommand(channel, user, message, msg) {
@@ -1203,66 +1240,18 @@ async function handleChatCommand(channel, user, message, msg) {
   const isBroadcaster = msg.userInfo.isBroadcaster;
 
   try {
-    // Route to command handlers
-    if (command === '!clip') {
-      await handleClip(channel, username);
-    } else if (command === '!followage') {
-      await handleFollowage(channel, username, args[0]);
-    } else if (command === '!shoutout') {
-      if (!checkModPermission(msg, channel, username)) {
+    // Registry-based routing
+    const displayName = msg.userInfo?.displayName || username;
+    const entry = commandRegistry.get(command);
+    if (entry) {
+      if (entry.perm === 'mod' && !checkModPermission(msg, channel, username)) {
         sendChatMessage(channel, `@${username} Only moderators can use this command.`);
         return;
       }
-      await handleShoutout(channel, username, args[0]);
-    } else if (command === '!poll') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      await handlePoll(channel, args);
-    } else if (command === '!prediction') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      await handlePrediction(channel, args);
-    } else if (command === '!title') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      await handleTitle(channel, username, raw.substring(6).trim());
-    } else if (command === '!game') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      await handleGame(channel, username, args.join(' '));
-    } else if (command === '!commands') {
-      await handleCommands(channel);
-    } else if (command === '!addfilter') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      addFilterWord(args[0]);
-      sendChatMessage(channel, `Word "${args[0]}" added to blacklist.`);
-    } else if (command === '!removefilter') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      removeFilterWord(args[0]);
-      sendChatMessage(channel, `Word "${args[0]}" removed from blacklist.`);
-    } else if (command === '!filters') {
-      if (!checkModPermission(msg, channel, username)) {
-        sendChatMessage(channel, `@${username} Only moderators can use this command.`);
-        return;
-      }
-      sendChatMessage(channel, `Filters: ${JSON.stringify(getFilterStatus())}`);
+      await entry.handler({ channel, username, displayName, raw, args, msg });
     } else {
-      // Check for custom commands
-      await handleCustomCommand(channel, username, command, args);
+      // Fallback to custom commands
+      await handleCustomCommand(channel, username, displayName, command, args);
     }
   } catch (error) {
     console.error(`Error handling command ${command}:`, error.message);
