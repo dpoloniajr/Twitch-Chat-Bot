@@ -44,6 +44,7 @@ global.chatClient = new ChatClient({
 });
 
 let broadcasterId = null;
+let broadcasterUserId = null;
 let tokenUserId = null;
 let botStartTime = Date.now();
 let initComplete = false;
@@ -213,24 +214,6 @@ function setupEventSub() {
     } catch (err) {
       console.warn('[EventSub-Bot] Stream offline subscription failed:', err.message);
     }
-
-    // Channel Points redemptions
-    try {
-      eventSub.onChannelRedemptionAdd(subId, async ev => {
-        const reward = ev.rewardTitle || 'Reward';
-        const user = ev.userDisplayName || ev.userName;
-        const input = ev.userInput || '';
-        console.log('Redemption:', reward, 'by', user, 'input:', input);
-        // Log to dashboard
-        axios.post(`${dashboardBaseUrl}/api/redemptions`, {
-          user, reward, input
-        }).catch(() => {});
-        // Basic mapping: echo to chat
-        config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
-      });
-    } catch (err) {
-      console.warn('[EventSub-Bot] Redemption subscription failed:', err.message);
-    }
     
     console.log('✓ Bot EventSub listener initialized successfully');
   } catch (err) {
@@ -258,6 +241,19 @@ function setupBroadcasterEventSub() {
     return;
   }
   
+  // Check broadcaster token scopes
+  const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
+  const hasFollowersScope = broadcasterScopes.includes('moderator:read:followers');
+  const hasRedemptionsScope = broadcasterScopes.includes('channel:read:redemptions');
+  
+  if (!hasFollowersScope && !hasRedemptionsScope) {
+    console.warn('[EventSub-Broadcaster] ⚠️  Broadcaster token missing required scopes:');
+    console.warn('[EventSub-Broadcaster]   - moderator:read:followers (for follow events)');
+    console.warn('[EventSub-Broadcaster]   - channel:read:redemptions (for redemption events)');
+    console.warn('[EventSub-Broadcaster] Visit http://localhost:3000 to regenerate broadcaster token with proper scopes.');
+    return;
+  }
+  
   try {
     broadcasterEventSub = new EventSubWsListener({ apiClient: broadcasterApiClient });
     broadcasterEventSub.start();
@@ -265,18 +261,24 @@ function setupBroadcasterEventSub() {
     const subId = String(broadcasterId);
     console.log('[EventSub-Broadcaster] Subscribing with broadcasterId:', subId);
     
-    // Follows (requires broadcaster auth)
-    try {
-      broadcasterEventSub.onChannelFollow(subId, ev => {
-        const name = ev.userDisplayName || ev.userName || 'someone';
-        config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
-      });
-      console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
-    } catch (err) {
-      console.warn('[EventSub-Broadcaster] Follow subscription failed:', err.message);
+    // Follows (requires broadcaster auth with moderator:read:followers scope)
+    if (hasFollowersScope) {
+      try {
+        // onChannelFollow requires (broadcasterId, moderatorUserId, handler)
+        // Use broadcasterUserId since the broadcaster token is authorized to the broadcaster account
+        broadcasterEventSub.onChannelFollow(subId, broadcasterUserId, ev => {
+          const name = ev.userDisplayName || ev.userName || 'someone';
+          config.channels.forEach(ch => chatClient.say(ch, `Thanks for the follow, ${name}!`));
+        });
+        console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Follow subscription failed:', err.message);
+      }
+    } else {
+      console.warn('[EventSub-Broadcaster] Skipping follow subscription: missing moderator:read:followers scope');
     }
 
-    // Raids (requires broadcaster auth)
+    // Raids
     try {
       broadcasterEventSub.onChannelRaidTo(subId, ev => {
         const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
@@ -286,6 +288,29 @@ function setupBroadcasterEventSub() {
       console.log('[EventSub-Broadcaster] ✓ Raid subscription active');
     } catch (err) {
       console.warn('[EventSub-Broadcaster] Raid subscription failed:', err.message);
+    }
+
+    // Channel Points redemptions (requires broadcaster auth with channel:read:redemptions scope)
+    if (hasRedemptionsScope) {
+      try {
+        broadcasterEventSub.onChannelRedemptionAdd(subId, async ev => {
+          const reward = ev.rewardTitle || 'Reward';
+          const user = ev.userDisplayName || ev.userName;
+          const input = ev.userInput || '';
+          console.log('[EventSub-Broadcaster] Redemption:', reward, 'by', user, 'input:', input);
+          // Log to dashboard
+          axios.post(`${dashboardBaseUrl}/api/redemptions`, {
+            user, reward, input
+          }).catch(() => {});
+          // Basic mapping: echo to chat
+          config.channels.forEach(ch => chatClient.say(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+        });
+        console.log('[EventSub-Broadcaster] ✓ Channel Points redemption subscription active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Redemption subscription failed:', err.message);
+      }
+    } else {
+      console.warn('[EventSub-Broadcaster] Skipping redemption subscription: missing channel:read:redemptions scope');
     }
     
     console.log('✓ Broadcaster EventSub listener initialized successfully');
@@ -576,6 +601,7 @@ async function init() {
     }
     
     broadcasterId = String(user.id);
+    broadcasterUserId = String(user.id);
     if (!/^\d+$/.test(broadcasterId)) {
       throw new Error(`Resolved broadcasterId is non-numeric: ${broadcasterId}`);
     }
