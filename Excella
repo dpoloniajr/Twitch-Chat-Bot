@@ -6,6 +6,45 @@ const axios = require('axios');
 const fs = require('fs');
 require('dotenv').config();
 
+// ==================== ACCOUNT MANAGER SUPPORT ====================
+// Load account from account manager if --account flag is provided
+const AccountManager = require('./account-manager');
+let selectedAccountName = null;
+
+// Parse CLI arguments
+const args = process.argv.slice(2);
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--account' && args[i + 1]) {
+    selectedAccountName = args[i + 1];
+    break;
+  }
+}
+
+// Load selected account if provided
+if (selectedAccountName) {
+  const accountManager = new AccountManager();
+  const account = accountManager.getAccount(selectedAccountName);
+  
+  if (!account) {
+    console.error(`❌ Account "${selectedAccountName}" not found. Available accounts:`, 
+      accountManager.listAccounts().map(a => a.name).join(', '));
+    process.exit(1);
+  }
+
+  if (!account.accessToken) {
+    console.error(`❌ Account "${selectedAccountName}" has not been authorized. Run token-generator to authorize.`);
+    process.exit(1);
+  }
+
+  console.log(`✓ Loaded account: ${selectedAccountName}`);
+
+  // Load account credentials into process.env
+  const envObj = accountManager.getAsEnvObject(selectedAccountName);
+  Object.assign(process.env, envObj);
+}
+
+// ==================== CONFIGURATION ====================
+
 // Constants for Twitch API
 const TWITCH_API_BASE = 'https://id.twitch.tv/oauth2';
 const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
