@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+const AccountManager = require('./account-manager');
+const accountManager = new AccountManager();
+
 const app = express();
 const PORT = 3000;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
@@ -291,6 +294,115 @@ app.get('/api/scope-presets', (req, res) => {
   };
 
   res.json(presets);
+});
+
+// ==================== ACCOUNT MANAGEMENT API ====================
+
+// List all accounts
+app.get('/api/accounts', (req, res) => {
+  try {
+    const accounts = accountManager.listAccounts();
+    res.json({ success: true, accounts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get single account
+app.get('/api/accounts/:name', (req, res) => {
+  try {
+    const account = accountManager.getAccount(req.params.name);
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'Account not found' });
+    }
+    // Return public info only (no secrets)
+    const publicInfo = accountManager.listAccounts().find(a => a.name === req.params.name);
+    res.json({ success: true, account: publicInfo });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create new account
+app.post('/api/accounts', (req, res) => {
+  try {
+    const { accountName, clientId, clientSecret, broadcasterName, channels = [] } = req.body;
+
+    if (!accountName || !clientId || !clientSecret || !broadcasterName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: accountName, clientId, clientSecret, broadcasterName'
+      });
+    }
+
+    const account = accountManager.createAccount(
+      accountName,
+      clientId,
+      clientSecret,
+      broadcasterName,
+      channels
+    );
+
+    res.json({ success: true, message: `Account "${accountName}" created`, account });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Update account settings
+app.patch('/api/accounts/:name', (req, res) => {
+  try {
+    const { broadcasterName, channels } = req.body;
+    const updates = {};
+    if (broadcasterName) updates.broadcasterName = broadcasterName;
+    if (channels) updates.channels = channels;
+
+    const account = accountManager.updateAccountSettings(req.params.name, updates);
+    const publicInfo = accountManager.listAccounts().find(a => a.name === req.params.name);
+
+    res.json({ success: true, message: 'Account updated', account: publicInfo });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Rename account
+app.post('/api/accounts/:name/rename', (req, res) => {
+  try {
+    const { newName } = req.body;
+    if (!newName) {
+      return res.status(400).json({ success: false, error: 'newName is required' });
+    }
+
+    const account = accountManager.renameAccount(req.params.name, newName);
+    const publicInfo = accountManager.listAccounts().find(a => a.name === newName);
+
+    res.json({ success: true, message: `Account renamed to "${newName}"`, account: publicInfo });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Delete account
+app.delete('/api/accounts/:name', (req, res) => {
+  try {
+    accountManager.deleteAccount(req.params.name);
+    res.json({ success: true, message: `Account "${req.params.name}" deleted` });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Export account as .env
+app.get('/api/accounts/:name/export', (req, res) => {
+  try {
+    const envContent = accountManager.exportToEnv(req.params.name);
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.name}.env"`);
+    res.send(envContent);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 // ==================== HOME PAGE ====================
@@ -1486,9 +1598,103 @@ app.get('/callback', async (req, res) => {
     console.log('Token exchange successful!');
     
     let grantedScopes = scope ? (typeof scope === 'string' ? scope.split(' ') : scope) : [];
-    grantedScopes = Array.isArray(grantedScopes) ? grantedScopes.join(', ') : grantedScopes;
+    const scopeArray = Array.isArray(grantedScopes) ? grantedScopes : [];
+    grantedScopes = scopeArray.join(', ');
 
-    // Read current .env file
+    // Try to save to account manager first (if account info provided in query params)
+    // Otherwise, save to .env for backward compatibility
+    const accountNameFromQuery = req.query.account;
+    
+    if (accountNameFromQuery) {
+      try {
+        const account = accountManager.getAccount(accountNameFromQuery);
+        if (!account) {
+          return res.send(`
+            <h1>Account Not Found</h1>
+            <p>Account "${accountNameFromQuery}" does not exist in the account manager.</p>
+            <a href="/">Go back</a>
+          `);
+        }
+
+        // Update account with new tokens
+        const scopeString = scopeArray.join(' ');
+        if (accountType === 'broadcaster') {
+          accountManager.updateTokens(accountNameFromQuery, {
+            broadcasterAccessToken: access_token,
+            broadcasterRefreshToken: refresh_token,
+            broadcasterScopes: scopeArray,
+            broadcasterExpiresIn: expires_in
+          });
+        } else {
+          accountManager.updateTokens(accountNameFromQuery, {
+            accessToken: access_token,
+            refreshToken: refresh_token,
+            scopes: scopeArray,
+            expiresIn: expires_in
+          });
+        }
+
+        console.log(`Tokens saved to account: ${accountNameFromQuery} (${accountType})`);
+
+        res.send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Success!</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                max-width: 600px;
+                margin: 50px auto;
+                padding: 20px;
+                text-align: center;
+                background: #f5f5f5;
+              }
+              .success {
+                color: #4caf50;
+                font-size: 2em;
+                margin: 20px 0;
+              }
+              .container {
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+              code {
+                background: #f0f0f0;
+                padding: 10px;
+                border-radius: 4px;
+                display: inline-block;
+                margin: 10px 0;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1 class="success">Success! 🎉</h1>
+              <p>Your <strong>${accountType}</strong> account tokens have been saved to the account manager</p>
+              <p><strong>Account:</strong> ${accountNameFromQuery}</p>
+              <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
+              <p><strong>Granted Scopes:</strong></p>
+              <code>${grantedScopes}</code>
+              <p>${accountType === 'broadcaster' 
+                ? '✅ Broadcaster tokens configured! You can now use EventSub features.' 
+                : '✅ Bot account tokens configured! Start your bot with: node Excella --account=' + accountNameFromQuery}</p>
+              <p><a href="/">Back to account manager</a></p>
+              <script>setTimeout(() => window.close(), 15000);</script>
+            </div>
+          </body>
+          </html>
+        `);
+        return;
+      } catch (err) {
+        console.error('Account manager error:', err.message);
+        // Fall back to .env saving
+      }
+    }
+
+    // Fallback: Save to .env file
     let envContent;
     try {
       envContent = fs.readFileSync('.env', 'utf8');
@@ -1502,7 +1708,7 @@ app.get('/callback', async (req, res) => {
     }
 
     // Update .env with new tokens
-    const scopeString = Array.isArray(scope) ? scope.join(' ') : (scope || '');
+    const scopeString = scopeArray.join(' ');
     
     let updatedEnv;
     if (accountType === 'broadcaster') {
