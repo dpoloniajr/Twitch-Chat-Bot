@@ -405,6 +405,21 @@ app.get('/api/accounts/:name/export', (req, res) => {
   }
 });
 
+// Import account from .env content
+app.post('/api/accounts/import', (req, res) => {
+  try {
+    const { accountName, envContent } = req.body;
+    if (!accountName || !envContent) {
+      return res.status(400).json({ success: false, error: 'accountName and envContent are required' });
+    }
+    const account = accountManager.importFromEnv(accountName, envContent);
+    const publicInfo = accountManager.listAccounts().find(a => a.name === accountName);
+    res.json({ success: true, message: 'Account imported successfully', account: publicInfo });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // ==================== HOME PAGE ====================
 
 app.get('/', (req, res) => {
@@ -801,6 +816,7 @@ function generateHTML() {
       <button class="tab active" onclick="switchTab(event, 'wizard')">🧙 Setup Wizard</button>
       <button class="tab" onclick="switchTab(event, 'manual')">⚙️ Manual Setup</button>
       <button class="tab" onclick="switchTab(event, 'validate')">✅ Token Validator</button>
+      <button class="tab" onclick="switchTab(event, 'accounts')">👤 Account Manager</button>
     </div>
 
     <!-- WIZARD TAB -->
@@ -1049,6 +1065,125 @@ function generateHTML() {
         <div id="scope-comparison" style="margin-top: 20px;">
           <p style="color: #999;">Run token validation above to see details</p>
         </div>
+      </div>
+    </div>
+
+    <!-- Account Manager Tab -->
+    <div id="accounts-tab" class="tab-content">
+      <div class="section">
+        <h3>📋 My Accounts</h3>
+        <p>View and manage your saved Twitch bot accounts</p>
+        
+        <button class="btn btn-primary" onclick="loadAccounts()" style="margin-bottom: 20px;">
+          🔄 Refresh Accounts
+        </button>
+
+        <div id="accounts-list">
+          <p style="color: #999; text-align: center; padding: 20px;">Loading accounts...</p>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>➕ Create New Account</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+          <div>
+            <label>Account Name</label>
+            <input type="text" id="new-account-name" placeholder="e.g., mybot" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          </div>
+          <div>
+            <label>Broadcaster Name</label>
+            <input type="text" id="new-broadcaster-name" placeholder="e.g., ronin_style" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          </div>
+          <div>
+            <label>Client ID</label>
+            <input type="password" id="new-client-id" placeholder="Your Client ID" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          </div>
+          <div>
+            <label>Client Secret</label>
+            <input type="password" id="new-client-secret" placeholder="Your Client Secret" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label>Channels (comma-separated)</label>
+            <input type="text" id="new-channels" placeholder="e.g., ronin_style,other_channel" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="createNewAccount()" style="margin-top: 15px; width: 100%;">
+          ✓ Create Account
+        </button>
+      </div>
+
+      <div class="section">
+        <h3>� Import from .env File</h3>
+        <p>Convert your existing .env credentials to Account Manager</p>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Account Name:</label>
+          <input type="text" id="import-account-name" placeholder="e.g., imported_bot" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Paste .env file contents:</label>
+          <textarea id="import-env-content" placeholder="TWITCH_CLIENT_ID=...&#10;TWITCH_CLIENT_SECRET=..." style="width: 100%; height: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-family: monospace;"></textarea>
+        </div>
+
+        <button class="btn btn-primary" onclick="importFromEnv()" style="width: 100%;">
+          ✓ Import Account
+        </button>
+
+        <div id="import-result" style="margin-top: 15px;"></div>
+      </div>
+
+      <div class="section">
+        <h3>�🔐 Authorize Account</h3>
+        <p>Select an account and authorize it with Twitch:</p>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Select Account:</label>
+          <select id="auth-account-select" style="width: 100%; padding: 10px; font-size: 16px; border: 2px solid #2196f3; border-radius: 5px;">
+            <option value="">-- Choose an account --</option>
+          </select>
+        </div>
+
+        <div id="auth-account-info" style="display: none; margin-bottom: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px;">
+          <div id="auth-info-content"></div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-primary" id="auth-bot-btn" onclick="authorizeAccount('bot')" style="display: none;">
+            🤖 Authorize Bot Account
+          </button>
+          <button class="btn btn-primary" id="auth-broadcaster-btn" onclick="authorizeAccount('broadcaster')" style="display: none; background: #2196f3;">
+            📺 Authorize Broadcaster Account
+          </button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>⚙️ Account Actions</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+          <div>
+            <label>Select Account:</label>
+            <select id="action-account-select" onchange="updateAccountActions()" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+              <option value="">-- Choose an account --</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" id="rename-btn" onclick="renameAccount()" style="flex: 1; display: none;">
+              ✏️ Rename
+            </button>
+            <button class="btn btn-secondary" id="export-btn" onclick="exportAccount()" style="flex: 1; display: none;">
+              📥 Export
+            </button>
+            <button class="btn btn-secondary" id="delete-btn" onclick="deleteAccount()" style="flex: 1; display: none; background: #f44336;">
+              🗑️ Delete
+            </button>
+          </div>
+        </div>
+
+        <div id="action-result"></div>
       </div>
     </div>
   </div>
@@ -1530,8 +1665,175 @@ function generateHTML() {
       }
     }
 
+    // ==================== ACCOUNT MANAGER FUNCTIONS ====================
+
+    async function loadAccounts() {
+      try {
+        const response = await fetch('/api/accounts');
+        const accounts = await response.json();
+        
+        let html = '';
+        if (accounts.length === 0) {
+          html = '<p style="color: #999; text-align: center; padding: 20px;">No accounts yet. Create one below!</p>';
+        } else {
+          html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">';
+          for (const account of accounts) {
+            const tokenColor = getStatusColor(account.tokenStatus);
+            const broadcasterColor = getStatusColor(account.broadcasterTokenStatus);
+            const card = '<div style="border: 2px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9;"><h4 style="margin-top: 0; color: #9146ff;">' + account.name + '</h4><div style="font-size: 13px; color: #666; line-height: 1.6;"><div><strong>Channel:</strong> ' + account.broadcasterName + '</div><div><strong>Bot Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + tokenColor + '; color: white;">' + account.tokenStatus.toUpperCase() + '</span></div>' + (account.hasBroadcasterToken ? '<div><strong>Broadcaster Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + broadcasterColor + '; color: white;">' + account.broadcasterTokenStatus.toUpperCase() + '</span></div>' : '') + '<div><strong>Scopes:</strong> ' + account.tokenScopes.length + '</div></div></div>';
+            html += card;
+          }
+          html += '</div>';
+        }
+        
+        document.getElementById('accounts-list').innerHTML = html;
+        
+        const authSelect = document.getElementById('auth-account-select');
+        const actionSelect = document.getElementById('action-account-select');
+        
+        authSelect.innerHTML = '<option value="">-- Choose an account --</option>' + accounts.map(a => '<option value="' + a.name + '">' + a.name + '</option>').join('');
+        actionSelect.innerHTML = '<option value="">-- Choose an account --</option>' + accounts.map(a => '<option value="' + a.name + '">' + a.name + '</option>').join('');
+      } catch (error) {
+        document.getElementById('accounts-list').innerHTML = '<p style="color: #f44336; text-align: center; padding: 20px;">Failed to load accounts: ' + error.message + '</p>';
+      }
+    }
+
+    function getStatusColor(status) {
+      switch (status) { case 'valid': return '#4caf50'; case 'expiring': return '#ff9800'; case 'expired': return '#f44336'; default: return '#999'; }
+    }
+
+    async function createNewAccount() {
+      const name = document.getElementById('new-account-name').value.trim();
+      const clientId = document.getElementById('new-client-id').value.trim();
+      const clientSecret = document.getElementById('new-client-secret').value.trim();
+      const broadcasterName = document.getElementById('new-broadcaster-name').value.trim();
+      const channels = document.getElementById('new-channels').value.trim().split(',').map(c => c.trim()).filter(Boolean);
+      if (!name || !clientId || !clientSecret || !broadcasterName) { alert('Please fill in all required fields'); return; }
+      try {
+        const response = await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountName: name, clientId, clientSecret, broadcasterName, channels }) });
+        const result = await response.json();
+        if (result.success) {
+          alert('✓ Account "' + name + '" created successfully!');
+          document.getElementById('new-account-name').value = '';
+          document.getElementById('new-client-id').value = '';
+          document.getElementById('new-client-secret').value = '';
+          document.getElementById('new-broadcaster-name').value = '';
+          document.getElementById('new-channels').value = '';
+          loadAccounts();
+        } else {
+          alert('Error: ' + result.error);
+        }
+      } catch (error) {
+        alert('Failed to create account: ' + error.message);
+      }
+    }
+
+    async function authorizeAccount(type) {
+      const accountName = document.getElementById('auth-account-select').value;
+      if (!accountName) { alert('Please select an account first'); return; }
+      try {
+        let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions'];
+        const response = await fetch('/api/accounts/' + accountName);
+        const account = await response.json();
+        if (!account.clientId) { alert('Account is missing Client ID'); return; }
+        const authUrl = 'https://id.twitch.tv/oauth2/authorize?client_id=' + account.clientId + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) + '&response_type=code&scope=' + scopes.join('+') + '&state=' + accountName + '_' + type;
+        window.location.href = authUrl;
+      } catch (error) {
+        alert('Failed to authorize: ' + error.message);
+      }
+    }
+
+    async function updateAccountActions() {
+      const accountName = document.getElementById('action-account-select').value;
+      if (!accountName) {
+        document.getElementById('rename-btn').style.display = 'none';
+        document.getElementById('export-btn').style.display = 'none';
+        document.getElementById('delete-btn').style.display = 'none';
+        document.getElementById('action-result').innerHTML = '';
+        return;
+      }
+      document.getElementById('rename-btn').style.display = 'block';
+      document.getElementById('export-btn').style.display = 'block';
+      document.getElementById('delete-btn').style.display = 'block';
+    }
+
+    async function renameAccount() {
+      const oldName = document.getElementById('action-account-select').value;
+      const newName = prompt('Rename "' + oldName + '" to:', oldName);
+      if (!newName || newName === oldName) return;
+      try {
+        const response = await fetch('/api/accounts/' + oldName + '/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newName }) });
+        const result = await response.json();
+        if (result.success) { alert('✓ Renamed to "' + newName + '"'); loadAccounts(); } else { alert('Error: ' + result.error); }
+      } catch (error) {
+        alert('Failed to rename: ' + error.message);
+      }
+    }
+
+    async function exportAccount() {
+      const accountName = document.getElementById('action-account-select').value;
+      try {
+        const response = await fetch('/api/accounts/' + accountName + '/export');
+        const envContent = await response.text();
+        const element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(envContent));
+        element.setAttribute('download', accountName + '.env');
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+        document.getElementById('action-result').innerHTML = '<div style="padding: 15px; background: #4caf50; color: white; border-radius: 5px;">✓ Account exported as ' + accountName + '.env</div>';
+      } catch (error) {
+        document.getElementById('action-result').innerHTML = '<div style="padding: 15px; background: #f44336; color: white; border-radius: 5px;">✗ Export failed: ' + error.message + '</div>';
+      }
+    }
+
+    async function deleteAccount() {
+      const accountName = document.getElementById('action-account-select').value;
+      if (!confirm('⚠️ Are you sure you want to delete "' + accountName + '"? This cannot be undone.')) return;
+      try {
+        const response = await fetch('/api/accounts/' + accountName, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) { alert('\u2713 Account \"' + accountName + '\" deleted'); document.getElementById('action-account-select').value = ''; updateAccountActions(); loadAccounts(); } else { alert('Error: ' + result.error); }
+      } catch (error) {
+        alert('Failed to delete: ' + error.message);
+      }
+    }
+
+    async function importFromEnv() {
+      const accountName = document.getElementById('import-account-name').value.trim();
+      const envContent = document.getElementById('import-env-content').value.trim();
+
+      if (!accountName || !envContent) {
+        alert('Please fill in both fields');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/accounts/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountName: accountName, envContent: envContent })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          document.getElementById('import-result').innerHTML = '<div style="padding: 15px; background: #4caf50; color: white; border-radius: 5px;">\u2713 Account \"' + accountName + '\" imported successfully!</div>';
+          document.getElementById('import-account-name').value = '';
+          document.getElementById('import-env-content').value = '';
+          loadAccounts();
+        } else {
+          document.getElementById('import-result').innerHTML = '<div style="padding: 15px; background: #f44336; color: white; border-radius: 5px;">\u2717 Import failed: ' + result.error + '</div>';
+        }
+      } catch (error) {
+        document.getElementById('import-result').innerHTML = '<div style="padding: 15px; background: #f44336; color: white; border-radius: 5px;">\u2717 Error: ' + error.message + '</div>';
+      }
+    }
+
     // Initialize page
     initPage();
+    loadAccounts();
   </script>
 </body>
 </html>`;
