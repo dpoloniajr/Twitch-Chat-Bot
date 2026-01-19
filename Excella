@@ -1105,24 +1105,219 @@ async function handleShoutout(channel, username, targetUser) {
   }
 }
 
-async function handlePoll(channel, args) {
-  if (!args[0]) {
-    sendChatMessage(channel, 'Usage: !poll start|end');
-    return;
+async function handlePoll(channel, username, args) {
+  try {
+    if (!args[0]) {
+      sendChatMessage(channel, `@${username} Usage: !poll start "Title" option1;option2;... [duration]`);
+      return;
+    }
+    
+    const action = args[0].toLowerCase();
+    
+    if (action === 'start') {
+      // Parse: !poll start "Title" opt1;opt2;opt3 [duration]
+      const rawMessage = args.slice(1).join(' ');
+      const titleMatch = rawMessage.match(/^"([^"]+)"/);
+      if (!titleMatch) {
+        sendChatMessage(channel, `@${username} Poll title must be quoted: "Your Title"`);
+        return;
+      }
+      
+      const title = titleMatch[1];
+      const rest = rawMessage.substring(titleMatch[0].length).trim();
+      const parts = rest.split(/\s+/);
+      const optionsStr = parts[0];
+      const durationStr = parts[1];
+      
+      if (!optionsStr) {
+        sendChatMessage(channel, `@${username} Provide options: option1;option2;...`);
+        return;
+      }
+      
+      const options = optionsStr.split(';').map(o => o.trim()).filter(Boolean);
+      if (options.length < 2 || options.length > 5) {
+        sendChatMessage(channel, `@${username} Polls require 2-5 options.`);
+        return;
+      }
+      
+      const duration = Math.max(15, Math.min(1800, parseInt(durationStr) || 300)); // 15s-30m, default 5m
+      
+      // Check scope
+      if (!hasScope(config.scopes, 'channel:manage:polls')) {
+        sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
+        return;
+      }
+      
+      if (!initComplete || !broadcasterId) {
+        sendChatMessage(channel, `@${username} Bot not initialized yet.`);
+        return;
+      }
+      
+      // Create poll via Helix API
+      const pollRes = await apiClient_axios.post(
+        'https://api.twitch.tv/helix/polls',
+        {
+          broadcaster_id: broadcasterId,
+          title,
+          choices: options.map(o => ({ title: o })),
+          duration,
+          channel_points_voting: { is_enabled: false }
+        },
+        { headers: getApiHeaders() }
+      );
+      
+      const poll = pollRes.data?.data?.[0];
+      if (!poll) {
+        sendChatMessage(channel, `@${username} Failed to create poll.`);
+        logCommandExecution(username, '!poll start', [title], 'failed');
+        return;
+      }
+      
+      sendChatMessage(channel, `✓ Poll started: "${title}" (${duration}s) - Vote with reactions!`);
+      logCommandExecution(username, '!poll start', [title, ...options], 'success');
+    } else if (action === 'end') {
+      // Parse: !poll end <pollId>
+      const pollId = args[1];
+      if (!pollId) {
+        sendChatMessage(channel, `@${username} Usage: !poll end <poll_id>`);
+        return;
+      }
+      
+      if (!hasScope(config.scopes, 'channel:manage:polls')) {
+        sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
+        return;
+      }
+      
+      if (!initComplete || !broadcasterId) {
+        sendChatMessage(channel, `@${username} Bot not initialized yet.`);
+        return;
+      }
+      
+      // End poll via Helix API
+      const endRes = await apiClient_axios.patch(
+        `https://api.twitch.tv/helix/polls?broadcaster_id=${broadcasterId}&id=${pollId}`,
+        { status: 'TERMINATED' },
+        { headers: getApiHeaders() }
+      );
+      
+      sendChatMessage(channel, `✓ Poll ended.`);
+      logCommandExecution(username, '!poll end', [pollId], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} Usage: !poll start "Title" options [duration] or !poll end <id>`);
+    }
+  } catch (error) {
+    console.error('Poll command error:', error.message);
+    sendChatMessage(channel, `@${username} Poll error: ${error?.response?.data?.message || error.message}`);
+    logCommandExecution(username, '!poll', args, 'failed');
   }
-  const action = args[0].toLowerCase();
-  // Poll implementation would go here
-  sendChatMessage(channel, `Poll ${action} command received.`);
 }
 
-async function handlePrediction(channel, args) {
-  if (!args[0]) {
-    sendChatMessage(channel, 'Usage: !prediction start|end');
-    return;
+async function handlePrediction(channel, username, args) {
+  try {
+    if (!args[0]) {
+      sendChatMessage(channel, `@${username} Usage: !prediction start "Title" outcome1;outcome2 [duration]`);
+      return;
+    }
+    
+    const action = args[0].toLowerCase();
+    
+    if (action === 'start') {
+      // Parse: !prediction start "Title" outcome1;outcome2 [duration]
+      const rawMessage = args.slice(1).join(' ');
+      const titleMatch = rawMessage.match(/^"([^"]+)"/);
+      if (!titleMatch) {
+        sendChatMessage(channel, `@${username} Prediction title must be quoted: "Your Title"`);
+        return;
+      }
+      
+      const title = titleMatch[1];
+      const rest = rawMessage.substring(titleMatch[0].length).trim();
+      const parts = rest.split(/\s+/);
+      const outcomesStr = parts[0];
+      const durationStr = parts[1];
+      
+      if (!outcomesStr) {
+        sendChatMessage(channel, `@${username} Provide outcomes: outcome1;outcome2`);
+        return;
+      }
+      
+      const outcomes = outcomesStr.split(';').map(o => o.trim()).filter(Boolean);
+      if (outcomes.length !== 2) {
+        sendChatMessage(channel, `@${username} Predictions require exactly 2 outcomes.`);
+        return;
+      }
+      
+      const duration = Math.max(60, Math.min(1800, parseInt(durationStr) || 300)); // 1m-30m, default 5m
+      
+      // Check scope
+      if (!hasScope(config.scopes, 'channel:manage:predictions')) {
+        sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
+        return;
+      }
+      
+      if (!initComplete || !broadcasterId) {
+        sendChatMessage(channel, `@${username} Bot not initialized yet.`);
+        return;
+      }
+      
+      // Create prediction via Helix API
+      const predRes = await apiClient_axios.post(
+        'https://api.twitch.tv/helix/predictions',
+        {
+          broadcaster_id: broadcasterId,
+          title,
+          outcomes: outcomes.map(o => ({ title: o })),
+          prediction_window: duration
+        },
+        { headers: getApiHeaders() }
+      );
+      
+      const pred = predRes.data?.data?.[0];
+      if (!pred) {
+        sendChatMessage(channel, `@${username} Failed to create prediction.`);
+        logCommandExecution(username, '!prediction start', [title], 'failed');
+        return;
+      }
+      
+      sendChatMessage(channel, `✓ Prediction started: "${title}" (${duration}s) - Viewers can place points!`);
+      logCommandExecution(username, '!prediction start', [title, ...outcomes], 'success');
+    } else if (action === 'resolve') {
+      // Parse: !prediction resolve <predId> <winning_outcome_id>
+      const predId = args[1];
+      const winningId = args[2];
+      
+      if (!predId || !winningId) {
+        sendChatMessage(channel, `@${username} Usage: !prediction resolve <id> <outcome_id>`);
+        return;
+      }
+      
+      if (!hasScope(config.scopes, 'channel:manage:predictions')) {
+        sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
+        return;
+      }
+      
+      if (!initComplete || !broadcasterId) {
+        sendChatMessage(channel, `@${username} Bot not initialized yet.`);
+        return;
+      }
+      
+      // Resolve prediction via Helix API
+      const resolveRes = await apiClient_axios.patch(
+        `https://api.twitch.tv/helix/predictions?broadcaster_id=${broadcasterId}&id=${predId}`,
+        { status: 'RESOLVED', winning_outcome_id: winningId },
+        { headers: getApiHeaders() }
+      );
+      
+      sendChatMessage(channel, `✓ Prediction resolved.`);
+      logCommandExecution(username, '!prediction resolve', [predId, winningId], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} Usage: !prediction start "Title" outcome1;outcome2 [duration] or !prediction resolve <id> <outcome_id>`);
+    }
+  } catch (error) {
+    console.error('Prediction command error:', error.message);
+    sendChatMessage(channel, `@${username} Prediction error: ${error?.response?.data?.message || error.message}`);
+    logCommandExecution(username, '!prediction', args, 'failed');
   }
-  const action = args[0].toLowerCase();
-  // Prediction implementation would go here
-  sendChatMessage(channel, `Prediction ${action} command received.`);
 }
 
 async function handleTitle(channel, username, newTitle) {
@@ -1190,11 +1385,11 @@ const commandRegistry = new Map([
   ['!shoutout', { perm: 'mod', handler: async ({ channel, username, args }) => {
     await handleShoutout(channel, username, args[0]);
   }}],
-  ['!poll', { perm: 'mod', handler: async ({ channel, args }) => {
-    await handlePoll(channel, args);
+  ['!poll', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handlePoll(channel, username, args);
   }}],
-  ['!prediction', { perm: 'mod', handler: async ({ channel, args }) => {
-    await handlePrediction(channel, args);
+  ['!prediction', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handlePrediction(channel, username, args);
   }}],
   ['!title', { perm: 'mod', handler: async ({ channel, username, args }) => {
     await handleTitle(channel, username, args.join(' '));
