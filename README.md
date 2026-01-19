@@ -199,7 +199,27 @@ TWITCH_CHANNELS=channel1,channel2,channel3
 
 The bot responds to the following commands in chat:
 
-### !clip
+### Command Summary
+
+| Command | Permission | Scope | Purpose |
+|---------|-----------|-------|---------|
+| `!clip` | Everyone | `clips:edit` | Create a clip (60s cooldown) |
+| `!followage [user]` | Everyone | `moderator:read:followers` | Check follow duration |
+| `!commands` | Everyone | — | Show available commands |
+| `!shoutout [user]` | Mod+ | `moderator:manage:shoutouts` | Shout out another streamer |
+| `!poll start/end` | Mod+ | `channel:manage:polls` | Create/end polls |
+| `!prediction start/resolve` | Mod+ | `channel:manage:predictions` | Create/resolve predictions |
+| `!title "text"` | Mod+ | `channel:manage:broadcast` | Update stream title |
+| `!game <name>` | Mod+ | `channel:manage:broadcast` | Update stream game |
+| `!addfilter <word>` | Mod+ | — | Add word to blacklist |
+| `!removefilter <word>` | Mod+ | — | Remove word from blacklist |
+| `!filters` | Mod+ | — | Show active filters |
+
+---
+
+### Viewer Commands (Everyone)
+
+#### !clip
 
 Creates a clip of the current stream.
 
@@ -208,9 +228,10 @@ Usage: !clip
 Response: @username Clip created! https://clips.twitch.tv/xxx
 ```
 
+**Features:** 60-second cooldown per channel  
 **Required Scope:** `clips:edit`
 
-### !followage [username]
+#### !followage [username]
 
 Checks how long a user has been following the channel.
 
@@ -222,46 +243,78 @@ Response: @username username has been following for 2 years 3 months 5 days!
 
 **Required Scope:** `moderator:read:followers`
 
-### !shoutout [username] / !so [username]
+#### !commands / !help
 
-Shouts out another streamer in chat. Must be a moderator or broadcaster.
+Displays all available bot commands.
+
+```
+Usage: !commands
+Usage: !help
+```
+
+---
+
+### Moderator Commands (Mods & Broadcaster)
+
+#### !shoutout [username]
+
+Shouts out another streamer in chat. Displays their last played game.
 
 ```
 Usage: !shoutout @username
-Usage: !so @username
-Response: Go check out username at https://twitch.tv/username - they were last playing Game Name!
+Response: Go check out username at https://twitch.tv/username - they were last playing Valorant!
 ```
 
 **Permission:** Moderator or Broadcaster only  
 **Required Scope:** `moderator:manage:shoutouts`
 
-### !poll
+#### !poll
 
-Manages channel polls (create/start).
+Manages channel polls (create and end).
 
+**Start a poll:**
 ```
 Usage: !poll start "Poll Question?" option1;option2;option3 [durationSeconds]
-Example: !poll start "What should I play next?" Valorant;CS2;Overwatch 120
+Example: !poll start "What should I play?" Valorant;CS2;Overwatch 120
+Details: 
+  - Title: Required, must be quoted
+  - Options: 2-5 semicolon-separated choices
+  - Duration: 15-1800 seconds (default 300s)
 ```
 
-**Permission:** Moderator or Broadcaster recommended  
+**End a poll:**
+```
+Usage: !poll end <poll_id>
+```
+
+**Permission:** Moderator or Broadcaster only  
 **Required Scope:** `channel:manage:polls`
 
-### !prediction
+#### !prediction
 
-Manages channel predictions (create/start).
+Manages channel predictions (create and resolve).
 
+**Start a prediction:**
 ```
 Usage: !prediction start "Title" Outcome1;Outcome2 [durationSeconds]
 Example: !prediction start "Will I clutch?" Yes;No 300
+Details:
+  - Title: Required, must be quoted
+  - Outcomes: Exactly 2 semicolon-separated choices
+  - Duration: 60-1800 seconds (default 300s)
 ```
 
-**Permission:** Moderator or Broadcaster recommended  
+**Resolve a prediction:**
+```
+Usage: !prediction resolve <prediction_id> <winning_outcome_id>
+```
+
+**Permission:** Moderator or Broadcaster only  
 **Required Scope:** `channel:manage:predictions`
 
-### !title "new title"
+#### !title "new title"
 
-Updates the stream title. Must be a moderator or broadcaster.
+Updates the stream title.
 
 ```
 Usage: !title "My New Stream Title"
@@ -271,9 +324,9 @@ Response: @username Stream title updated to: My New Stream Title
 **Permission:** Moderator or Broadcaster only  
 **Required Scope:** `channel:manage:broadcast`
 
-### !game <game name>
+#### !game <game name>
 
-Updates the stream game/category. Must be a moderator or broadcaster.
+Updates the stream game/category. Searches Twitch's game database for exact or similar matches.
 
 ```
 Usage: !game Valorant
@@ -284,37 +337,35 @@ Response: @username Stream game updated to: Valorant
 **Permission:** Moderator or Broadcaster only  
 **Required Scope:** `channel:manage:broadcast`
 
-The bot will search Twitch's game database and update the category. If an exact match is not found, it will attempt to find a similar category.
+#### !addfilter <word>
 
-### !addfilter <word>
-
-Adds a word to the chat blacklist filter. Must be a moderator or broadcaster.
+Adds a word to the chat blacklist filter.
 
 ```
 Usage: !addfilter badword
-Response: @username Added "badword" to the filter blacklist.
+Response: Word "badword" added to blacklist.
 ```
 
 **Permission:** Moderator or Broadcaster only
 
-### !removefilter <word>
+#### !removefilter <word>
 
-Removes a word from the chat blacklist filter. Must be a moderator or broadcaster.
+Removes a word from the chat blacklist filter.
 
 ```
 Usage: !removefilter badword
-Response: @username Removed "badword" from the filter blacklist.
+Response: Word "badword" removed from blacklist.
 ```
 
 **Permission:** Moderator or Broadcaster only
 
-### !filters
+#### !filters
 
-Shows the current chat filter status and active filters. Must be a moderator or broadcaster.
+Shows the current chat filter status and active filters.
 
 ```
 Usage: !filters
-Response: @username Active filters: URLs, ALL CAPS, Repeated chars, Spam detection | Blacklist words: 5 | Action: warn
+Response: Filters: {"blacklistWords":[...],"filterUrls":true,"filterAllCaps":true,...}
 ```
 
 **Permission:** Moderator or Broadcaster only
