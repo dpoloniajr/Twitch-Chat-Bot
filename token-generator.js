@@ -315,8 +315,25 @@ app.get('/api/accounts/:name', (req, res) => {
     if (!account) {
       return res.status(404).json({ success: false, error: 'Account not found' });
     }
-    // Return public info only (no secrets)
-    const publicInfo = accountManager.listAccounts().find(a => a.name === req.params.name);
+    // Return account info without clientSecret
+    const publicInfo = {
+      name: account.name,
+      clientId: account.clientId,
+      broadcasterName: account.broadcasterName,
+      channels: account.channels,
+      accessToken: null,
+      refreshToken: null,
+      tokenScopes: account.tokenScopes,
+      broadcasterAccessToken: null,
+      broadcasterRefreshToken: null,
+      broadcasterScopes: account.broadcasterScopes,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+      hasAccessToken: !!account.accessToken,
+      hasBroadcasterToken: !!account.broadcasterAccessToken,
+      tokenStatus: accountManager.getTokenStatus(account.tokenExpiresAt),
+      broadcasterTokenStatus: accountManager.getTokenStatus(account.broadcasterTokenExpiresAt)
+    };
     res.json({ success: true, account: publicInfo });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -413,7 +430,22 @@ app.post('/api/accounts/import', (req, res) => {
       return res.status(400).json({ success: false, error: 'accountName and envContent are required' });
     }
     const account = accountManager.importFromEnv(accountName, envContent);
-    const publicInfo = accountManager.listAccounts().find(a => a.name === accountName);
+    
+    // Return full account info including scopes
+    const publicInfo = {
+      name: account.name,
+      broadcasterName: account.broadcasterName,
+      channels: account.channels,
+      hasAccessToken: !!account.accessToken,
+      hasBroadcasterToken: !!account.broadcasterAccessToken,
+      tokenScopes: account.tokenScopes,
+      broadcasterScopes: account.broadcasterScopes,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+      tokenStatus: accountManager.getTokenStatus(account.tokenExpiresAt),
+      broadcasterTokenStatus: accountManager.getTokenStatus(account.broadcasterTokenExpiresAt)
+    };
+    
     res.json({ success: true, message: 'Account imported successfully', account: publicInfo });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -1085,6 +1117,7 @@ function generateHTML() {
 
       <div class="section">
         <h3>➕ Create New Account</h3>
+        <p>Register a Twitch application with bot and broadcaster tokens</p>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div>
@@ -1097,11 +1130,11 @@ function generateHTML() {
           </div>
           <div>
             <label>Client ID</label>
-            <input type="password" id="new-client-id" placeholder="Your Client ID" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+            <input type="text" id="new-client-id" placeholder="From Twitch Console" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
           </div>
           <div>
             <label>Client Secret</label>
-            <input type="password" id="new-client-secret" placeholder="Your Client Secret" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+            <input type="password" id="new-client-secret" placeholder="From Twitch Console" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
           </div>
           <div style="grid-column: 1 / -1;">
             <label>Channels (comma-separated)</label>
@@ -1120,12 +1153,29 @@ function generateHTML() {
         
         <div style="margin-bottom: 15px;">
           <label style="display: block; margin-bottom: 10px; font-weight: bold;">Account Name:</label>
-          <input type="text" id="import-account-name" placeholder="e.g., imported_bot" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
+          <input type="text" id="import-account-name" placeholder="e.g., my_bot" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px;">
         </div>
 
         <div style="margin-bottom: 15px;">
-          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Paste .env file contents:</label>
-          <textarea id="import-env-content" placeholder="TWITCH_CLIENT_ID=...&#10;TWITCH_CLIENT_SECRET=..." style="width: 100%; height: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-family: monospace;"></textarea>
+          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Required .env Keys:</label>
+          <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; border-radius: 4px; font-size: 12px; margin-bottom: 15px; font-family: monospace;">
+            <div style="margin-bottom: 8px;"><strong>Bot Credentials:</strong></div>
+            <div>✓ TWITCH_CLIENT_ID</div>
+            <div>✓ TWITCH_CLIENT_SECRET</div>
+            <div>✓ TWITCH_ACCESS_TOKEN</div>
+            <div>✓ TWITCH_REFRESH_TOKEN</div>
+            <div style="margin-top: 8px; margin-bottom: 8px;"><strong>Broadcaster Credentials:</strong></div>
+            <div>✓ TWITCH_BROADCASTER_ACCESS_TOKEN</div>
+            <div>✓ TWITCH_BROADCASTER_REFRESH_TOKEN</div>
+            <div style="margin-top: 8px;"><strong>Settings:</strong></div>
+            <div>✓ TWITCH_BROADCASTER_NAME</div>
+            <div>✓ TWITCH_CHANNELS</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 10px; font-weight: bold;">Paste entire .env file:</label>
+          <textarea id="import-env-content" placeholder="TWITCH_CLIENT_ID=abc123...&#10;TWITCH_CLIENT_SECRET=def456...&#10;TWITCH_ACCESS_TOKEN=xyz789...&#10;TWITCH_REFRESH_TOKEN=...&#10;TWITCH_BROADCASTER_ACCESS_TOKEN=...&#10;TWITCH_BROADCASTER_REFRESH_TOKEN=...&#10;TWITCH_BROADCASTER_NAME=ronin_style&#10;TWITCH_CHANNELS=ronin_style" style="width: 100%; height: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 12px;"></textarea>
         </div>
 
         <button class="btn btn-primary" onclick="importFromEnv()" style="width: 100%;">
@@ -1137,11 +1187,11 @@ function generateHTML() {
 
       <div class="section">
         <h3>�🔐 Authorize Account</h3>
-        <p>Select an account and authorize it with Twitch:</p>
+        <p>Authorize your bot and broadcaster account with Twitch OAuth</p>
         
         <div style="margin-bottom: 20px;">
           <label style="display: block; margin-bottom: 10px; font-weight: bold;">Select Account:</label>
-          <select id="auth-account-select" style="width: 100%; padding: 10px; font-size: 16px; border: 2px solid #2196f3; border-radius: 5px;">
+          <select id="auth-account-select" onchange="updateAuthButtons()" style="width: 100%; padding: 10px; font-size: 16px; border: 2px solid #2196f3; border-radius: 5px;">
             <option value="">-- Choose an account --</option>
           </select>
         </div>
@@ -1150,14 +1200,18 @@ function generateHTML() {
           <div id="auth-info-content"></div>
         </div>
 
-        <div style="display: flex; gap: 10px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <button class="btn btn-primary" id="auth-bot-btn" onclick="authorizeAccount('bot')" style="display: none;">
-            🤖 Authorize Bot Account
+            🤖 Authorize Bot
           </button>
           <button class="btn btn-primary" id="auth-broadcaster-btn" onclick="authorizeAccount('broadcaster')" style="display: none; background: #2196f3;">
-            📺 Authorize Broadcaster Account
+            📺 Authorize Broadcaster
           </button>
         </div>
+
+        <p style="font-size: 12px; color: #666; margin-top: 15px;">
+          💡 Both accounts use the same Client ID/Secret from your Twitch application. Authorize both to enable all bot features.
+        </p>
       </div>
 
       <div class="section">
@@ -1670,7 +1724,8 @@ function generateHTML() {
     async function loadAccounts() {
       try {
         const response = await fetch('/api/accounts');
-        const accounts = await response.json();
+        const data = await response.json();
+        const accounts = data.accounts || [];
         
         let html = '';
         if (accounts.length === 0) {
@@ -1680,7 +1735,7 @@ function generateHTML() {
           for (const account of accounts) {
             const tokenColor = getStatusColor(account.tokenStatus);
             const broadcasterColor = getStatusColor(account.broadcasterTokenStatus);
-            const card = '<div style="border: 2px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9;"><h4 style="margin-top: 0; color: #9146ff;">' + account.name + '</h4><div style="font-size: 13px; color: #666; line-height: 1.6;"><div><strong>Channel:</strong> ' + account.broadcasterName + '</div><div><strong>Bot Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + tokenColor + '; color: white;">' + account.tokenStatus.toUpperCase() + '</span></div>' + (account.hasBroadcasterToken ? '<div><strong>Broadcaster Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + broadcasterColor + '; color: white;">' + account.broadcasterTokenStatus.toUpperCase() + '</span></div>' : '') + '<div><strong>Scopes:</strong> ' + account.tokenScopes.length + '</div></div></div>';
+            const card = '<div style="border: 2px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9;"><h4 style="margin-top: 0; color: #9146ff;">' + account.name + '</h4><div style="font-size: 13px; color: #666; line-height: 1.6;"><div><strong>Channel:</strong> ' + account.broadcasterName + '</div><div><strong>Bot Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + tokenColor + '; color: white;">' + account.tokenStatus.toUpperCase() + '</span></div><div><strong>Bot Scopes:</strong> ' + account.tokenScopes.length + '</div>' + (account.hasBroadcasterToken ? '<div><strong>Broadcaster Token:</strong> <span style="display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; background: ' + broadcasterColor + '; color: white;">' + account.broadcasterTokenStatus.toUpperCase() + '</span></div><div><strong>Broadcaster Scopes:</strong> ' + account.broadcasterScopes.length + '</div>' : '') + '</div></div>';
             html += card;
           }
           html += '</div>';
@@ -1728,14 +1783,29 @@ function generateHTML() {
       }
     }
 
+    function updateAuthButtons() {
+      const accountName = document.getElementById('auth-account-select').value;
+      const botBtn = document.getElementById('auth-bot-btn');
+      const broadcasterBtn = document.getElementById('auth-broadcaster-btn');
+      
+      if (!accountName) {
+        botBtn.style.display = 'none';
+        broadcasterBtn.style.display = 'none';
+      } else {
+        botBtn.style.display = 'block';
+        broadcasterBtn.style.display = 'block';
+      }
+    }
+
     async function authorizeAccount(type) {
       const accountName = document.getElementById('auth-account-select').value;
       if (!accountName) { alert('Please select an account first'); return; }
       try {
         let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions'];
         const response = await fetch('/api/accounts/' + accountName);
-        const account = await response.json();
-        if (!account.clientId) { alert('Account is missing Client ID'); return; }
+        const data = await response.json();
+        const account = data.account;
+        if (!account || !account.clientId) { alert('Account is missing Client ID'); return; }
         const authUrl = 'https://id.twitch.tv/oauth2/authorize?client_id=' + account.clientId + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) + '&response_type=code&scope=' + scopes.join('+') + '&state=' + accountName + '_' + type;
         window.location.href = authUrl;
       } catch (error) {
@@ -1866,7 +1936,19 @@ app.post('/generate-auth-url', (req, res) => {
 // Callback handler
 app.get('/callback', async (req, res) => {
   const { code, error, error_description, state } = req.query;
-  const accountType = state || 'bot';
+  
+  // Parse state to get account name and type (format: "accountName_type")
+  let accountName = null;
+  let accountType = 'bot';
+  
+  if (state && state.includes('_')) {
+    const parts = state.split('_');
+    accountType = parts[parts.length - 1]; // Get the last part (bot or broadcaster)
+    accountName = parts.slice(0, -1).join('_'); // Get everything except the last part
+  } else if (state) {
+    accountName = state;
+    accountType = 'bot';
+  }
 
   if (error) {
     console.log('Authorization error:', error, error_description);
@@ -1883,7 +1965,7 @@ app.get('/callback', async (req, res) => {
     return res.send('<h1>Error: No authorization code received</h1>');
   }
 
-  console.log(`Received authorization code for ${accountType} account`);
+  console.log(`Received authorization code for ${accountType} account: ${accountName}`);
 
   try {
     const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
@@ -1903,32 +1985,32 @@ app.get('/callback', async (req, res) => {
     const scopeArray = Array.isArray(grantedScopes) ? grantedScopes : [];
     grantedScopes = scopeArray.join(', ');
 
-    // Try to save to account manager first (if account info provided in query params)
-    // Otherwise, save to .env for backward compatibility
-    const accountNameFromQuery = req.query.account;
+    // Check if this is account manager mode (state has underscore) or manual mode (state is just "bot" or "broadcaster")
+    const isAccountManagerMode = state && state.includes('_');
     
-    if (accountNameFromQuery) {
+    // Save to account manager only if using account manager mode
+    if (isAccountManagerMode && accountName) {
       try {
-        const account = accountManager.getAccount(accountNameFromQuery);
+        const account = accountManager.getAccount(accountName);
         if (!account) {
           return res.send(`
             <h1>Account Not Found</h1>
-            <p>Account "${accountNameFromQuery}" does not exist in the account manager.</p>
+            <p>Account "${accountName}" does not exist in the account manager.</p>
             <a href="/">Go back</a>
           `);
         }
 
-        // Update account with new tokens
+        // Update account with new tokens based on type
         const scopeString = scopeArray.join(' ');
         if (accountType === 'broadcaster') {
-          accountManager.updateTokens(accountNameFromQuery, {
+          accountManager.updateTokens(accountName, {
             broadcasterAccessToken: access_token,
             broadcasterRefreshToken: refresh_token,
             broadcasterScopes: scopeArray,
             broadcasterExpiresIn: expires_in
           });
-        } else {
-          accountManager.updateTokens(accountNameFromQuery, {
+        } else if (accountType === 'bot') {
+          accountManager.updateTokens(accountName, {
             accessToken: access_token,
             refreshToken: refresh_token,
             scopes: scopeArray,
@@ -1936,7 +2018,7 @@ app.get('/callback', async (req, res) => {
           });
         }
 
-        console.log(`Tokens saved to account: ${accountNameFromQuery} (${accountType})`);
+        console.log(`Tokens saved to account: ${accountName} (${accountType})`);
 
         res.send(`
           <!DOCTYPE html>
@@ -1976,13 +2058,13 @@ app.get('/callback', async (req, res) => {
             <div class="container">
               <h1 class="success">Success! 🎉</h1>
               <p>Your <strong>${accountType}</strong> account tokens have been saved to the account manager</p>
-              <p><strong>Account:</strong> ${accountNameFromQuery}</p>
+              <p><strong>Account:</strong> ${accountName}</p>
               <p><strong>Access Token:</strong> ${access_token.substring(0, 20)}...</p>
               <p><strong>Granted Scopes:</strong></p>
               <code>${grantedScopes}</code>
               <p>${accountType === 'broadcaster' 
                 ? '✅ Broadcaster tokens configured! You can now use EventSub features.' 
-                : '✅ Bot account tokens configured! Start your bot with: node Excella --account=' + accountNameFromQuery}</p>
+                : '✅ Bot account tokens configured! Start your bot with: node Excella --account=' + accountName}</p>
               <p><a href="/">Back to account manager</a></p>
               <script>setTimeout(() => window.close(), 15000);</script>
             </div>
