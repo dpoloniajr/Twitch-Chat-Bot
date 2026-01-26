@@ -99,6 +99,7 @@ let botStartTime = Date.now();
 let initComplete = false;
 const dashboardBaseUrl = `http://localhost:${process.env.DASHBOARD_PORT || 3001}`;
 let customCommands = [];
+let builtinCommands = [];
 let eventSub = null;
 let broadcasterEventSub = null;
 
@@ -433,6 +434,24 @@ function setupBroadcasterEventSub() {
   }
 }
 const commandCooldowns = new Map();
+
+// Load built-in command configuration
+async function loadBuiltinCommands() {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/builtin-commands`);
+    builtinCommands = response.data || [];
+    console.log(`✓ Loaded ${builtinCommands.length} built-in command configurations`);
+  } catch (err) {
+    console.error('Failed to load built-in commands config:', err.message);
+    builtinCommands = [];
+  }
+}
+
+// Get cooldown for a command
+function getCommandCooldown(commandName) {
+  const cmd = builtinCommands.find(c => c.name === commandName);
+  return cmd ? (cmd.cooldownSeconds || 0) : 0;
+}
 
 function formatResponse(template, ctx) {
   return template
@@ -789,6 +808,9 @@ async function init() {
     console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
     console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
     
+    // Load built-in command configuration
+    await loadBuiltinCommands();
+    
     // Update dashboard
     updateDashboard();
     initComplete = true;
@@ -1095,8 +1117,8 @@ async function handleClip(channel, username) {
     sendChatMessage(channel, '@' + username + ' Bot is still initializing. Please try again in a moment.');
     return;
   }
-  // Built-in cooldown to prevent spam
-  const cooldownSeconds = 60;
+  // Use configurable cooldown from dashboard
+  const cooldownSeconds = getCommandCooldown('!clip');
   if (isOnCooldown('clip', cooldownSeconds)) {
     const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('clip') || 0));
     const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
@@ -1419,25 +1441,78 @@ const commandRegistry = new Map([
     await handleClip(channel, username);
   }}],
   ['!followage', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!followage');
+    if (isOnCooldown('followage', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('followage') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !followage is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handleFollowage(channel, username, args[0]);
+    if (cooldownSeconds > 0) setCooldown('followage');
   }}],
   ['!shoutout', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!shoutout');
+    if (isOnCooldown('shoutout', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('shoutout') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !shoutout is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handleShoutout(channel, username, args[0]);
+    if (cooldownSeconds > 0) setCooldown('shoutout');
   }}],
   ['!poll', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!poll');
+    if (isOnCooldown('poll', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('poll') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !poll is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handlePoll(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('poll');
   }}],
   ['!prediction', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!prediction');
+    if (isOnCooldown('prediction', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('prediction') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !prediction is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handlePrediction(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('prediction');
   }}],
   ['!title', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!title');
+    if (isOnCooldown('title', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('title') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !title is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handleTitle(channel, username, args.join(' '));
+    if (cooldownSeconds > 0) setCooldown('title');
   }}],
   ['!game', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!game');
+    if (isOnCooldown('game', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('game') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !game is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
     await handleGame(channel, username, args.join(' '));
+    if (cooldownSeconds > 0) setCooldown('game');
   }}],
   ['!commands', { perm: 'everyone', handler: async ({ channel }) => {
+    const cooldownSeconds = getCommandCooldown('!commands');
+    if (isOnCooldown('commands', cooldownSeconds)) {
+      return; // Silently fail on cooldown for !commands
+    }
     await handleCommands(channel);
+    if (cooldownSeconds > 0) setCooldown('commands');
   }}],
   ['!addfilter', { perm: 'mod', handler: async ({ channel, username, args }) => {
     if (!args[0]) {

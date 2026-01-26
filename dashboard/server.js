@@ -18,6 +18,7 @@ const logsDir = path.join(__dirname, 'logs');
 const commandLogsFile = path.join(logsDir, 'commands.json');
 const userStatsFile = path.join(logsDir, 'stats.json');
 const customCommandsFile = path.join(logsDir, 'customCommands.json');
+const builtinCommandsFile = path.join(logsDir, 'builtinCommands.json');
 const announcementsFile = path.join(logsDir, 'announcements.json');
 const redemptionsFile = path.join(logsDir, 'redemptions.json');
 const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
@@ -98,6 +99,13 @@ async function initLogs() {
       await fs.access(eventSubEventsFile);
     } catch {
       await fs.writeFile(eventSubEventsFile, JSON.stringify([], null, 2));
+    }
+    
+    // Initialize built-in commands configuration
+    try {
+      await fs.access(builtinCommandsFile);
+    } catch {
+      // Already created
     }
   } catch (error) {
     console.error('Failed to initialize logs:', error.message);
@@ -202,6 +210,43 @@ app.get('/api/custom-commands', async (req, res) => {
   try {
     const data = await fs.readFile(customCommandsFile, 'utf8');
     res.json(JSON.parse(data));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Built-in commands configuration
+app.get('/api/builtin-commands', async (req, res) => {
+  try {
+    const data = await fs.readFile(builtinCommandsFile, 'utf8');
+    res.json(JSON.parse(data));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/builtin-commands/:name', async (req, res) => {
+  try {
+    const { cooldownSeconds } = req.body;
+    const targetName = req.params.name.trim().toLowerCase();
+    
+    if (!targetName.startsWith('!')) {
+      return res.status(400).json({ error: 'Command name must start with !' });
+    }
+    
+    const commands = JSON.parse(await fs.readFile(builtinCommandsFile, 'utf8'));
+    const command = commands.find(cmd => cmd.name === targetName);
+    
+    if (!command) {
+      return res.status(404).json({ error: 'Command not found' });
+    }
+    
+    // Update cooldown
+    command.cooldownSeconds = Number.isFinite(Number(cooldownSeconds)) && Number(cooldownSeconds) >= 0 ? Number(cooldownSeconds) : 0;
+    
+    await fs.writeFile(builtinCommandsFile, JSON.stringify(commands, null, 2));
+    broadcastState({ type: 'builtinCommands', data: commands });
+    res.json({ success: true, command });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

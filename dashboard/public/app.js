@@ -25,6 +25,8 @@ function initWebSocket() {
     } else if (message.type === 'customCommands') {
       botState.customCommands = message.data;
       renderCustomCommands();
+    } else if (message.type === 'builtinCommands') {
+      renderBuiltinCommands(message.data);
     } else if (message.type === 'redemption') {
       loadRedemptions();
     } else if (message.type === 'eventsub-event') {
@@ -335,6 +337,64 @@ async function deleteCommand(name) {
   loadCustomCommands();
 }
 
+// Built-in commands configuration
+async function loadBuiltinCommands() {
+  try {
+    const res = await fetch('/api/builtin-commands');
+    const commands = await res.json();
+    renderBuiltinCommands(commands);
+  } catch (error) {
+    console.error('Failed to load built-in commands:', error);
+  }
+}
+
+function renderBuiltinCommands(commands) {
+  const tbody = document.getElementById('builtinCommandsList');
+  if (!tbody) return;
+
+  tbody.innerHTML = commands.map(cmd => `
+    <tr>
+      <td><strong>${cmd.name}</strong></td>
+      <td>${cmd.description}</td>
+      <td>${cmd.permission}</td>
+      <td>
+        <input type="number" 
+               id="cooldown-${cmd.name.replace('!', '')}" 
+               value="${cmd.cooldownSeconds || 0}" 
+               min="0" 
+               style="width: 80px; padding: 5px;">
+      </td>
+      <td>
+        <button class="btn btn-primary" onclick="updateBuiltinCommandCooldown('${cmd.name}')">Update</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function updateBuiltinCommandCooldown(commandName) {
+  const inputId = `cooldown-${commandName.replace('!', '')}`;
+  const cooldownSeconds = Number(document.getElementById(inputId).value) || 0;
+
+  try {
+    const res = await fetch(`/api/builtin-commands/${encodeURIComponent(commandName)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cooldownSeconds })
+    });
+
+    if (res.ok) {
+      alert(`${commandName} cooldown updated to ${cooldownSeconds}s`);
+      loadBuiltinCommands();
+    } else {
+      const error = await res.json();
+      alert(`Failed to update: ${error.error}`);
+    }
+  } catch (error) {
+    console.error('Failed to update built-in command:', error);
+    alert('Failed to update cooldown');
+  }
+}
+
 // Announcements
 async function loadAnnouncements() {
   try {
@@ -500,6 +560,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh logs and stats on page load
   refreshLogs();
   refreshStats();
+  loadCustomCommands();
+  loadBuiltinCommands();
   loadAnnouncements();
   loadRedemptions();
   loadEventSubEvents();

@@ -18,6 +18,7 @@
         <li><a href="#events" onclick="showPage('events')" class="nav-link">Polls/Predictions</a></li>
         <li><a href="#redemptions" onclick="showPage('redemptions')" class="nav-link">Redemptions</a></li>
         <li><a href="#filters" onclick="showPage('filters')" class="nav-link">Chat Filters</a></li>
+        <li><a href="#builtin" onclick="showPage('builtin')" class="nav-link">Built-in Commands</a></li>
         <li><a href="#custom" onclick="showPage('custom')" class="nav-link">Custom Commands</a></li>
         <li><a href="#logs" onclick="showPage('logs')" class="nav-link">Logs</a></li>
         <li><a href="#stats" onclick="showPage('stats')" class="nav-link">Stats</a></li>
@@ -271,6 +272,31 @@
           <!-- Will be populated by JavaScript -->
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Built-in Commands Page -->
+  <div id="builtin" class="page">
+    <div class="container">
+      <h2>Built-in Commands Configuration</h2>
+      <p>Configure cooldowns for built-in bot commands. Set to 0 to disable cooldown.</p>
+
+      <div class="logs-controls" style="margin-top:20px;">
+        <button class="btn btn-secondary" onclick="loadBuiltinCommands()">Refresh</button>
+      </div>
+
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Description</th>
+            <th>Permission</th>
+            <th>Cooldown (seconds)</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="builtinCommandsList"></tbody>
+      </table>
     </div>
   </div>
 
