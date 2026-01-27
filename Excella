@@ -587,8 +587,10 @@ async function validateAndRefreshTokens() {
     console.log('⚠️  Bot token is invalid or expired. Attempting to refresh...');
     const refreshedBot = await refreshToken(config.accessToken, config.refreshToken, 'bot');
     if (refreshedBot) {
-      config.accessToken = refreshedBot;
-      process.env.TWITCH_ACCESS_TOKEN = refreshedBot;
+      config.accessToken = refreshedBot.accessToken;
+      config.refreshToken = refreshedBot.refreshToken;
+      process.env.TWITCH_ACCESS_TOKEN = refreshedBot.accessToken;
+      process.env.TWITCH_REFRESH_TOKEN = refreshedBot.refreshToken;
       cachedTokenValidation.bot.lastCheck = 0; // Clear cache to revalidate
       console.log('✓ Bot token refreshed successfully');
       tokensUpdated = true;
@@ -611,7 +613,8 @@ async function validateAndRefreshTokens() {
         'broadcaster'
       );
       if (refreshedBroadcaster) {
-        process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster;
+        process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster.accessToken;
+        process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = refreshedBroadcaster.refreshToken;
         cachedTokenValidation.broadcaster.lastCheck = 0; // Clear cache to revalidate
         console.log('✓ Broadcaster token refreshed successfully');
         tokensUpdated = true;
@@ -770,7 +773,14 @@ async function refreshToken(accessToken, refreshToken, accountType) {
     fs.writeFileSync('.env', envContent);
     console.log(`  Updated ${accountType} tokens in .env`);
     
-    return newAccessToken;
+    // Also update process.env for broadcaster tokens
+    if (accountType === 'broadcaster') {
+      process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = newRefreshToken;
+    } else {
+      process.env.TWITCH_REFRESH_TOKEN = newRefreshToken;
+    }
+    
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
   } catch (error) {
     console.error(`Error refreshing ${accountType} token:`, error.message);
     return null;
