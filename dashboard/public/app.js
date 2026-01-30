@@ -651,10 +651,9 @@ async function updateOverlayConfig(overlay, setting, value) {
   }
 }
 
-function copyToClipboard(elementId) {
+function copyToClipboard(elementId, button) {
   const element = document.getElementById(elementId);
-  const button = event.target;
-  if (!element) return;
+  if (!element || !button) return;
 
   element.select();
   document.execCommand('copy');
