@@ -111,10 +111,10 @@ async function initLogs() {
     } catch {
       await fs.writeFile(obsConfigFile, JSON.stringify({
         overlays: {
-          alerts: { enabled: true, volume: 0.8, duration: 5 },
-          recentEvents: { enabled: true, limit: 10, showTime: true },
-          chatBox: { enabled: true, messageTimeout: 8, hideBot: false },
-          goalBar: { enabled: true, type: 'follow', goal: 1000 }
+          alerts: { enabled: true, volume: 0.8, duration: 5, urlParams: '' },
+          recentEvents: { enabled: true, limit: 10, showTime: true, urlParams: '' },
+          chatBox: { enabled: true, messageTimeout: 8, hideBot: false, urlParams: '' },
+          goalBar: { enabled: true, type: 'follow', goal: 1000, urlParams: '' }
         }
       }, null, 2));
     }

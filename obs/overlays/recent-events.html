@@ -56,16 +56,75 @@
 
       const eventsList = document.getElementById('events-list');
 
-      // Configuration
-      const config = {
-        maxEvents: parseInt(OverlayUtils.getQueryParam('limit')) || 10,
-        eventType: OverlayUtils.getQueryParam('type') || 'all',
-        showTime: OverlayUtils.getQueryParam('showTime') !== 'false',
+      // Configuration - loaded from dashboard /obs/config endpoint
+      let config = {
+        maxEvents: 10,
+        eventType: 'all',
+        showTime: true,
         updateInterval: 5000 // Refresh events every 5 seconds
       };
 
       // Store events in memory
       let events = [];
+
+      // Load configuration from dashboard
+      async function loadConfig() {
+        try {
+          const res = await fetch('/obs/config');
+          const obsConfig = await res.json();
+          const recentEventsConfig = obsConfig.overlays.recentEvents;
+
+          // Apply dashboard configuration
+          config.maxEvents = recentEventsConfig.limit || 10;
+          config.eventType = 'all';
+          config.showTime = recentEventsConfig.showTime !== false;
+          config.updateInterval = 5000;
+
+          // Allow URL parameters to override dashboard config
+          const paramLimit = parseInt(OverlayUtils.getQueryParam('limit'));
+          if (!isNaN(paramLimit)) config.maxEvents = paramLimit;
+          const paramType = OverlayUtils.getQueryParam('type');
+          if (paramType) config.eventType = paramType;
+          const paramShowTime = OverlayUtils.getQueryParam('showTime');
+          if (paramShowTime !== null) config.showTime = paramShowTime !== 'false';
+        } catch (error) {
+          console.error('Failed to load OBS config, using defaults:', error);
+        }
+
+        // Start fetching events
+        fetchRecentEvents();
+        setInterval(fetchRecentEvents, config.updateInterval);
+
+        // Initialize WebSocket client
+        initializeClient();
+      }
+
+      function initializeClient() {
+        const client = new OverlayClient();
+
+        // Listen for new events
+        client.on('eventsub-event', (data) => {
+          if (data.event || data.alertType) {
+            events.unshift(data);
+            if (events.length > config.maxEvents) {
+              events.pop();
+            }
+            renderEvents();
+          }
+        });
+
+        client.on('alert', (data) => {
+          events.unshift(data);
+          if (events.length > config.maxEvents) {
+            events.pop();
+          }
+          renderEvents();
+        });
+
+        client.on('connected', () => {
+          console.log('[RecentEventsOverlay] WebSocket connected');
+        });
+      }
 
       /**
        * Fetch recent events from server
@@ -159,34 +218,13 @@
         renderEvents();
       }
 
-      // Initialize WebSocket client
-      const client = new OverlayClient();
-
-      // Listen for alert events and add them to the list
-      client.on('alert', (data) => {
-        console.log('[RecentEventsOverlay] Received alert:', data);
-        addEvent({
-          type: data.alertType,
-          user: data.user,
-          timestamp: new Date().toISOString(),
-          ...data
-        });
-      });
-
-      // Fetch initial events
-      fetchRecentEvents();
-
-      // Poll for updates every interval
-      setInterval(fetchRecentEvents, config.updateInterval);
+      // Load configuration from dashboard and initialize
+      loadConfig();
 
       // Expose for debugging
       window.eventsList = events;
-      window.client = client;
 
       console.log('[RecentEventsOverlay] Ready!');
-      console.log(`  Max events: ${config.maxEvents}`);
-      console.log(`  Event type: ${config.eventType}`);
-      console.log(`  Show time: ${config.showTime}`);
     })();
   </script>
 </body>

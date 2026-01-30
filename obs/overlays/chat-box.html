@@ -44,18 +44,68 @@
 
       const chatMessages = document.getElementById('chat-messages');
 
-      // Configuration
-      const config = {
-        maxMessages: parseInt(OverlayUtils.getQueryParam('limit')) || 15,
-        messageTimeout: parseInt(OverlayUtils.getQueryParam('timeout')) || 8000,
-        hideBot: OverlayUtils.getQueryParam('hideBot') === 'true',
-        hideCommands: OverlayUtils.getQueryParam('hideCommands') === 'true',
-        colorByRole: OverlayUtils.getQueryParam('colorByRole') === 'true'
+      // Configuration - loaded from dashboard /obs/config endpoint
+      let config = {
+        maxMessages: 15,
+        messageTimeout: 8000,
+        hideBot: false,
+        hideCommands: false,
+        colorByRole: false
       };
 
       // Store messages
       let messages = [];
       let messageTimeouts = new Map();
+
+      // Load configuration from dashboard
+      async function loadConfig() {
+        try {
+          const res = await fetch('/obs/config');
+          const obsConfig = await res.json();
+          const chatBoxConfig = obsConfig.overlays.chatBox;
+
+          // Apply dashboard configuration
+          config.maxMessages = 15;
+          config.messageTimeout = (chatBoxConfig.messageTimeout || 8) * 1000;
+          config.hideBot = chatBoxConfig.hideBot === true;
+          config.hideCommands = false;
+          config.colorByRole = false;
+
+          // Allow URL parameters to override dashboard config
+          const paramLimit = parseInt(OverlayUtils.getQueryParam('limit'));
+          if (!isNaN(paramLimit)) config.maxMessages = paramLimit;
+          const paramTimeout = parseInt(OverlayUtils.getQueryParam('timeout'));
+          if (!isNaN(paramTimeout)) config.messageTimeout = paramTimeout;
+          if (OverlayUtils.getQueryParam('hideBot') !== null) config.hideBot = OverlayUtils.getQueryParam('hideBot') === 'true';
+          if (OverlayUtils.getQueryParam('hideCommands') !== null) config.hideCommands = OverlayUtils.getQueryParam('hideCommands') === 'true';
+          if (OverlayUtils.getQueryParam('colorByRole') !== null) config.colorByRole = OverlayUtils.getQueryParam('colorByRole') === 'true';
+        } catch (error) {
+          console.error('Failed to load OBS config, using defaults:', error);
+        }
+
+        // Initialize WebSocket client
+        initializeClient();
+      }
+
+      function initializeClient() {
+        const client = new OverlayClient();
+
+        // Listen for chat messages
+        client.on('chat', (data) => {
+          console.log('[ChatBoxOverlay] Received chat message:', data);
+          addMessage(data);
+        });
+
+        client.on('connected', () => {
+          console.log('[ChatBoxOverlay] WebSocket connected');
+        });
+
+        // Expose for debugging
+        window.chatMessages = messages;
+        window.client = client;
+
+        console.log('[ChatBoxOverlay] Ready!');
+      }
 
       /**
        * Get color for user role
@@ -141,34 +191,8 @@
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
 
-      // Initialize WebSocket client
-      const client = new OverlayClient();
-
-      // Listen for chat messages
-      // The dashboard broadcasts chat messages via WebSocket with type: 'chat'
-      client.on('chat', (data) => {
-        console.log('[ChatBoxOverlay] Received chat message:', data);
-        addMessage({
-          username: data.username || data.user,
-          message: data.message || data.text,
-          timestamp: new Date().toISOString(),
-          role: data.role || data.badges?.moderator ? 'moderator' : null,
-          isBroadcaster: data.isBroadcaster || data.badges?.broadcaster,
-          ...data
-        });
-      });
-
-      client.on('connected', () => {
-        console.log('[ChatBoxOverlay] WebSocket connected');
-      });
-
-      client.on('disconnected', () => {
-        console.log('[ChatBoxOverlay] WebSocket disconnected, will reconnect...');
-      });
-
-      // Expose for debugging
-      window.chatMessages = messages;
-      window.client = client;
+      // Load configuration from dashboard and initialize
+      loadConfig();
 
       // Test function
       window.testMessage = (username = 'TestUser', message = 'Hello chat!') => {
@@ -178,14 +202,6 @@
           timestamp: new Date().toISOString()
         });
       };
-
-      console.log('[ChatBoxOverlay] Ready!');
-      console.log(`  Max messages: ${config.maxMessages}`);
-      console.log(`  Message timeout: ${config.messageTimeout}ms`);
-      console.log(`  Hide bot: ${config.hideBot}`);
-      console.log(`  Hide commands: ${config.hideCommands}`);
-      console.log(`  Color by role: ${config.colorByRole}`);
-      console.log('  testMessage(username, text) - Test chat message');
     })();
   </script>
 </body>
