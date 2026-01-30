@@ -1,0 +1,559 @@
+/**
+ * OBS Overlay Base Styles
+ * Shared styles and animations for all OBS browser source overlays
+ */
+
+/* Reset and base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Container for alerts */
+.overlay-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Alert box base styling */
+.alert-box {
+  background: linear-gradient(135deg, rgba(30, 30, 30, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
+  border: 2px solid #9147ff;
+  border-radius: 12px;
+  padding: 20px 30px;
+  text-align: center;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(145, 71, 255, 0.3);
+}
+
+.alert-box.follow {
+  border-color: #00ff7f;
+  box-shadow: 0 8px 32px rgba(0, 255, 127, 0.3);
+}
+
+.alert-box.subscription {
+  border-color: #ff6b9d;
+  box-shadow: 0 8px 32px rgba(255, 107, 157, 0.3);
+}
+
+.alert-box.bits {
+  border-color: #ffbb00;
+  box-shadow: 0 8px 32px rgba(255, 187, 0, 0.3);
+}
+
+.alert-box.raid {
+  border-color: #00d4ff;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.3);
+}
+
+.alert-box.redemption {
+  border-color: #9147ff;
+  box-shadow: 0 8px 32px rgba(145, 71, 255, 0.3);
+}
+
+/* Typography */
+.alert-title {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.alert-username {
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  margin-bottom: 8px;
+}
+
+.alert-message {
+  font-size: 18px;
+  color: #ccc;
+  margin-top: 10px;
+}
+
+.alert-details {
+  font-size: 16px;
+  color: #aaa;
+}
+
+/* Username colors by alert type */
+.alert-box.follow .alert-username {
+  color: #00ff7f;
+}
+
+.alert-box.subscription .alert-username {
+  color: #ff6b9d;
+}
+
+.alert-box.bits .alert-username {
+  color: #ffbb00;
+}
+
+.alert-box.raid .alert-username {
+  color: #00d4ff;
+}
+
+.alert-box.redemption .alert-username {
+  color: #9147ff;
+}
+
+/* ============================================
+   ANIMATION KEYFRAMES
+   ============================================ */
+
+/* Fade animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOutUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+}
+
+/* Slide animations */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100px);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+}
+
+/* Scale animations */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Pulse effect */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Glow effect */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+}
+
+/* Shake effect (for bits) */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+/* Float effect */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Rotate in */
+@keyframes rotateIn {
+  from {
+    opacity: 0;
+    transform: rotate(-200deg) scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
+/* ============================================
+   ANIMATION UTILITY CLASSES
+   ============================================ */
+
+/* Enter animations */
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-fadeInDown {
+  animation: fadeInDown 0.5s ease-out forwards;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.5s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.5s ease-out forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.4s ease-out forwards;
+}
+
+.animate-bounceIn {
+  animation: bounceIn 0.6s ease-out forwards;
+}
+
+.animate-rotateIn {
+  animation: rotateIn 0.5s ease-out forwards;
+}
+
+/* Exit animations */
+.animate-fadeOut {
+  animation: fadeOut 0.5s ease-out forwards;
+}
+
+.animate-fadeOutUp {
+  animation: fadeOutUp 0.5s ease-out forwards;
+}
+
+.animate-fadeOutDown {
+  animation: fadeOutDown 0.5s ease-out forwards;
+}
+
+.animate-slideOutLeft {
+  animation: slideOutLeft 0.5s ease-out forwards;
+}
+
+.animate-slideOutRight {
+  animation: slideOutRight 0.5s ease-out forwards;
+}
+
+.animate-scaleOut {
+  animation: scaleOut 0.4s ease-out forwards;
+}
+
+/* Continuous animations */
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Hidden state */
+.hidden {
+  display: none !important;
+}
+
+/* ============================================
+   RECENT EVENTS STYLES
+   ============================================ */
+
+.recent-events-container {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recent-event-item {
+  background: rgba(30, 30, 30, 0.9);
+  border-left: 4px solid #9147ff;
+  border-radius: 4px;
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recent-event-item.follow {
+  border-left-color: #00ff7f;
+}
+
+.recent-event-item.subscription {
+  border-left-color: #ff6b9d;
+}
+
+.recent-event-item.bits {
+  border-left-color: #ffbb00;
+}
+
+.recent-event-item.raid {
+  border-left-color: #00d4ff;
+}
+
+.event-icon {
+  font-size: 20px;
+}
+
+.event-text {
+  flex: 1;
+  color: #fff;
+  font-size: 14px;
+}
+
+.event-time {
+  color: #666;
+  font-size: 12px;
+}
+
+/* ============================================
+   GOAL BAR STYLES
+   ============================================ */
+
+.goal-container {
+  width: 100%;
+  padding: 20px;
+}
+
+.goal-bar-wrapper {
+  background: rgba(30, 30, 30, 0.9);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.goal-title {
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.goal-bar {
+  height: 30px;
+  background: rgba(60, 60, 60, 0.8);
+  border-radius: 15px;
+  overflow: hidden;
+  position: relative;
+}
+
+.goal-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #9147ff 0%, #bf94ff 100%);
+  border-radius: 15px;
+  transition: width 0.5s ease-out;
+}
+
+.goal-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-weight: bold;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* ============================================
+   CHAT BOX STYLES
+   ============================================ */
+
+.chat-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chat-message {
+  background: rgba(30, 30, 30, 0.85);
+  border-radius: 4px;
+  padding: 8px 12px;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.chat-username {
+  font-weight: bold;
+  color: #9147ff;
+  margin-right: 8px;
+}
+
+.chat-text {
+  color: #eee;
+}
+
+/* Scrollbar styling */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: #9147ff;
+  border-radius: 3px;
+}

@@ -13,6 +13,9 @@ const wss = new WebSocket.Server({ server });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve OBS overlay files from the obs/ directory at root level
+app.use('/obs', express.static(path.join(__dirname, '..', 'obs')));
+
 // Paths for logs
 const logsDir = path.join(__dirname, 'logs');
 const commandLogsFile = path.join(logsDir, 'commands.json');

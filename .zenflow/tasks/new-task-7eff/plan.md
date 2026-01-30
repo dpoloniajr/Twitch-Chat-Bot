@@ -18,47 +18,74 @@ Do not make assumptions on important decisions — get clarification first.
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: 7e457a16-195a-4da3-a2c3-83d3a4cf7e4d -->
 
-Assess the task's difficulty, as underestimating it leads to poor outcomes.
-- easy: Straightforward implementation, trivial bug fix or feature
-- medium: Moderate complexity, some edge cases or caveats to consider
-- hard: Complex logic, many caveats, architectural considerations, or high-risk changes
-
-Create a technical specification for the task that is appropriate for the complexity level:
-- Review the existing codebase architecture and identify reusable components.
-- Define the implementation approach based on established patterns in the project.
-- Identify all source code files that will be created or modified.
-- Define any necessary data model, API, or interface changes.
-- Describe verification steps using the project's test and lint commands.
-
-Save the output to `{@artifacts_path}/spec.md` with:
-- Technical context (language, dependencies)
-- Implementation approach
-- Source code structure changes
-- Data model / API / interface changes
-- Verification approach
-
-If the task is complex enough, create a detailed implementation plan based on `{@artifacts_path}/spec.md`:
-- Break down the work into concrete tasks (incrementable, testable milestones)
-- Each task should reference relevant contracts and include verification steps
-- Replace the Implementation step below with the planned tasks
-
-Rule of thumb for step size: each step should represent a coherent unit of work (e.g., implement a component, add an API endpoint, write tests for a module). Avoid steps that are too granular (single function).
-
-Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warrant this breakdown, keep the Implementation step below as is.
+**Completed**: Created `spec.md` with full technical specification including:
+- Assessed complexity as **Medium**
+- Documented architecture: OBS Browser Source pattern using existing WebSocket infrastructure
+- Defined new file structure (`obs/overlays/`, `obs/css/`, `obs/js/`)
+- Specified API changes and new WebSocket message types
+- Broke implementation into 5 concrete steps below
 
 ---
 
-### [ ] Step: Implementation
+### [x] Step: OBS Overlay Infrastructure
+<!-- chat-id: 91d53e16-30d3-44de-b45c-c645cf8483b2 -->
 
-Implement the task according to the technical specification and general engineering best practices.
+Set up the basic file structure and Express routing for OBS overlays.
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase.
-3. Add and run relevant tests and linters.
-4. Perform basic manual verification if applicable.
-5. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+- [x] Create `/obs/` directory structure with `overlays/`, `css/`, `js/`, `assets/` folders
+- [x] Add static file serving for `/obs/` in `dashboard/server.js`
+- [x] Create `obs/css/overlay-base.css` with animation keyframes (fadeIn, slideIn, etc.)
+- [x] Create `obs/js/overlay-client.js` with shared WebSocket client module
+- [x] Verify pages load at expected URLs (e.g., `http://localhost:3001/obs/overlays/alerts.html`)
+
+---
+
+### [ ] Step: Alert Overlay Implementation
+
+Build the main alerts overlay with queue system.
+
+- [ ] Create `obs/overlays/alerts.html` with alert display container
+- [ ] Implement JavaScript alert queue with configurable timing
+- [ ] Add CSS animations (fade in/out, slide, pulse, etc.)
+- [ ] Handle all alert types: follow, sub, bits, raid, redemption
+- [ ] Add sound support with configurable volume
+- [ ] Test alert display and queue behavior
+
+---
+
+### [ ] Step: Enhanced EventSub Events
+
+Extend the bot to capture subscription and bits events.
+
+- [ ] Add subscription event handlers (`onChannelSubscription`, `onChannelSubscriptionGift`) to `Excella`
+- [ ] Add bits/cheer event handler (`onChannelCheer`) to `Excella`
+- [ ] Update `/api/eventsub-events` payloads with detailed info (tier, amount, message)
+- [ ] Add new WebSocket message type `'alert'` for overlay consumption
+- [ ] Document required additional scopes (`channel:read:subscriptions`, `bits:read`) in token-generator
+
+---
+
+### [ ] Step: Additional Overlays
+
+Build supplementary overlay pages.
+
+- [ ] Create `obs/overlays/recent-events.html` for scrolling latest follower/sub display
+- [ ] Create `obs/overlays/chat-box.html` for OBS chat overlay
+- [ ] Create `obs/overlays/goal-bar.html` for follow/sub goal progress
+- [ ] Add API endpoint `GET /obs/recent/:type` for recent events by type
+- [ ] Style all overlays with consistent theming
+
+---
+
+### [ ] Step: Configuration & Testing
+
+Add configuration system and test alert functionality.
+
+- [ ] Add OBS configuration storage (`dashboard/logs/obs-config.json`)
+- [ ] Add `GET /obs/config` and `POST /obs/config` endpoints
+- [ ] Add `POST /api/test-alert` endpoint for triggering test alerts
+- [ ] Test all alerts in OBS Browser Source
+- [ ] Write implementation report to `{@artifacts_path}/report.md`
