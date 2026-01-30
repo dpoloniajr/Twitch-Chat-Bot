@@ -25,6 +25,7 @@ const builtinCommandsFile = path.join(logsDir, 'builtinCommands.json');
 const announcementsFile = path.join(logsDir, 'announcements.json');
 const redemptionsFile = path.join(logsDir, 'redemptions.json');
 const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
+const obsConfigFile = path.join(logsDir, 'obs-config.json');
 const envPath = path.join(__dirname, '..', '.env');
 
 // Helper to upsert a key in the .env file
@@ -103,7 +104,21 @@ async function initLogs() {
     } catch {
       await fs.writeFile(eventSubEventsFile, JSON.stringify([], null, 2));
     }
-    
+
+    // Initialize OBS configuration
+    try {
+      await fs.access(obsConfigFile);
+    } catch {
+      await fs.writeFile(obsConfigFile, JSON.stringify({
+        overlays: {
+          alerts: { enabled: true, volume: 0.8, duration: 5 },
+          recentEvents: { enabled: true, limit: 10, showTime: true },
+          chatBox: { enabled: true, messageTimeout: 8, hideBot: false },
+          goalBar: { enabled: true, type: 'follow', goal: 1000 }
+        }
+      }, null, 2));
+    }
+
     // Initialize built-in commands configuration
     try {
       await fs.access(builtinCommandsFile);
@@ -602,6 +617,50 @@ app.delete('/api/filters/words/:word', async (req, res) => {
 
     broadcastState({ type: 'filters', data: chatFilters });
     res.json({ success: true, words: chatFilters.blacklistWords });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// OBS Configuration API
+
+// Get OBS configuration
+app.get('/obs/config', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(obsConfigFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update OBS configuration
+app.post('/obs/config', async (req, res) => {
+  try {
+    const config = req.body;
+    await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'obsConfig', data: config });
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update specific overlay configuration
+app.post('/obs/config/:overlay', async (req, res) => {
+  try {
+    const config = JSON.parse(await fs.readFile(obsConfigFile, 'utf8'));
+    const overlay = req.params.overlay.toLowerCase();
+
+    if (!config.overlays[overlay]) {
+      return res.status(404).json({ error: `Overlay '${overlay}' not found` });
+    }
+
+    config.overlays[overlay] = { ...config.overlays[overlay], ...req.body };
+    await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'obsConfig', data: config });
+
+    res.json({ success: true, config: config.overlays[overlay] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
