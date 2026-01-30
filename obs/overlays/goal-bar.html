@@ -151,14 +151,89 @@
     (function() {
       'use strict';
 
-      // Configuration
-      const config = {
-        type: OverlayUtils.getQueryParam('type') || 'follow',
-        goalTarget: parseInt(OverlayUtils.getQueryParam('goal')) || 1000,
-        title: OverlayUtils.getQueryParam('title') || (config.type === 'subscriber' ? 'Subscriber Goal' : 'Follower Goal')
+      // Configuration - loaded from dashboard /obs/config endpoint
+      let config = {
+        type: 'follow',
+        goalTarget: 1000,
+        title: 'Follower Goal'
       };
 
-      let goalCurrent = parseInt(OverlayUtils.getQueryParam('current')) || 0;
+      let goalCurrent = 0;
+
+      // Load configuration from dashboard
+      async function loadConfig() {
+        try {
+          const res = await fetch('/obs/config');
+          const obsConfig = await res.json();
+          const goalBarConfig = obsConfig.overlays.goalBar;
+
+          // Apply dashboard configuration
+          config.type = goalBarConfig.type || 'follow';
+          config.goalTarget = goalBarConfig.goal || 1000;
+          config.title = config.type === 'subscriber' ? 'Subscriber Goal' : 'Follower Goal';
+          goalCurrent = 0;
+
+          // Allow URL parameters to override dashboard config
+          const paramType = OverlayUtils.getQueryParam('type');
+          if (paramType) config.type = paramType;
+          const paramGoal = parseInt(OverlayUtils.getQueryParam('goal'));
+          if (!isNaN(paramGoal)) config.goalTarget = paramGoal;
+          const paramTitle = OverlayUtils.getQueryParam('title');
+          if (paramTitle) config.title = paramTitle;
+          const paramCurrent = parseInt(OverlayUtils.getQueryParam('current'));
+          if (!isNaN(paramCurrent)) goalCurrent = paramCurrent;
+        } catch (error) {
+          console.error('Failed to load OBS config, using defaults:', error);
+        }
+
+        // Initialize the display and WebSocket
+        initializeDisplay();
+        initializeClient();
+      }
+
+      function initializeDisplay() {
+        // Set title
+        goalTitle.textContent = config.title;
+
+        // Set type-specific styling
+        if (config.type === 'subscriber') {
+          goalProgress.classList.add('goal-subscriber');
+        } else {
+          goalProgress.classList.add('goal-follow');
+        }
+
+        // Update display
+        updateDisplay();
+      }
+
+      function initializeClient() {
+        const client = new OverlayClient();
+
+        // Listen for follow/subscriber events
+        client.on('eventsub-event', (data) => {
+          if ((config.type === 'follow' && data.event === 'follow') ||
+              (config.type === 'subscriber' && data.event === 'subscription')) {
+            goalCurrent++;
+            updateDisplay();
+          }
+        });
+
+        client.on('alert', (data) => {
+          if ((config.type === 'follow' && data.alertType === 'follow') ||
+              (config.type === 'subscriber' && data.alertType === 'subscription')) {
+            goalCurrent++;
+            updateDisplay();
+          }
+        });
+
+        client.on('connected', () => {
+          console.log('[GoalBarOverlay] WebSocket connected');
+        });
+
+        // Expose for debugging
+        window.goalCurrent = goalCurrent;
+        window.client = client;
+      }
 
       // DOM elements
       const goalTitle = document.getElementById('goal-title');
@@ -169,21 +244,10 @@
       const goalTargetEl = document.getElementById('goal-target');
       const goalRemainingEl = document.getElementById('goal-remaining');
 
-      // Set title
-      goalTitle.textContent = config.title;
-
-      // Set type-specific styling
-      if (config.type === 'subscriber') {
-        goalProgress.classList.add('goal-subscriber');
-      } else {
-        goalProgress.classList.add('goal-follow');
-      }
-
       /**
        * Update goal display
        */
-      function updateGoal(current) {
-        goalCurrent = current;
+      function updateDisplay() {
         const percentage = Math.min((goalCurrent / config.goalTarget) * 100, 100);
         const remaining = Math.max(config.goalTarget - goalCurrent, 0);
 
@@ -204,87 +268,30 @@
         console.log(`[GoalBarOverlay] Updated: ${goalCurrent}/${config.goalTarget} (${percentage.toFixed(1)}%)`);
       }
 
-      /**
-       * Load initial goal data from API
-       */
-      async function loadGoalData() {
-        try {
-          const response = await fetch('/obs/config');
-          const data = await response.json();
-
-          if (data[`goal${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`]) {
-            config.goalTarget = data[`goal${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`];
-          }
-          if (data[`current${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`]) {
-            goalCurrent = data[`current${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`];
-          }
-
-          updateGoal(goalCurrent);
-        } catch (err) {
-          console.log('[GoalBarOverlay] No config API available, using defaults');
-          updateGoal(goalCurrent);
-        }
-      }
-
-      // Initialize WebSocket client
-      const client = new OverlayClient();
-
-      // Listen for alert events to increment counters
-      client.on('alert', (data) => {
-        // Increment appropriate counter based on alert type
-        if (config.type === 'follow' && data.alertType === 'follow') {
-          updateGoal(goalCurrent + 1);
-        } else if (config.type === 'subscriber' && data.alertType === 'subscription') {
-          updateGoal(goalCurrent + 1);
-        }
-
-        console.log(`[GoalBarOverlay] Alert: ${data.alertType}, Current: ${goalCurrent}`);
-      });
-
-      // Listen for eventsub events
-      client.on('eventsub-event', (data) => {
-        if (config.type === 'follow' && data.event === 'follow') {
-          updateGoal(goalCurrent + 1);
-        } else if (config.type === 'subscriber' && data.event === 'subscription') {
-          updateGoal(goalCurrent + 1);
-        }
-      });
-
-      client.on('connected', () => {
-        console.log('[GoalBarOverlay] WebSocket connected');
-      });
-
-      client.on('disconnected', () => {
-        console.log('[GoalBarOverlay] WebSocket disconnected, will reconnect...');
-      });
+      // Load configuration from dashboard and initialize
+      loadConfig();
 
       // Expose for debugging
-      window.updateGoal = updateGoal;
+      window.updateDisplay = updateDisplay;
       window.config = config;
-      window.client = client;
 
       // Test functions
       window.testIncrement = () => {
-        updateGoal(goalCurrent + 1);
+        goalCurrent++;
+        updateDisplay();
       };
 
       window.testDecrement = () => {
-        updateGoal(Math.max(goalCurrent - 1, 0));
+        goalCurrent = Math.max(goalCurrent - 1, 0);
+        updateDisplay();
       };
 
       window.testSet = (value) => {
-        updateGoal(Math.min(value, config.goalTarget));
+        goalCurrent = Math.min(value, config.goalTarget);
+        updateDisplay();
       };
 
-      // Load initial data
-      loadGoalData();
-
       console.log('[GoalBarOverlay] Ready!');
-      console.log(`  Type: ${config.type}`);
-      console.log(`  Goal: ${config.goalTarget}`);
-      console.log('  testIncrement() - Add 1');
-      console.log('  testDecrement() - Subtract 1');
-      console.log('  testSet(value) - Set to value');
     })();
   </script>
 </body>

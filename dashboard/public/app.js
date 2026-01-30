@@ -545,10 +545,151 @@ async function loadEventSubEvents() {
   }
 }
 
+// OBS Overlays Configuration
+async function loadObsOverlayConfig() {
+  try {
+    const res = await fetch('/obs/config');
+    const config = await res.json();
+
+    // Update UI with config values
+    document.getElementById('alertsDuration').value = config.overlays.alerts.duration || 5;
+    document.getElementById('alertsVolume').value = config.overlays.alerts.volume || 0.8;
+    document.getElementById('alertsEnabled').checked = config.overlays.alerts.enabled !== false;
+
+    document.getElementById('recentEventsLimit').value = config.overlays.recentEvents.limit || 10;
+    document.getElementById('recentEventsShowTime').checked = config.overlays.recentEvents.showTime !== false;
+    document.getElementById('recentEventsEnabled').checked = config.overlays.recentEvents.enabled !== false;
+
+    document.getElementById('chatBoxMessageTimeout').value = config.overlays.chatBox.messageTimeout || 8;
+    document.getElementById('chatBoxHideBot').checked = config.overlays.chatBox.hideBot === true;
+    document.getElementById('chatBoxEnabled').checked = config.overlays.chatBox.enabled !== false;
+
+    document.getElementById('goalBarType').value = config.overlays.goalBar.type || 'follow';
+    document.getElementById('goalBarGoal').value = config.overlays.goalBar.goal || 1000;
+    document.getElementById('goalBarEnabled').checked = config.overlays.goalBar.enabled !== false;
+
+    updateOverlayUrls();
+  } catch (error) {
+    console.error('Failed to load OBS config:', error);
+  }
+}
+
+function updateOverlayUrls() {
+  const baseUrl = window.location.origin;
+
+  document.getElementById('alertsUrl').value = `${baseUrl}/obs/overlays/alerts.html`;
+  document.getElementById('recentEventsUrl').value = `${baseUrl}/obs/overlays/recent-events.html`;
+  document.getElementById('chatBoxUrl').value = `${baseUrl}/obs/overlays/chat-box.html`;
+  document.getElementById('goalBarUrl').value = `${baseUrl}/obs/overlays/goal-bar.html`;
+}
+
+async function updateOverlayConfig(overlay, setting, value) {
+  try {
+    const payload = {};
+
+    // Validate numeric settings
+    if (setting === 'volume') {
+      const vol = parseFloat(value);
+      if (isNaN(vol) || vol < 0 || vol > 1) {
+        alert('Volume must be a number between 0 and 1');
+        return;
+      }
+      payload[setting] = vol;
+    } else if (setting === 'duration') {
+      const dur = parseInt(value);
+      if (isNaN(dur) || dur < 1) {
+        alert('Duration must be a positive number');
+        return;
+      }
+      payload[setting] = dur;
+    } else if (setting === 'limit') {
+      const limit = parseInt(value);
+      if (isNaN(limit) || limit < 1) {
+        alert('Max events must be a positive number');
+        return;
+      }
+      payload[setting] = limit;
+    } else if (setting === 'messageTimeout') {
+      const timeout = parseInt(value);
+      if (isNaN(timeout) || timeout < 1) {
+        alert('Message timeout must be a positive number');
+        return;
+      }
+      payload[setting] = timeout;
+    } else if (setting === 'goal') {
+      const goal = parseInt(value);
+      if (isNaN(goal) || goal < 1) {
+        alert('Goal must be a positive number');
+        return;
+      }
+      payload[setting] = goal;
+    } else {
+      // Boolean and string values
+      payload[setting] = value;
+    }
+
+    const res = await fetch(`/obs/config/${overlay}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      alert(`Failed to update ${overlay}: ${error.error}`);
+      // Revert the input to the server state by reloading config
+      loadObsOverlayConfig();
+    } else {
+      // Show brief success message
+      console.log(`[OBS Config] Updated ${overlay}.${setting}`);
+    }
+  } catch (error) {
+    console.error(`Failed to update overlay config:`, error);
+    alert('Failed to update overlay configuration');
+    // Revert the input to the server state by reloading config
+    loadObsOverlayConfig();
+  }
+}
+
+function copyToClipboard(elementId, button) {
+  const element = document.getElementById(elementId);
+  if (!element || !button) return;
+
+  element.select();
+  document.execCommand('copy');
+
+  // Show visual feedback on the button
+  const originalText = button.textContent;
+  button.textContent = 'Copied!';
+  button.style.backgroundColor = '#00cc66';
+
+  setTimeout(() => {
+    button.textContent = originalText;
+    button.style.backgroundColor = '';
+  }, 2000);
+}
+
+function testOverlay(overlayName) {
+  if (overlayName === 'alerts') {
+    fetch('/api/test-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alertType: 'follow',
+        user: 'TestUser',
+        message: 'This is a test alert'
+      })
+    }).catch(err => console.error('Failed to send test alert:', err));
+    alert('Test alert sent! Check your alerts overlay.');
+  } else if (overlayName === 'recentEvents') {
+    window.open(`${window.location.origin}/obs/overlays/recent-events.html`, '_blank');
+  }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
-  
+
   // Fetch initial data
   fetch('/api/status')
     .then(res => res.json())
@@ -556,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
       botState = data;
       updateDashboard();
     });
-  
+
   // Refresh logs and stats on page load
   refreshLogs();
   refreshStats();
@@ -566,6 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadRedemptions();
   loadEventSubEvents();
   loadFilters();
+  loadObsOverlayConfig();
 });
 
 // Chat Filters Functions
