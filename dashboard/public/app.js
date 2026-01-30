@@ -586,47 +586,7 @@ function updateOverlayUrls() {
 async function updateOverlayConfig(overlay, setting, value) {
   try {
     const payload = {};
-
-    // Validate numeric settings
-    if (setting === 'volume') {
-      const vol = parseFloat(value);
-      if (isNaN(vol) || vol < 0 || vol > 1) {
-        alert('Volume must be a number between 0 and 1');
-        return;
-      }
-      payload[setting] = vol;
-    } else if (setting === 'duration') {
-      const dur = parseInt(value);
-      if (isNaN(dur) || dur < 1) {
-        alert('Duration must be a positive number');
-        return;
-      }
-      payload[setting] = dur;
-    } else if (setting === 'limit') {
-      const limit = parseInt(value);
-      if (isNaN(limit) || limit < 1) {
-        alert('Max events must be a positive number');
-        return;
-      }
-      payload[setting] = limit;
-    } else if (setting === 'messageTimeout') {
-      const timeout = parseInt(value);
-      if (isNaN(timeout) || timeout < 1) {
-        alert('Message timeout must be a positive number');
-        return;
-      }
-      payload[setting] = timeout;
-    } else if (setting === 'goal') {
-      const goal = parseInt(value);
-      if (isNaN(goal) || goal < 1) {
-        alert('Goal must be a positive number');
-        return;
-      }
-      payload[setting] = goal;
-    } else {
-      // Boolean and string values
-      payload[setting] = value;
-    }
+    payload[setting] = value;
 
     const res = await fetch(`/obs/config/${overlay}`, {
       method: 'POST',
@@ -637,35 +597,24 @@ async function updateOverlayConfig(overlay, setting, value) {
     if (!res.ok) {
       const error = await res.json();
       alert(`Failed to update ${overlay}: ${error.error}`);
-      // Revert the input to the server state by reloading config
-      loadObsOverlayConfig();
-    } else {
-      // Show brief success message
-      console.log(`[OBS Config] Updated ${overlay}.${setting}`);
     }
   } catch (error) {
     console.error(`Failed to update overlay config:`, error);
     alert('Failed to update overlay configuration');
-    // Revert the input to the server state by reloading config
-    loadObsOverlayConfig();
   }
 }
 
-function copyToClipboard(elementId, button) {
+function copyToClipboard(elementId) {
   const element = document.getElementById(elementId);
-  if (!element || !button) return;
+  if (!element) return;
 
   element.select();
   document.execCommand('copy');
 
-  // Show visual feedback on the button
-  const originalText = button.textContent;
-  button.textContent = 'Copied!';
-  button.style.backgroundColor = '#00cc66';
-
+  const originalText = element.placeholder;
+  element.placeholder = 'Copied!';
   setTimeout(() => {
-    button.textContent = originalText;
-    button.style.backgroundColor = '';
+    element.placeholder = originalText;
   }, 2000);
 }
 
