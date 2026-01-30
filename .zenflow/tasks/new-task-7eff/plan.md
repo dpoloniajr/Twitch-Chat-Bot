@@ -47,12 +47,16 @@ Set up the basic file structure and Express routing for OBS overlays.
 
 Build the main alerts overlay with queue system.
 
-- [ ] Create `obs/overlays/alerts.html` with alert display container
-- [ ] Implement JavaScript alert queue with configurable timing
-- [ ] Add CSS animations (fade in/out, slide, pulse, etc.)
-- [ ] Handle all alert types: follow, sub, bits, raid, redemption
-- [ ] Add sound support with configurable volume
-- [ ] Test alert display and queue behavior
+**Note**: Basic `alerts.html` with alert queue and styling was created in Infrastructure step. This step focuses on testing integration with actual events.
+
+- [x] Create `obs/overlays/alerts.html` with alert display container (done in Infrastructure)
+- [x] Implement JavaScript alert queue with configurable timing (done in Infrastructure)
+- [x] Add CSS animations (fade in/out, slide, pulse, etc.) (done in Infrastructure)
+- [x] Handle all alert types: follow, sub, bits, raid, redemption (done in Infrastructure)
+- [x] Add sound support with configurable volume (done in Infrastructure)
+- [ ] Test alert display and queue behavior with real events
+- [ ] Add actual sound files or verify sound loading works
+- [ ] Fine-tune animation timings based on testing
 
 ---
 

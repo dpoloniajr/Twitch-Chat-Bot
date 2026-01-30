@@ -237,8 +237,8 @@
       // Wait for delay between alerts
       await this._wait(this.alertDelay);
 
-      // Process next
-      this._processNext();
+      // Process next (return for explicit async flow)
+      return this._processNext();
     }
 
     /**

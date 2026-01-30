@@ -38,7 +38,8 @@
         soundEnabled: OverlayUtils.getQueryParam('sound') !== 'false',
         soundVolume: parseFloat(OverlayUtils.getQueryParam('volume')) || 0.5,
         enterAnimation: OverlayUtils.getQueryParam('enter') || 'bounceIn',
-        exitAnimation: OverlayUtils.getQueryParam('exit') || 'fadeOutUp'
+        exitAnimation: OverlayUtils.getQueryParam('exit') || 'fadeOutUp',
+        exitAnimationDuration: parseInt(OverlayUtils.getQueryParam('exitDuration')) || 500
       };
 
       // Initialize alert queue
@@ -123,11 +124,11 @@
         alertDisplay.classList.remove(`animate-${config.enterAnimation}`);
         alertDisplay.classList.add(`animate-${config.exitAnimation}`);
 
-        // Wait for exit animation then hide
+        // Wait for exit animation then hide (uses configurable duration)
         setTimeout(() => {
           alertDisplay.classList.add('hidden');
           alertDisplay.innerHTML = '';
-        }, 500);
+        }, config.exitAnimationDuration);
       }
 
       // Initialize WebSocket client
