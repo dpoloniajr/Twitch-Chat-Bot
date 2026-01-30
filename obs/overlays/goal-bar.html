@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goal Bar Overlay - OBS</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    .goal-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .goal-bar-wrapper {
+      background: rgba(30, 30, 30, 0.95);
+      border: 2px solid #9147ff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(145, 71, 255, 0.2);
+    }
+
+    .goal-title {
+      color: #fff;
+      font-size: 18px;
+      margin-bottom: 12px;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .goal-bar {
+      height: 40px;
+      background: rgba(60, 60, 60, 0.8);
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 10px;
+    }
+
+    .goal-progress {
+      height: 100%;
+      background: linear-gradient(90deg, #9147ff 0%, #bf94ff 100%);
+      border-radius: 20px;
+      transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .goal-progress.goal-follow {
+      background: linear-gradient(90deg, #00ff7f 0%, #00cc66 100%);
+    }
+
+    .goal-progress.goal-subscriber {
+      background: linear-gradient(90deg, #ff6b9d 0%, #ff1493 100%);
+    }
+
+    .goal-text {
+      color: #fff;
+      font-weight: bold;
+      font-size: 16px;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+      white-space: nowrap;
+    }
+
+    .goal-percentage {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    }
+
+    .goal-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #aaa;
+      margin-top: 8px;
+    }
+
+    .goal-stat {
+      flex: 1;
+      text-align: center;
+    }
+
+    .goal-stat-label {
+      color: #666;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .goal-stat-value {
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="goal-container">
+    <div class="goal-bar-wrapper">
+      <div class="goal-title" id="goal-title">Follower Goal</div>
+      <div class="goal-bar">
+        <div class="goal-progress" id="goal-progress" style="width: 0%">
+          <span class="goal-text" id="goal-text">0 / 100</span>
+        </div>
+        <span class="goal-percentage" id="goal-percentage">0%</span>
+      </div>
+      <div class="goal-stats">
+        <div class="goal-stat">
+          <div class="goal-stat-label">Current</div>
+          <div class="goal-stat-value" id="goal-current">0</div>
+        </div>
+        <div class="goal-stat">
+          <div class="goal-stat-label">Goal</div>
+          <div class="goal-stat-value" id="goal-target">100</div>
+        </div>
+        <div class="goal-stat">
+          <div class="goal-stat-label">Remaining</div>
+          <div class="goal-stat-value" id="goal-remaining">100</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    /**
+     * Goal Bar Overlay
+     * Displays progress toward follower or subscriber goals
+     *
+     * Usage: Add as Browser Source in OBS
+     * URL: http://localhost:3001/obs/overlays/goal-bar.html
+     * Recommended size: 600x150 or custom based on your scene
+     *
+     * URL Parameters:
+     *   ?type=follow        - Goal type: follow or subscriber (default: follow)
+     *   ?goal=1000          - Target number (default: 1000)
+     *   ?current=0          - Starting current number (default: 0, loaded from API)
+     *   ?title=Follower Goal - Custom title to display
+     *
+     * Configuration is loaded from /obs/config endpoint if available.
+     */
+    (function() {
+      'use strict';
+
+      // Configuration
+      const config = {
+        type: OverlayUtils.getQueryParam('type') || 'follow',
+        goalTarget: parseInt(OverlayUtils.getQueryParam('goal')) || 1000,
+        title: OverlayUtils.getQueryParam('title') || (config.type === 'subscriber' ? 'Subscriber Goal' : 'Follower Goal')
+      };
+
+      let goalCurrent = parseInt(OverlayUtils.getQueryParam('current')) || 0;
+
+      // DOM elements
+      const goalTitle = document.getElementById('goal-title');
+      const goalProgress = document.getElementById('goal-progress');
+      const goalText = document.getElementById('goal-text');
+      const goalPercentage = document.getElementById('goal-percentage');
+      const goalCurrentEl = document.getElementById('goal-current');
+      const goalTargetEl = document.getElementById('goal-target');
+      const goalRemainingEl = document.getElementById('goal-remaining');
+
+      // Set title
+      goalTitle.textContent = config.title;
+
+      // Set type-specific styling
+      if (config.type === 'subscriber') {
+        goalProgress.classList.add('goal-subscriber');
+      } else {
+        goalProgress.classList.add('goal-follow');
+      }
+
+      /**
+       * Update goal display
+       */
+      function updateGoal(current) {
+        goalCurrent = current;
+        const percentage = Math.min((goalCurrent / config.goalTarget) * 100, 100);
+        const remaining = Math.max(config.goalTarget - goalCurrent, 0);
+
+        // Update progress bar width
+        goalProgress.style.width = `${percentage}%`;
+
+        // Update text in progress bar
+        goalText.textContent = `${OverlayUtils.formatNumber(goalCurrent)} / ${OverlayUtils.formatNumber(config.goalTarget)}`;
+
+        // Update percentage text
+        goalPercentage.textContent = `${Math.round(percentage)}%`;
+
+        // Update stats
+        goalCurrentEl.textContent = OverlayUtils.formatNumber(goalCurrent);
+        goalTargetEl.textContent = OverlayUtils.formatNumber(config.goalTarget);
+        goalRemainingEl.textContent = OverlayUtils.formatNumber(remaining);
+
+        console.log(`[GoalBarOverlay] Updated: ${goalCurrent}/${config.goalTarget} (${percentage.toFixed(1)}%)`);
+      }
+
+      /**
+       * Load initial goal data from API
+       */
+      async function loadGoalData() {
+        try {
+          const response = await fetch('/obs/config');
+          const data = await response.json();
+
+          if (data[`goal${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`]) {
+            config.goalTarget = data[`goal${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`];
+          }
+          if (data[`current${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`]) {
+            goalCurrent = data[`current${config.type.charAt(0).toUpperCase() + config.type.slice(1)}`];
+          }
+
+          updateGoal(goalCurrent);
+        } catch (err) {
+          console.log('[GoalBarOverlay] No config API available, using defaults');
+          updateGoal(goalCurrent);
+        }
+      }
+
+      // Initialize WebSocket client
+      const client = new OverlayClient();
+
+      // Listen for alert events to increment counters
+      client.on('alert', (data) => {
+        // Increment appropriate counter based on alert type
+        if (config.type === 'follow' && data.alertType === 'follow') {
+          updateGoal(goalCurrent + 1);
+        } else if (config.type === 'subscriber' && data.alertType === 'subscription') {
+          updateGoal(goalCurrent + 1);
+        }
+
+        console.log(`[GoalBarOverlay] Alert: ${data.alertType}, Current: ${goalCurrent}`);
+      });
+
+      // Listen for eventsub events
+      client.on('eventsub-event', (data) => {
+        if (config.type === 'follow' && data.event === 'follow') {
+          updateGoal(goalCurrent + 1);
+        } else if (config.type === 'subscriber' && data.event === 'subscription') {
+          updateGoal(goalCurrent + 1);
+        }
+      });
+
+      client.on('connected', () => {
+        console.log('[GoalBarOverlay] WebSocket connected');
+      });
+
+      client.on('disconnected', () => {
+        console.log('[GoalBarOverlay] WebSocket disconnected, will reconnect...');
+      });
+
+      // Expose for debugging
+      window.updateGoal = updateGoal;
+      window.config = config;
+      window.client = client;
+
+      // Test functions
+      window.testIncrement = () => {
+        updateGoal(goalCurrent + 1);
+      };
+
+      window.testDecrement = () => {
+        updateGoal(Math.max(goalCurrent - 1, 0));
+      };
+
+      window.testSet = (value) => {
+        updateGoal(Math.min(value, config.goalTarget));
+      };
+
+      // Load initial data
+      loadGoalData();
+
+      console.log('[GoalBarOverlay] Ready!');
+      console.log(`  Type: ${config.type}`);
+      console.log(`  Goal: ${config.goalTarget}`);
+      console.log('  testIncrement() - Add 1');
+      console.log('  testDecrement() - Subtract 1');
+      console.log('  testSet(value) - Set to value');
+    })();
+  </script>
+</body>
+</html>

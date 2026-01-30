@@ -194,6 +194,26 @@ function logCommandExecution(username, command, args, result) {
   }).catch(() => {});
 }
 
+// Send alert to OBS overlays via dashboard WebSocket
+function sendAlert(alertType, alertData) {
+  apiClient_axios.post(`${dashboardBaseUrl}/api/test-alert`, {
+    alertType,
+    ...alertData
+  }).catch(err => {
+    console.error('[Alert] Failed to send alert:', err.message);
+  });
+}
+
+// Log EventSub event to dashboard
+function logEventSubEvent(eventType, eventData) {
+  apiClient_axios.post(`${dashboardBaseUrl}/api/eventsub-events`, {
+    event: eventType,
+    ...eventData
+  }).catch(err => {
+    console.error('[EventSub] Failed to log event:', err.message);
+  });
+}
+
 // ==================== CHAT FILTER FUNCTIONS ====================
 
 function checkChatFilters(message, username) {
@@ -360,11 +380,15 @@ function setupBroadcasterEventSub() {
   const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
   const hasFollowersScope = hasScope(broadcasterScopes, 'moderator:read:followers');
   const hasRedemptionsScope = hasScope(broadcasterScopes, 'channel:read:redemptions');
-  
-  if (!hasFollowersScope && !hasRedemptionsScope) {
+  const hasSubscriptionsScope = hasScope(broadcasterScopes, 'channel:read:subscriptions');
+  const hasBitsScope = hasScope(broadcasterScopes, 'bits:read');
+
+  if (!hasFollowersScope && !hasRedemptionsScope && !hasSubscriptionsScope && !hasBitsScope) {
     console.warn('[EventSub-Broadcaster] ⚠️  Broadcaster token missing required scopes:');
     console.warn('[EventSub-Broadcaster]   - moderator:read:followers (for follow events)');
     console.warn('[EventSub-Broadcaster]   - channel:read:redemptions (for redemption events)');
+    console.warn('[EventSub-Broadcaster]   - channel:read:subscriptions (for subscription events)');
+    console.warn('[EventSub-Broadcaster]   - bits:read (for bits/cheer events)');
     console.warn('[EventSub-Broadcaster] Visit http://localhost:3000 to regenerate broadcaster token with proper scopes.');
     return;
   }
@@ -384,6 +408,10 @@ function setupBroadcasterEventSub() {
         broadcasterEventSub.onChannelFollow(subId, broadcasterUserId, ev => {
           const name = ev.userDisplayName || ev.userName || 'someone';
           config.channels.forEach(ch => sendChatMessage(ch, `Thanks for the follow, ${name}!`));
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('follow', { user: name });
+          sendAlert('follow', { user: name });
         });
         console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
       } catch (err) {
@@ -397,8 +425,12 @@ function setupBroadcasterEventSub() {
     try {
       broadcasterEventSub.onChannelRaidTo(subId, ev => {
         const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
-        const viewers = ev.viewers ?? '?';
+        const viewers = ev.viewers ?? 0;
         config.channels.forEach(ch => sendChatMessage(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
+
+        // Log event and send alert to OBS overlay
+        logEventSubEvent('raid', { user: from, viewers: Number(viewers) });
+        sendAlert('raid', { user: from, viewers: Number(viewers) });
       });
       console.log('[EventSub-Broadcaster] ✓ Raid subscription active');
     } catch (err) {
@@ -419,6 +451,10 @@ function setupBroadcasterEventSub() {
           }).catch(() => {});
           // Basic mapping: echo to chat
           config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('redemption', { user, reward, message: input });
+          sendAlert('redemption', { user, reward, message: input });
         });
         console.log('[EventSub-Broadcaster] ✓ Channel Points redemption subscription active');
       } catch (err) {
@@ -427,7 +463,121 @@ function setupBroadcasterEventSub() {
     } else {
       console.warn('[EventSub-Broadcaster] Skipping redemption subscription: missing channel:read:redemptions scope');
     }
-    
+
+    // Subscriptions (requires broadcaster auth with channel:read:subscriptions scope)
+    if (hasSubscriptionsScope) {
+      try {
+        // Regular subscription
+        broadcasterEventSub.onChannelSubscription(subId, ev => {
+          const user = ev.userDisplayName || ev.userName || 'someone';
+          const tier = ev.tier || '1000'; // '1000' = Tier 1, '2000' = Tier 2, '3000' = Tier 3
+          const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
+          const isGift = ev.isGift || false;
+
+          console.log('[EventSub-Broadcaster] Subscription:', user, tierName, isGift ? '(gifted)' : '');
+
+          if (!isGift) {
+            config.channels.forEach(ch => sendChatMessage(ch, `Thank you ${user} for the ${tierName} sub! 🎉`));
+          }
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('subscription', { user, tier: tierName, isGift });
+          if (!isGift) {
+            sendAlert('subscription', { user, tier: tierName });
+          }
+        });
+        console.log('[EventSub-Broadcaster] ✓ Subscription event active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Subscription event failed:', err.message);
+      }
+
+      try {
+        // Subscription message (resubs with message)
+        broadcasterEventSub.onChannelSubscriptionMessage(subId, ev => {
+          const user = ev.userDisplayName || ev.userName || 'someone';
+          const tier = ev.tier || '1000';
+          const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
+          const months = ev.cumulativeMonths || 1;
+          const message = ev.messageText || '';
+
+          console.log('[EventSub-Broadcaster] Resub:', user, tierName, months, 'months');
+
+          config.channels.forEach(ch => {
+            const msgPart = message ? ` and says: "${message}"` : '';
+            sendChatMessage(ch, `Thank you ${user} for ${months} months at ${tierName}!${msgPart} 🎉`);
+          });
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('subscription', { user, tier: tierName, months, message });
+          sendAlert('subscription', { user, tier: tierName, message: `${months} months${message ? ' - ' + message : ''}` });
+        });
+        console.log('[EventSub-Broadcaster] ✓ Subscription message event active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Subscription message event failed:', err.message);
+      }
+
+      try {
+        // Gift subscription
+        broadcasterEventSub.onChannelSubscriptionGift(subId, ev => {
+          const gifter = ev.gifterDisplayName || ev.gifterName || 'Anonymous';
+          const tier = ev.tier || '1000';
+          const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
+          const amount = ev.amount || 1;
+          const isAnonymous = ev.isAnonymous || false;
+          const total = ev.cumulativeAmount || amount;
+
+          console.log('[EventSub-Broadcaster] Gift Sub:', gifter, 'gifted', amount, tierName, 'subs');
+
+          const gifterName = isAnonymous ? 'An anonymous gifter' : gifter;
+          config.channels.forEach(ch => {
+            sendChatMessage(ch, `${gifterName} gifted ${amount} ${tierName} sub${amount > 1 ? 's' : ''}! (${total} total) 🎁`);
+          });
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('subscription_gift', { user: gifterName, tier: tierName, amount, total, isAnonymous });
+          sendAlert('subscription', {
+            user: gifterName,
+            tier: tierName,
+            message: `Gifted ${amount} sub${amount > 1 ? 's' : ''}!`
+          });
+        });
+        console.log('[EventSub-Broadcaster] ✓ Gift subscription event active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Gift subscription event failed:', err.message);
+      }
+    } else {
+      console.warn('[EventSub-Broadcaster] Skipping subscription events: missing channel:read:subscriptions scope');
+    }
+
+    // Bits/Cheers (requires broadcaster auth with bits:read scope)
+    if (hasBitsScope) {
+      try {
+        broadcasterEventSub.onChannelCheer(subId, ev => {
+          const user = ev.userDisplayName || ev.userName || 'Anonymous';
+          const bits = ev.bits || 0;
+          const message = ev.message || '';
+          const isAnonymous = ev.isAnonymous || false;
+
+          console.log('[EventSub-Broadcaster] Cheer:', user, 'cheered', bits, 'bits');
+
+          const cheererName = isAnonymous ? 'Anonymous' : user;
+          config.channels.forEach(ch => {
+            const msgPart = message ? ` "${message}"` : '';
+            sendChatMessage(ch, `${cheererName} cheered ${bits} bits!${msgPart} 💎`);
+          });
+
+          // Log event and send alert to OBS overlay
+          logEventSubEvent('bits', { user: cheererName, amount: bits, message, isAnonymous });
+          sendAlert('bits', { user: cheererName, amount: bits, message });
+        });
+        console.log('[EventSub-Broadcaster] ✓ Bits/Cheer event active');
+      } catch (err) {
+        console.warn('[EventSub-Broadcaster] Bits/Cheer event failed:', err.message);
+      }
+    } else {
+      console.warn('[EventSub-Broadcaster] Skipping bits/cheer events: missing bits:read scope');
+    }
+
     console.log('✓ Broadcaster EventSub listener initialized successfully');
   } catch (err) {
     console.error('Broadcaster EventSub setup failed:', err?.message || err);

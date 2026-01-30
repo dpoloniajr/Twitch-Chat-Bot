@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recent Events Overlay - OBS</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    #events-list {
+      max-height: 100%;
+      overflow-y: auto;
+    }
+
+    /* Scrollbar styling */
+    #events-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #events-list::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    #events-list::-webkit-scrollbar-thumb {
+      background: #9147ff;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-container">
+    <div class="recent-events-container">
+      <div id="events-list"></div>
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    /**
+     * Recent Events Overlay
+     * Displays a scrolling list of the latest followers, subscribers, bits, and raids
+     *
+     * Usage: Add as Browser Source in OBS
+     * URL: http://localhost:3001/obs/overlays/recent-events.html
+     * Recommended size: 400x400 or custom based on your scene
+     *
+     * URL Parameters:
+     *   ?limit=10     - Maximum number of events to display
+     *   ?type=follow  - Filter by event type (follow, subscription, bits, raid, all)
+     *   ?showTime=true - Show time ago for each event (default: true)
+     *
+     * Events are fetched via the /obs/recent/:type endpoint and updated
+     * via WebSocket when new events occur.
+     */
+    (function() {
+      'use strict';
+
+      const eventsList = document.getElementById('events-list');
+
+      // Configuration
+      const config = {
+        maxEvents: parseInt(OverlayUtils.getQueryParam('limit')) || 10,
+        eventType: OverlayUtils.getQueryParam('type') || 'all',
+        showTime: OverlayUtils.getQueryParam('showTime') !== 'false',
+        updateInterval: 5000 // Refresh events every 5 seconds
+      };
+
+      // Store events in memory
+      let events = [];
+
+      /**
+       * Fetch recent events from server
+       */
+      async function fetchRecentEvents() {
+        try {
+          const type = config.eventType === 'all' ? '' : config.eventType;
+          const url = type ? `/obs/recent/${type}` : '/obs/recent';
+          const response = await fetch(url);
+          const data = await response.json();
+
+          if (data.events && Array.isArray(data.events)) {
+            events = data.events.slice(0, config.maxEvents);
+            renderEvents();
+          }
+        } catch (err) {
+          console.error('[RecentEventsOverlay] Failed to fetch events:', err);
+        }
+      }
+
+      /**
+       * Build HTML for a single event
+       */
+      function buildEventHtml(event) {
+        const type = event.type || event.alertType || 'unknown';
+        const iconMap = {
+          follow: '👤',
+          subscription: '⭐',
+          bits: '💎',
+          raid: '🎮',
+          redemption: '🎁'
+        };
+        const icon = iconMap[type] || '•';
+
+        let text = '';
+        switch (type) {
+          case 'follow':
+            text = `${event.user} followed`;
+            break;
+          case 'subscription':
+            const tier = event.tier ? ` (${OverlayUtils.parseTier(event.tier)})` : '';
+            text = `${event.user} subscribed${tier}`;
+            break;
+          case 'bits':
+            text = `${event.user} cheered ${OverlayUtils.formatNumber(event.amount || 0)} bits`;
+            break;
+          case 'raid':
+            text = `${event.user} raided with ${OverlayUtils.formatNumber(event.viewers || 0)} viewers`;
+            break;
+          case 'redemption':
+            text = `${event.user} redeemed ${event.reward || 'unknown'}`;
+            break;
+          default:
+            text = `${event.user} ${type}`;
+        }
+
+        const time = config.showTime && event.timestamp ?
+          OverlayUtils.timeAgo(event.timestamp) : '';
+
+        return `
+          <div class="recent-event-item ${type}">
+            <div class="event-icon">${icon}</div>
+            <div class="event-text">${OverlayUtils.escapeHtml(text)}</div>
+            ${time ? `<div class="event-time">${time}</div>` : ''}
+          </div>
+        `;
+      }
+
+      /**
+       * Render events list
+       */
+      function renderEvents() {
+        if (events.length === 0) {
+          eventsList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No events yet</div>';
+          return;
+        }
+
+        eventsList.innerHTML = events.map(event => buildEventHtml(event)).join('');
+      }
+
+      /**
+       * Add event to the top of the list
+       */
+      function addEvent(event) {
+        // Add to beginning
+        events.unshift(event);
+        // Limit to maxEvents
+        if (events.length > config.maxEvents) {
+          events = events.slice(0, config.maxEvents);
+        }
+        renderEvents();
+      }
+
+      // Initialize WebSocket client
+      const client = new OverlayClient();
+
+      // Listen for alert events and add them to the list
+      client.on('alert', (data) => {
+        console.log('[RecentEventsOverlay] Received alert:', data);
+        addEvent({
+          type: data.alertType,
+          user: data.user,
+          timestamp: new Date().toISOString(),
+          ...data
+        });
+      });
+
+      // Fetch initial events
+      fetchRecentEvents();
+
+      // Poll for updates every interval
+      setInterval(fetchRecentEvents, config.updateInterval);
+
+      // Expose for debugging
+      window.eventsList = events;
+      window.client = client;
+
+      console.log('[RecentEventsOverlay] Ready!');
+      console.log(`  Max events: ${config.maxEvents}`);
+      console.log(`  Event type: ${config.eventType}`);
+      console.log(`  Show time: ${config.showTime}`);
+    })();
+  </script>
+</body>
+</html>

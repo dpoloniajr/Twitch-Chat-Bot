@@ -458,6 +458,72 @@ app.post('/api/test-alert', (req, res) => {
   res.json({ success: true, alert: alertData });
 });
 
+// OBS Recent Events API
+// Get recent events by type for the recent-events overlay
+app.get('/obs/recent/:type?', async (req, res) => {
+  try {
+    const eventType = req.params.type?.toLowerCase() || 'all';
+    const events = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
+
+    // Map event types to match alertType naming
+    const typeMap = {
+      follow: 'follow',
+      subscriber: 'subscription',
+      subscription: 'subscription',
+      bits: 'bits',
+      cheer: 'bits',
+      raid: 'raid',
+      redemption: 'redemption'
+    };
+
+    let filtered = events;
+
+    // Filter by type if not 'all'
+    if (eventType !== 'all') {
+      const targetType = typeMap[eventType];
+      if (!targetType) {
+        return res.status(400).json({
+          error: `Invalid event type. Must be one of: follow, subscriber, bits, raid, redemption, all`
+        });
+      }
+
+      filtered = events.filter(e => {
+        const eType = e.event || e.alertType;
+        // Handle both 'subscription' and 'subscriber' names
+        if (targetType === 'subscription') {
+          return eType === 'subscription' || eType === 'subscriber';
+        }
+        return eType === targetType;
+      });
+    }
+
+    // Reverse to get most recent first, limit to 50
+    filtered = filtered.reverse().slice(0, 50);
+
+    // Transform to overlay format
+    const recentEvents = filtered.map(e => ({
+      type: e.event || e.alertType,
+      user: e.user || e.userName || e.username,
+      timestamp: e.timestamp,
+      tier: e.tier,
+      amount: e.amount,
+      viewers: e.viewers,
+      reward: e.reward,
+      message: e.message,
+      ...e
+    }));
+
+    res.json({
+      type: eventType,
+      count: recentEvents.length,
+      events: recentEvents
+    });
+  } catch (error) {
+    console.error('[ObsRecentEvents] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Chat Filters API
 
 // Get current filter configuration

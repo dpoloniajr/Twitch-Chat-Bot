@@ -62,27 +62,69 @@ Build the main alerts overlay with queue system.
 
 ---
 
-### [ ] Step: Enhanced EventSub Events
+### [x] Step: Enhanced EventSub Events
+<!-- chat-id: e373625b-1345-4ed7-8c39-b3a87a7e2320 -->
 
 Extend the bot to capture subscription and bits events.
 
-- [ ] Add subscription event handlers (`onChannelSubscription`, `onChannelSubscriptionGift`) to `Excella`
-- [ ] Add bits/cheer event handler (`onChannelCheer`) to `Excella`
-- [ ] Update `/api/eventsub-events` payloads with detailed info (tier, amount, message)
-- [ ] Add new WebSocket message type `'alert'` for overlay consumption
-- [ ] Document required additional scopes (`channel:read:subscriptions`, `bits:read`) in token-generator
+- [x] Add subscription event handlers (`onChannelSubscription`, `onChannelSubscriptionGift`) to `Excella`
+- [x] Add bits/cheer event handler (`onChannelCheer`) to `Excella`
+- [x] Update `/api/eventsub-events` payloads with detailed info (tier, amount, message)
+- [x] Add new WebSocket message type `'alert'` for overlay consumption
+- [x] Document required additional scopes (`channel:read:subscriptions`, `bits:read`) in token-generator
+
+**Completed Implementation:**
+- Added `sendAlert()` and `logEventSubEvent()` helper functions to Excella for broadcasting alerts
+- Added `onChannelSubscription` handler for regular subscriptions with tier detection
+- Added `onChannelSubscriptionMessage` handler for resubs with message
+- Added `onChannelSubscriptionGift` handler for gift subs with gifter info and amount
+- Added `onChannelCheer` handler for bits with amount and message
+- Updated existing follow, raid, and redemption handlers to also send alerts to OBS overlays
+- All events log to `/api/eventsub-events` with detailed payloads (tier, amount, message, etc.)
+- All events broadcast `{ type: 'alert', data: {...} }` via WebSocket for OBS overlays
+- Updated token-generator presets (`eventsub-complete`, `broadcaster-recommended`) to include new scopes
+- Updated feature wizard to auto-include subscription and bits scopes when EventSub is enabled
 
 ---
 
-### [ ] Step: Additional Overlays
+### [x] Step: Additional Overlays
+<!-- chat-id: ba35b456-e8ad-42cd-ba69-b6b46ac5361b -->
 
 Build supplementary overlay pages.
 
-- [ ] Create `obs/overlays/recent-events.html` for scrolling latest follower/sub display
-- [ ] Create `obs/overlays/chat-box.html` for OBS chat overlay
-- [ ] Create `obs/overlays/goal-bar.html` for follow/sub goal progress
-- [ ] Add API endpoint `GET /obs/recent/:type` for recent events by type
-- [ ] Style all overlays with consistent theming
+- [x] Create `obs/overlays/recent-events.html` for scrolling latest follower/sub display
+- [x] Create `obs/overlays/chat-box.html` for OBS chat overlay
+- [x] Create `obs/overlays/goal-bar.html` for follow/sub goal progress
+- [x] Add API endpoint `GET /obs/recent/:type` for recent events by type
+- [x] Style all overlays with consistent theming (using overlay-base.css)
+
+**Implementation Details:**
+- `recent-events.html`: Displays scrolling list of latest events (followers, subs, bits, raids)
+  - Fetches events from `/obs/recent/:type` endpoint
+  - Subscribes to WebSocket alerts for real-time updates
+  - Configurable via URL params: `?limit=10&type=follow&showTime=true`
+  - Shows time ago for each event, icons for event types
+  - Auto-refreshes every 5 seconds
+
+- `chat-box.html`: OBS chat overlay displaying live chat messages
+  - Listens for chat messages via WebSocket
+  - Configurable message timeout (default 8s)
+  - Optional: hide bot messages, hide commands, color by role
+  - Scrolls to latest message automatically
+  - Test function: `testMessage(username, text)`
+
+- `goal-bar.html`: Progress bar for follower/subscriber goals
+  - Supports follow or subscriber goal tracking
+  - Increments automatically when alerts received
+  - Shows current/goal/remaining stats
+  - Configurable via URL params: `?type=follow&goal=1000&title=Custom`
+  - Smooth progress animation with percentage display
+
+- API Endpoint `/obs/recent/:type`:
+  - Returns recent events filtered by type (follow, subscriber, bits, raid, redemption, all)
+  - Defaults to last 50 events, ordered most recent first
+  - Returns event count and array of events
+  - Supports queries like `/obs/recent/follow` or `/obs/recent/all`
 
 ---
 
