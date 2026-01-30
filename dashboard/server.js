@@ -472,12 +472,13 @@ app.post('/api/test-alert', (req, res) => {
   console.log('[TestAlert] Sent:', alertData);
   res.json({ success: true, alert: alertData });
 });
-
 // OBS Recent Events API
+
 // Get recent events by type for the recent-events overlay
-app.get('/obs/recent/:type?', async (req, res) => {
+// Helper function to handle the recent events response
+const handleRecentEventsRequest = async (req, res, eventType = 'all') => {
   try {
-    const eventType = req.params.type?.toLowerCase() || 'all';
+    const finalEventType = eventType || req.params.type?.toLowerCase() || 'all';
     const events = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
 
     // Map event types to match alertType naming
@@ -494,8 +495,8 @@ app.get('/obs/recent/:type?', async (req, res) => {
     let filtered = events;
 
     // Filter by type if not 'all'
-    if (eventType !== 'all') {
-      const targetType = typeMap[eventType];
+    if (finalEventType !== 'all') {
+      const targetType = typeMap[finalEventType];
       if (!targetType) {
         return res.status(400).json({
           error: `Invalid event type. Must be one of: follow, subscriber, bits, raid, redemption, all`
@@ -529,7 +530,7 @@ app.get('/obs/recent/:type?', async (req, res) => {
     }));
 
     res.json({
-      type: eventType,
+      type: finalEventType,
       count: recentEvents.length,
       events: recentEvents
     });
@@ -537,7 +538,18 @@ app.get('/obs/recent/:type?', async (req, res) => {
     console.error('[ObsRecentEvents] Error:', error);
     res.status(500).json({ error: error.message });
   }
+};
+
+// Route: Get all recent events (no type specified)
+app.get('/obs/recent', async (req, res) => {
+  await handleRecentEventsRequest(req, res, 'all');
 });
+
+// Route: Get recent events by specific type
+app.get('/obs/recent/:type', async (req, res) => {
+  await handleRecentEventsRequest(req, res);
+});
+
 
 // Chat Filters API
 
