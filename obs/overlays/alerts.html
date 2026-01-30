@@ -44,30 +44,79 @@
 
       const alertDisplay = document.getElementById('alert-display');
 
-      // Configuration (can be overridden via URL params or /obs/config endpoint)
-      const config = {
-        alertDuration: parseInt(OverlayUtils.getQueryParam('duration')) || 5000,
-        alertDelay: parseInt(OverlayUtils.getQueryParam('delay')) || 1000,
-        soundEnabled: OverlayUtils.getQueryParam('sound') !== 'false',
-        soundVolume: parseFloat(OverlayUtils.getQueryParam('volume')) || 0.5,
-        enterAnimation: OverlayUtils.getQueryParam('enter') || 'bounceIn',
-        exitAnimation: OverlayUtils.getQueryParam('exit') || 'fadeOutUp',
-        exitAnimationDuration: parseInt(OverlayUtils.getQueryParam('exitDuration')) || 500
+      // Configuration - loaded from dashboard /obs/config endpoint
+      let config = {
+        alertDuration: 5000,
+        alertDelay: 1000,
+        soundEnabled: true,
+        soundVolume: 0.5,
+        enterAnimation: 'bounceIn',
+        exitAnimation: 'fadeOutUp',
+        exitAnimationDuration: 500
       };
 
-      // Initialize alert queue
-      const alertQueue = new AlertQueue({
-        alertDuration: config.alertDuration,
-        alertDelay: config.alertDelay,
-        soundEnabled: config.soundEnabled,
-        soundVolume: config.soundVolume,
-        onShow: showAlert,
-        onHide: hideAlert
-      });
+      // Load configuration from dashboard
+      async function loadConfig() {
+        try {
+          const res = await fetch('/obs/config');
+          const obsConfig = await res.json();
+          const alertsConfig = obsConfig.overlays.alerts;
 
-      // Load sounds - users can add their own to /obs/assets/sounds/
-      // Note: Audio elements are created immediately but errors only surface
-      // when playback is attempted (handled silently in alertQueue.playSound())
+          // Apply dashboard configuration
+          config.alertDuration = (alertsConfig.duration || 5) * 1000;
+          config.alertDelay = 1000;
+          config.soundEnabled = alertsConfig.enabled !== false;
+          config.soundVolume = alertsConfig.volume || 0.8;
+          config.enterAnimation = 'bounceIn';
+          config.exitAnimation = 'fadeOutUp';
+          config.exitAnimationDuration = 500;
+
+          // Allow URL parameters to override dashboard config
+          const paramDuration = parseInt(OverlayUtils.getQueryParam('duration'));
+          if (!isNaN(paramDuration)) config.alertDuration = paramDuration;
+          const paramDelay = parseInt(OverlayUtils.getQueryParam('delay'));
+          if (!isNaN(paramDelay)) config.alertDelay = paramDelay;
+          if (OverlayUtils.getQueryParam('sound') !== null) config.soundEnabled = OverlayUtils.getQueryParam('sound') !== 'false';
+          const paramVolume = parseFloat(OverlayUtils.getQueryParam('volume'));
+          if (!isNaN(paramVolume)) config.soundVolume = paramVolume;
+          if (OverlayUtils.getQueryParam('enter') !== null) config.enterAnimation = OverlayUtils.getQueryParam('enter');
+          if (OverlayUtils.getQueryParam('exit') !== null) config.exitAnimation = OverlayUtils.getQueryParam('exit');
+          const paramExitDuration = parseInt(OverlayUtils.getQueryParam('exitDuration'));
+          if (!isNaN(paramExitDuration)) config.exitAnimationDuration = paramExitDuration;
+        } catch (error) {
+          console.error('Failed to load OBS config, using defaults:', error);
+        }
+
+        // Reinitialize alert queue with loaded config
+        initializeAlertQueue();
+      }
+
+      let alertQueue; // Will be initialized after config loads
+
+      function initializeAlertQueue() {
+        alertQueue = new AlertQueue({
+          alertDuration: config.alertDuration,
+          alertDelay: config.alertDelay,
+          soundEnabled: config.soundEnabled,
+          soundVolume: config.soundVolume,
+          onShow: showAlert,
+          onHide: hideAlert
+        });
+
+        // Load sounds
+        Object.entries(soundFiles).forEach(([type, filename]) => {
+          alertQueue.loadSound(type, soundBasePath + filename);
+        });
+
+        // Connect to WebSocket
+        const client = new OverlayClient();
+        client.on('alert', (alert) => {
+          console.log('Alert received:', alert);
+          alertQueue.queueAlert(alert);
+        });
+      }
+
+      // Sound configuration
       const soundBasePath = '../assets/sounds/';
       const soundFiles = {
         follow: 'follow.mp3',
@@ -77,10 +126,6 @@
         redemption: 'redemption.mp3',
         default: 'default.mp3'  // Fallback for any alert type without a specific sound
       };
-
-      Object.entries(soundFiles).forEach(([type, filename]) => {
-        alertQueue.loadSound(type, soundBasePath + filename);
-      });
 
       /**
        * Build alert HTML based on type
@@ -154,40 +199,43 @@
         }, config.exitAnimationDuration);
       }
 
-      // Initialize WebSocket client
-      const client = new OverlayClient();
+      // Load configuration from dashboard and initialize
+      loadConfig().then(() => {
+        // Initialize WebSocket client
+        const client = new OverlayClient();
 
-      // Listen for alert events
-      client.on('alert', (data) => {
-        console.log('[AlertsOverlay] Received alert:', data);
-        alertQueue.add(data);
+        // Listen for alert events
+        client.on('alert', (data) => {
+          console.log('[AlertsOverlay] Received alert:', data);
+          alertQueue.queueAlert(data);
+        });
+
+        // Also listen for eventsub-event for backwards compatibility
+        client.on('eventsub-event', (data) => {
+          // Convert eventsub event to alert format if needed
+          if (data.event) {
+            const alertData = {
+              alertType: data.event,
+              user: data.user || data.userName || data.username,
+              ...data
+            };
+            console.log('[AlertsOverlay] Converted eventsub-event to alert:', alertData);
+            alertQueue.queueAlert(alertData);
+          }
+        });
+
+        client.on('connected', () => {
+          console.log('[AlertsOverlay] WebSocket connected');
+        });
+
+        client.on('disconnected', () => {
+          console.log('[AlertsOverlay] WebSocket disconnected, will reconnect...');
+        });
+
+        // Expose for debugging
+        window.alertQueue = alertQueue;
+        window.client = client;
       });
-
-      // Also listen for eventsub-event for backwards compatibility
-      client.on('eventsub-event', (data) => {
-        // Convert eventsub event to alert format if needed
-        if (data.event) {
-          const alertData = {
-            alertType: data.event,
-            user: data.user || data.userName || data.username,
-            ...data
-          };
-          console.log('[AlertsOverlay] Converted eventsub-event to alert:', alertData);
-          alertQueue.add(alertData);
-        }
-      });
-
-      client.on('connected', () => {
-        console.log('[AlertsOverlay] WebSocket connected');
-      });
-
-      client.on('disconnected', () => {
-        console.log('[AlertsOverlay] WebSocket disconnected, will reconnect...');
-      });
-
-      // Expose for debugging
-      window.alertQueue = alertQueue;
-      window.client = client;
 
       /**
        * Test alert function - call from browser console
@@ -208,19 +256,25 @@
         if (type === 'raid' && !options.viewers) alertData.viewers = 50;
         if (type === 'redemption' && !options.reward) alertData.reward = 'Hydrate!';
 
-        alertQueue.add(alertData);
+        if (alertQueue) {
+          alertQueue.queueAlert(alertData);
+        }
       };
 
       /**
        * Test all alert types in sequence
        */
       window.testAllAlerts = () => {
+        if (!alertQueue) {
+          console.error('Alert queue not initialized yet');
+          return;
+        }
         console.log('[AlertsOverlay] Testing all alert types...');
-        testAlert('follow', 'FollowUser');
-        testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' });
-        testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' });
-        testAlert('raid', 'RaidUser', { viewers: 150 });
-        testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' });
+        window.testAlert('follow', 'FollowUser');
+        window.testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' });
+        window.testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' });
+        window.testAlert('raid', 'RaidUser', { viewers: 150 });
+        window.testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' });
       };
 
       console.log('[AlertsOverlay] Ready!');
