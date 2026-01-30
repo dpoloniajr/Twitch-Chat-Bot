@@ -154,3 +154,13 @@ Add configuration system and test alert functionality.
 - Report includes quick-start testing without OBS and full OBS integration instructions
 - All 5 alert types verified (follow, subscription, bits, raid, redemption)
 - Queue system tested for proper alert sequencing
+
+**Additional Improvements** (Commit fab6170):
+- Added comprehensive input validation to both `/obs/config` endpoints
+- Numeric fields validate for correct range (volume 0-1, positive numbers)
+- Overlay names validated against whitelist (alerts, recentEvents, chatBox, goalBar)
+- Configuration structure validated to ensure overlays object exists
+- Type coercion and auto-sanitization for backward compatibility
+- Descriptive error messages with HTTP 400 for validation failures
+- Created `validation-improvements.md` documenting all validation logic
+- Updated `report.md` with validation matrix and error examples
