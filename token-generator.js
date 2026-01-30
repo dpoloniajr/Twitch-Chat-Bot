@@ -254,10 +254,12 @@ app.get('/api/scope-presets', (req, res) => {
     },
     'eventsub-complete': {
       name: 'EventSub Complete',
-      description: 'All EventSub-related scopes',
+      description: 'All EventSub-related scopes (follows, subs, bits, redemptions)',
       scopes: [
         'moderator:read:followers',
-        'channel:read:redemptions'
+        'channel:read:redemptions',
+        'channel:read:subscriptions',
+        'bits:read'
       ]
     },
     'streamer-tools': {
@@ -285,10 +287,12 @@ app.get('/api/scope-presets', (req, res) => {
     },
     'broadcaster-recommended': {
       name: 'Broadcaster Account (Recommended)',
-      description: 'Recommended scopes for broadcaster account (EventSub)',
+      description: 'Recommended scopes for broadcaster account (EventSub alerts)',
       scopes: [
         'moderator:read:followers',
-        'channel:read:redemptions'
+        'channel:read:redemptions',
+        'channel:read:subscriptions',
+        'bits:read'
       ]
     }
   };
@@ -1447,9 +1451,15 @@ function generateHTML() {
       if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
       if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
       
-      // EventSub requires broadcaster context
-      if (selectedFeatures.eventsub) { broadcasterScopes.push('moderator:read:followers'); }
-      
+      // EventSub requires broadcaster context (follows, subs, bits, redemptions for alerts)
+      if (selectedFeatures.eventsub) {
+        broadcasterScopes.push('moderator:read:followers');
+        // Add subscription and bits scopes for OBS overlay alerts
+        if (!broadcasterScopes.includes('channel:read:subscriptions')) broadcasterScopes.push('channel:read:subscriptions');
+        if (!broadcasterScopes.includes('bits:read')) broadcasterScopes.push('bits:read');
+        if (!broadcasterScopes.includes('channel:read:redemptions')) broadcasterScopes.push('channel:read:redemptions');
+      }
+
       const html = \`
         <div style="display: grid; grid-template-columns: 1fr \${broadcasterScopes.length > 0 ? '1fr' : ''}; gap: 20px;">
           <div>
@@ -1521,9 +1531,15 @@ function generateHTML() {
       if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
       if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
       
-      // EventSub requires broadcaster context
-      if (selectedFeatures.eventsub) { broadcasterScopes.push('moderator:read:followers'); }
-      
+      // EventSub requires broadcaster context (follows, subs, bits, redemptions for alerts)
+      if (selectedFeatures.eventsub) {
+        broadcasterScopes.push('moderator:read:followers');
+        // Add subscription and bits scopes for OBS overlay alerts
+        if (!broadcasterScopes.includes('channel:read:subscriptions')) broadcasterScopes.push('channel:read:subscriptions');
+        if (!broadcasterScopes.includes('bits:read')) broadcasterScopes.push('bits:read');
+        if (!broadcasterScopes.includes('channel:read:redemptions')) broadcasterScopes.push('channel:read:redemptions');
+      }
+
       const botAuthUrl = \`https://id.twitch.tv/oauth2/authorize?client_id=\${CLIENT_ID}&redirect_uri=\${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=\${botScopes.join('+')}&state=bot\`;
       const broadcasterAuthUrl = broadcasterScopes.length > 0 ? 
         \`https://id.twitch.tv/oauth2/authorize?client_id=\${CLIENT_ID}&redirect_uri=\${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=\${broadcasterScopes.join('+')}&state=broadcaster\` : null;
@@ -1801,7 +1817,7 @@ function generateHTML() {
       const accountName = document.getElementById('auth-account-select').value;
       if (!accountName) { alert('Please select an account first'); return; }
       try {
-        let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions'];
+        let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions', 'channel:read:subscriptions', 'bits:read'];
         const response = await fetch('/api/accounts/' + accountName);
         const data = await response.json();
         const account = data.account;

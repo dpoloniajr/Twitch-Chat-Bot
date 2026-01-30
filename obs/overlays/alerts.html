@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alerts Overlay - OBS</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    /* Page-specific styles can go here */
+  </style>
+</head>
+<body>
+  <div class="overlay-container">
+    <div id="alert-display" class="hidden">
+      <!-- Alert content will be dynamically inserted here -->
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    /**
+     * Alerts Overlay
+     * Displays animated alerts for follows, subs, bits, raids, and redemptions
+     *
+     * Usage: Add as Browser Source in OBS
+     * URL: http://localhost:3001/obs/overlays/alerts.html
+     * Recommended size: 800x200 or custom based on your scene
+     *
+     * URL Parameters:
+     *   ?duration=5000    - How long alert displays (ms)
+     *   ?delay=1000       - Delay between alerts (ms)
+     *   ?enter=bounceIn   - Enter animation class name
+     *   ?exit=fadeOutUp   - Exit animation class name
+     *   ?exitDuration=500 - Time to wait for exit animation (ms)
+     *   ?sound=false      - Disable sounds
+     *   ?volume=0.5       - Sound volume (0-1)
+     *
+     * Note: exitDuration should match your CSS animation duration.
+     * Default CSS animations in overlay-base.css are 500ms.
+     * If using custom exit animations, set exitDuration to match.
+     */
+    (function() {
+      'use strict';
+
+      const alertDisplay = document.getElementById('alert-display');
+
+      // Configuration (can be overridden via URL params or /obs/config endpoint)
+      const config = {
+        alertDuration: parseInt(OverlayUtils.getQueryParam('duration')) || 5000,
+        alertDelay: parseInt(OverlayUtils.getQueryParam('delay')) || 1000,
+        soundEnabled: OverlayUtils.getQueryParam('sound') !== 'false',
+        soundVolume: parseFloat(OverlayUtils.getQueryParam('volume')) || 0.5,
+        enterAnimation: OverlayUtils.getQueryParam('enter') || 'bounceIn',
+        exitAnimation: OverlayUtils.getQueryParam('exit') || 'fadeOutUp',
+        exitAnimationDuration: parseInt(OverlayUtils.getQueryParam('exitDuration')) || 500
+      };
+
+      // Initialize alert queue
+      const alertQueue = new AlertQueue({
+        alertDuration: config.alertDuration,
+        alertDelay: config.alertDelay,
+        soundEnabled: config.soundEnabled,
+        soundVolume: config.soundVolume,
+        onShow: showAlert,
+        onHide: hideAlert
+      });
+
+      // Load sounds - users can add their own to /obs/assets/sounds/
+      // Note: Audio elements are created immediately but errors only surface
+      // when playback is attempted (handled silently in alertQueue.playSound())
+      const soundBasePath = '../assets/sounds/';
+      const soundFiles = {
+        follow: 'follow.mp3',
+        subscription: 'subscribe.mp3',
+        bits: 'bits.mp3',
+        raid: 'raid.mp3',
+        redemption: 'redemption.mp3',
+        default: 'default.mp3'  // Fallback for any alert type without a specific sound
+      };
+
+      Object.entries(soundFiles).forEach(([type, filename]) => {
+        alertQueue.loadSound(type, soundBasePath + filename);
+      });
+
+      /**
+       * Build alert HTML based on type
+       */
+      function buildAlertHtml(alert) {
+        const type = alert.alertType || 'follow';
+        let title = '';
+        let details = '';
+        let message = alert.message ? `<div class="alert-message">${OverlayUtils.escapeHtml(alert.message)}</div>` : '';
+
+        switch (type) {
+          case 'follow':
+            title = 'New Follower!';
+            break;
+
+          case 'subscription':
+            title = 'New Subscriber!';
+            details = alert.tier ? `<div class="alert-details">${OverlayUtils.parseTier(alert.tier)}</div>` : '';
+            break;
+
+          case 'bits':
+            title = 'Cheer!';
+            details = alert.amount ? `<div class="alert-details">${OverlayUtils.formatNumber(alert.amount)} bits</div>` : '';
+            break;
+
+          case 'raid':
+            title = 'Raid!';
+            details = alert.viewers ? `<div class="alert-details">${OverlayUtils.formatNumber(alert.viewers)} viewers</div>` : '';
+            break;
+
+          case 'redemption':
+            title = 'Redemption!';
+            details = alert.reward ? `<div class="alert-details">${OverlayUtils.escapeHtml(alert.reward)}</div>` : '';
+            break;
+
+          default:
+            title = 'Alert!';
+        }
+
+        return `
+          <div class="alert-box ${type}">
+            <div class="alert-title">${title}</div>
+            <div class="alert-username">${OverlayUtils.escapeHtml(alert.user || 'Anonymous')}</div>
+            ${details}
+            ${message}
+          </div>
+        `;
+      }
+
+      /**
+       * Show alert on screen
+       */
+      function showAlert(alert) {
+        alertDisplay.innerHTML = buildAlertHtml(alert);
+        alertDisplay.classList.remove('hidden');
+        alertDisplay.classList.remove(`animate-${config.exitAnimation}`);
+        alertDisplay.classList.add(`animate-${config.enterAnimation}`);
+      }
+
+      /**
+       * Hide alert from screen
+       */
+      function hideAlert(alert) {
+        alertDisplay.classList.remove(`animate-${config.enterAnimation}`);
+        alertDisplay.classList.add(`animate-${config.exitAnimation}`);
+
+        // Wait for exit animation then hide (uses configurable duration)
+        setTimeout(() => {
+          alertDisplay.classList.add('hidden');
+          alertDisplay.innerHTML = '';
+        }, config.exitAnimationDuration);
+      }
+
+      // Initialize WebSocket client
+      const client = new OverlayClient();
+
+      // Listen for alert events
+      client.on('alert', (data) => {
+        console.log('[AlertsOverlay] Received alert:', data);
+        alertQueue.add(data);
+      });
+
+      // Also listen for eventsub-event for backwards compatibility
+      client.on('eventsub-event', (data) => {
+        // Convert eventsub event to alert format if needed
+        if (data.event) {
+          const alertData = {
+            alertType: data.event,
+            user: data.user || data.userName || data.username,
+            ...data
+          };
+          console.log('[AlertsOverlay] Converted eventsub-event to alert:', alertData);
+          alertQueue.add(alertData);
+        }
+      });
+
+      client.on('connected', () => {
+        console.log('[AlertsOverlay] WebSocket connected');
+      });
+
+      client.on('disconnected', () => {
+        console.log('[AlertsOverlay] WebSocket disconnected, will reconnect...');
+      });
+
+      // Expose for debugging
+      window.alertQueue = alertQueue;
+      window.client = client;
+
+      /**
+       * Test alert function - call from browser console
+       * @param {string} type - Alert type: follow, subscription, bits, raid, redemption
+       * @param {string} user - Username to display
+       * @param {object} options - Additional options (message, tier, amount, viewers, reward)
+       */
+      window.testAlert = (type = 'follow', user = 'TestUser', options = {}) => {
+        const alertData = {
+          alertType: type,
+          user: user,
+          ...options
+        };
+
+        // Add sensible defaults for type-specific fields if not provided
+        if (type === 'subscription' && !options.tier) alertData.tier = '1000';
+        if (type === 'bits' && !options.amount) alertData.amount = 100;
+        if (type === 'raid' && !options.viewers) alertData.viewers = 50;
+        if (type === 'redemption' && !options.reward) alertData.reward = 'Hydrate!';
+
+        alertQueue.add(alertData);
+      };
+
+      /**
+       * Test all alert types in sequence
+       */
+      window.testAllAlerts = () => {
+        console.log('[AlertsOverlay] Testing all alert types...');
+        testAlert('follow', 'FollowUser');
+        testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' });
+        testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' });
+        testAlert('raid', 'RaidUser', { viewers: 150 });
+        testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' });
+      };
+
+      console.log('[AlertsOverlay] Ready!');
+      console.log('  testAlert(type, user, options) - Test single alert');
+      console.log('  testAllAlerts() - Test all alert types in sequence');
+      console.log('  Types: follow, subscription, bits, raid, redemption');
+    })();
+  </script>
+</body>
+</html>

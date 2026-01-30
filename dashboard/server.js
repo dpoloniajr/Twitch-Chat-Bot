@@ -13,6 +13,9 @@ const wss = new WebSocket.Server({ server });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve OBS overlay files from the obs/ directory at root level
+app.use('/obs', express.static(path.join(__dirname, '..', 'obs')));
+
 // Paths for logs
 const logsDir = path.join(__dirname, 'logs');
 const commandLogsFile = path.join(logsDir, 'commands.json');
@@ -22,6 +25,7 @@ const builtinCommandsFile = path.join(logsDir, 'builtinCommands.json');
 const announcementsFile = path.join(logsDir, 'announcements.json');
 const redemptionsFile = path.join(logsDir, 'redemptions.json');
 const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
+const obsConfigFile = path.join(logsDir, 'obs-config.json');
 const envPath = path.join(__dirname, '..', '.env');
 
 // Helper to upsert a key in the .env file
@@ -100,7 +104,21 @@ async function initLogs() {
     } catch {
       await fs.writeFile(eventSubEventsFile, JSON.stringify([], null, 2));
     }
-    
+
+    // Initialize OBS configuration
+    try {
+      await fs.access(obsConfigFile);
+    } catch {
+      await fs.writeFile(obsConfigFile, JSON.stringify({
+        overlays: {
+          alerts: { enabled: true, volume: 0.8, duration: 5 },
+          recentEvents: { enabled: true, limit: 10, showTime: true },
+          chatBox: { enabled: true, messageTimeout: 8, hideBot: false },
+          goalBar: { enabled: true, type: 'follow', goal: 1000 }
+        }
+      }, null, 2));
+    }
+
     // Initialize built-in commands configuration
     try {
       await fs.access(builtinCommandsFile);
@@ -426,6 +444,101 @@ app.get('/api/eventsub-events', async (req, res) => {
   }
 });
 
+// Test alert endpoint for OBS overlay testing
+app.post('/api/test-alert', (req, res) => {
+  const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward } = req.body;
+
+  const validTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  if (!validTypes.includes(alertType)) {
+    return res.status(400).json({ error: `Invalid alertType. Must be one of: ${validTypes.join(', ')}` });
+  }
+
+  const alertData = {
+    alertType,
+    user,
+    timestamp: new Date().toISOString()
+  };
+
+  // Add type-specific fields
+  if (message) alertData.message = message;
+  if (alertType === 'subscription' && tier) alertData.tier = tier;
+  if (alertType === 'bits' && amount) alertData.amount = Number(amount);
+  if (alertType === 'raid' && viewers) alertData.viewers = Number(viewers);
+  if (alertType === 'redemption' && reward) alertData.reward = reward;
+
+  // Broadcast to all connected clients (including OBS overlays)
+  broadcastState({ type: 'alert', data: alertData });
+
+  console.log('[TestAlert] Sent:', alertData);
+  res.json({ success: true, alert: alertData });
+});
+
+// OBS Recent Events API
+// Get recent events by type for the recent-events overlay
+app.get('/obs/recent/:type?', async (req, res) => {
+  try {
+    const eventType = req.params.type?.toLowerCase() || 'all';
+    const events = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
+
+    // Map event types to match alertType naming
+    const typeMap = {
+      follow: 'follow',
+      subscriber: 'subscription',
+      subscription: 'subscription',
+      bits: 'bits',
+      cheer: 'bits',
+      raid: 'raid',
+      redemption: 'redemption'
+    };
+
+    let filtered = events;
+
+    // Filter by type if not 'all'
+    if (eventType !== 'all') {
+      const targetType = typeMap[eventType];
+      if (!targetType) {
+        return res.status(400).json({
+          error: `Invalid event type. Must be one of: follow, subscriber, bits, raid, redemption, all`
+        });
+      }
+
+      filtered = events.filter(e => {
+        const eType = e.event || e.alertType;
+        // Handle both 'subscription' and 'subscriber' names
+        if (targetType === 'subscription') {
+          return eType === 'subscription' || eType === 'subscriber';
+        }
+        return eType === targetType;
+      });
+    }
+
+    // Reverse to get most recent first, limit to 50
+    filtered = filtered.reverse().slice(0, 50);
+
+    // Transform to overlay format
+    const recentEvents = filtered.map(e => ({
+      type: e.event || e.alertType,
+      user: e.user || e.userName || e.username,
+      timestamp: e.timestamp,
+      tier: e.tier,
+      amount: e.amount,
+      viewers: e.viewers,
+      reward: e.reward,
+      message: e.message,
+      ...e
+    }));
+
+    res.json({
+      type: eventType,
+      count: recentEvents.length,
+      events: recentEvents
+    });
+  } catch (error) {
+    console.error('[ObsRecentEvents] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Chat Filters API
 
 // Get current filter configuration
@@ -504,6 +617,187 @@ app.delete('/api/filters/words/:word', async (req, res) => {
 
     broadcastState({ type: 'filters', data: chatFilters });
     res.json({ success: true, words: chatFilters.blacklistWords });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// OBS Configuration API
+
+// Get OBS configuration
+app.get('/obs/config', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(obsConfigFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update OBS configuration
+app.post('/obs/config', async (req, res) => {
+  try {
+    const config = req.body;
+
+    // Validate configuration structure
+    if (!config.overlays || typeof config.overlays !== 'object') {
+      return res.status(400).json({ error: 'Configuration must contain overlays object' });
+    }
+
+    // Validate and sanitize overlay settings
+    const validOverlays = ['alerts', 'recentEvents', 'chatBox', 'goalBar'];
+    for (const overlay of validOverlays) {
+      if (config.overlays[overlay]) {
+        const settings = config.overlays[overlay];
+
+        // Validate numeric values
+        if (settings.volume !== undefined) {
+          const vol = Number(settings.volume);
+          if (isNaN(vol) || vol < 0 || vol > 1) {
+            return res.status(400).json({ error: `${overlay}.volume must be a number between 0 and 1` });
+          }
+          settings.volume = vol;
+        }
+
+        if (settings.duration !== undefined) {
+          const dur = Number(settings.duration);
+          if (isNaN(dur) || dur < 1) {
+            return res.status(400).json({ error: `${overlay}.duration must be a positive number` });
+          }
+          settings.duration = dur;
+        }
+
+        if (settings.limit !== undefined) {
+          const limit = Number(settings.limit);
+          if (isNaN(limit) || limit < 1) {
+            return res.status(400).json({ error: `${overlay}.limit must be a positive number` });
+          }
+          settings.limit = limit;
+        }
+
+        if (settings.messageTimeout !== undefined) {
+          const timeout = Number(settings.messageTimeout);
+          if (isNaN(timeout) || timeout < 1) {
+            return res.status(400).json({ error: `${overlay}.messageTimeout must be a positive number` });
+          }
+          settings.messageTimeout = timeout;
+        }
+
+        if (settings.goal !== undefined) {
+          const goal = Number(settings.goal);
+          if (isNaN(goal) || goal < 1) {
+            return res.status(400).json({ error: `${overlay}.goal must be a positive number` });
+          }
+          settings.goal = goal;
+        }
+
+        // Validate boolean values
+        if (settings.enabled !== undefined && typeof settings.enabled !== 'boolean') {
+          settings.enabled = !!settings.enabled;
+        }
+
+        if (settings.showTime !== undefined && typeof settings.showTime !== 'boolean') {
+          settings.showTime = !!settings.showTime;
+        }
+
+        if (settings.hideBot !== undefined && typeof settings.hideBot !== 'boolean') {
+          settings.hideBot = !!settings.hideBot;
+        }
+      }
+    }
+
+    await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'obsConfig', data: config });
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update specific overlay configuration
+app.post('/obs/config/:overlay', async (req, res) => {
+  try {
+    const config = JSON.parse(await fs.readFile(obsConfigFile, 'utf8'));
+    const overlay = req.params.overlay.toLowerCase();
+    const validOverlays = ['alerts', 'recentEvents', 'chatBox', 'goalBar'];
+
+    if (!validOverlays.includes(overlay)) {
+      return res.status(400).json({ error: `Invalid overlay. Must be one of: ${validOverlays.join(', ')}` });
+    }
+
+    if (!config.overlays[overlay]) {
+      return res.status(404).json({ error: `Overlay '${overlay}' not found in configuration` });
+    }
+
+    const updates = req.body;
+
+    // Validate numeric values based on overlay type
+    if (overlay === 'alerts') {
+      if (updates.volume !== undefined) {
+        const vol = Number(updates.volume);
+        if (isNaN(vol) || vol < 0 || vol > 1) {
+          return res.status(400).json({ error: 'volume must be a number between 0 and 1' });
+        }
+        updates.volume = vol;
+      }
+      if (updates.duration !== undefined) {
+        const dur = Number(updates.duration);
+        if (isNaN(dur) || dur < 1) {
+          return res.status(400).json({ error: 'duration must be a positive number' });
+        }
+        updates.duration = dur;
+      }
+    }
+
+    if (overlay === 'recentEvents') {
+      if (updates.limit !== undefined) {
+        const limit = Number(updates.limit);
+        if (isNaN(limit) || limit < 1) {
+          return res.status(400).json({ error: 'limit must be a positive number' });
+        }
+        updates.limit = limit;
+      }
+      if (updates.showTime !== undefined && typeof updates.showTime !== 'boolean') {
+        updates.showTime = !!updates.showTime;
+      }
+    }
+
+    if (overlay === 'chatBox') {
+      if (updates.messageTimeout !== undefined) {
+        const timeout = Number(updates.messageTimeout);
+        if (isNaN(timeout) || timeout < 1) {
+          return res.status(400).json({ error: 'messageTimeout must be a positive number' });
+        }
+        updates.messageTimeout = timeout;
+      }
+      if (updates.hideBot !== undefined && typeof updates.hideBot !== 'boolean') {
+        updates.hideBot = !!updates.hideBot;
+      }
+    }
+
+    if (overlay === 'goalBar') {
+      if (updates.goal !== undefined) {
+        const goal = Number(updates.goal);
+        if (isNaN(goal) || goal < 1) {
+          return res.status(400).json({ error: 'goal must be a positive number' });
+        }
+        updates.goal = goal;
+      }
+      if (updates.type !== undefined && !['follow', 'subscriber'].includes(updates.type)) {
+        return res.status(400).json({ error: "type must be 'follow' or 'subscriber'" });
+      }
+    }
+
+    // Validate enabled flag for all overlays
+    if (updates.enabled !== undefined && typeof updates.enabled !== 'boolean') {
+      updates.enabled = !!updates.enabled;
+    }
+
+    config.overlays[overlay] = { ...config.overlays[overlay], ...updates };
+    await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'obsConfig', data: config });
+
+    res.json({ success: true, config: config.overlays[overlay] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

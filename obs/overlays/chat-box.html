@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Box Overlay - OBS</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    #chat-messages {
+      max-height: 100%;
+    }
+
+    .chat-message.fadeInUp {
+      animation: fadeInUp 0.3s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-container">
+    <div class="chat-container">
+      <div class="chat-messages" id="chat-messages"></div>
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    /**
+     * Chat Box Overlay
+     * Displays live chat messages in a scrolling overlay
+     *
+     * Usage: Add as Browser Source in OBS
+     * URL: http://localhost:3001/obs/overlays/chat-box.html
+     * Recommended size: 400x300 or custom based on your scene
+     *
+     * URL Parameters:
+     *   ?limit=15        - Maximum number of messages to display (default: 15)
+     *   ?timeout=8000    - Time before message fades out (ms, default: 8000)
+     *   ?hideBot=true    - Hide bot messages (default: false)
+     *   ?hideCommands=true - Hide command messages starting with ! (default: false)
+     *   ?colorByRole=true - Color messages by user role (broadcaster, mod, etc.)
+     */
+    (function() {
+      'use strict';
+
+      const chatMessages = document.getElementById('chat-messages');
+
+      // Configuration
+      const config = {
+        maxMessages: parseInt(OverlayUtils.getQueryParam('limit')) || 15,
+        messageTimeout: parseInt(OverlayUtils.getQueryParam('timeout')) || 8000,
+        hideBot: OverlayUtils.getQueryParam('hideBot') === 'true',
+        hideCommands: OverlayUtils.getQueryParam('hideCommands') === 'true',
+        colorByRole: OverlayUtils.getQueryParam('colorByRole') === 'true'
+      };
+
+      // Store messages
+      let messages = [];
+      let messageTimeouts = new Map();
+
+      /**
+       * Get color for user role
+       */
+      function getRoleColor(role) {
+        const roleColors = {
+          'broadcaster': '#ff1493',
+          'moderator': '#1e90ff',
+          'vip': '#daa520',
+          'subscriber': '#00a86b'
+        };
+        return roleColors[role?.toLowerCase()] || '#9147ff';
+      }
+
+      /**
+       * Build HTML for a single chat message
+       */
+      function buildMessageHtml(msg) {
+        const username = OverlayUtils.escapeHtml(msg.username || msg.user || 'Unknown');
+        const text = OverlayUtils.escapeHtml(msg.message || '');
+        const color = config.colorByRole ? getRoleColor(msg.role) : '#9147ff';
+
+        return `
+          <div class="chat-message fadeInUp">
+            <span class="chat-username" style="color: ${color}">${username}:</span>
+            <span class="chat-text">${text}</span>
+          </div>
+        `;
+      }
+
+      /**
+       * Add message to chat
+       */
+      function addMessage(msg) {
+        // Filter out messages
+        if (config.hideBot && msg.isBroadcaster && msg.user?.toLowerCase() === 'excella') {
+          return;
+        }
+        if (config.hideCommands && msg.message?.startsWith('!')) {
+          return;
+        }
+
+        // Add to list
+        messages.push(msg);
+
+        // Keep only maxMessages
+        if (messages.length > config.maxMessages) {
+          const removed = messages.shift();
+          // Clear timeout if exists
+          if (messageTimeouts.has(removed)) {
+            clearTimeout(messageTimeouts.get(removed));
+            messageTimeouts.delete(removed);
+          }
+        }
+
+        renderMessages();
+
+        // Set timeout to remove old message
+        const msgId = `${msg.timestamp}-${msg.username}`;
+        const timeout = setTimeout(() => {
+          const index = messages.findIndex(m => `${m.timestamp}-${m.username}` === msgId);
+          if (index > -1) {
+            messages.splice(index, 1);
+            messageTimeouts.delete(msgId);
+            renderMessages();
+          }
+        }, config.messageTimeout);
+
+        messageTimeouts.set(msgId, timeout);
+      }
+
+      /**
+       * Render all messages
+       */
+      function renderMessages() {
+        if (messages.length === 0) {
+          chatMessages.innerHTML = '<div style="color: #666; padding: 10px; font-size: 12px;">Waiting for chat messages...</div>';
+          return;
+        }
+
+        chatMessages.innerHTML = messages.map(msg => buildMessageHtml(msg)).join('');
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      // Initialize WebSocket client
+      const client = new OverlayClient();
+
+      // Listen for chat messages
+      // The dashboard broadcasts chat messages via WebSocket with type: 'chat'
+      client.on('chat', (data) => {
+        console.log('[ChatBoxOverlay] Received chat message:', data);
+        addMessage({
+          username: data.username || data.user,
+          message: data.message || data.text,
+          timestamp: new Date().toISOString(),
+          role: data.role || data.badges?.moderator ? 'moderator' : null,
+          isBroadcaster: data.isBroadcaster || data.badges?.broadcaster,
+          ...data
+        });
+      });
+
+      client.on('connected', () => {
+        console.log('[ChatBoxOverlay] WebSocket connected');
+      });
+
+      client.on('disconnected', () => {
+        console.log('[ChatBoxOverlay] WebSocket disconnected, will reconnect...');
+      });
+
+      // Expose for debugging
+      window.chatMessages = messages;
+      window.client = client;
+
+      // Test function
+      window.testMessage = (username = 'TestUser', message = 'Hello chat!') => {
+        addMessage({
+          username,
+          message,
+          timestamp: new Date().toISOString()
+        });
+      };
+
+      console.log('[ChatBoxOverlay] Ready!');
+      console.log(`  Max messages: ${config.maxMessages}`);
+      console.log(`  Message timeout: ${config.messageTimeout}ms`);
+      console.log(`  Hide bot: ${config.hideBot}`);
+      console.log(`  Hide commands: ${config.hideCommands}`);
+      console.log(`  Color by role: ${config.colorByRole}`);
+      console.log('  testMessage(username, text) - Test chat message');
+    })();
+  </script>
+</body>
+</html>
