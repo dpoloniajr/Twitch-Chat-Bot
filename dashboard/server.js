@@ -638,6 +638,74 @@ app.get('/obs/config', async (req, res) => {
 app.post('/obs/config', async (req, res) => {
   try {
     const config = req.body;
+
+    // Validate configuration structure
+    if (!config.overlays || typeof config.overlays !== 'object') {
+      return res.status(400).json({ error: 'Configuration must contain overlays object' });
+    }
+
+    // Validate and sanitize overlay settings
+    const validOverlays = ['alerts', 'recentEvents', 'chatBox', 'goalBar'];
+    for (const overlay of validOverlays) {
+      if (config.overlays[overlay]) {
+        const settings = config.overlays[overlay];
+
+        // Validate numeric values
+        if (settings.volume !== undefined) {
+          const vol = Number(settings.volume);
+          if (isNaN(vol) || vol < 0 || vol > 1) {
+            return res.status(400).json({ error: `${overlay}.volume must be a number between 0 and 1` });
+          }
+          settings.volume = vol;
+        }
+
+        if (settings.duration !== undefined) {
+          const dur = Number(settings.duration);
+          if (isNaN(dur) || dur < 1) {
+            return res.status(400).json({ error: `${overlay}.duration must be a positive number` });
+          }
+          settings.duration = dur;
+        }
+
+        if (settings.limit !== undefined) {
+          const limit = Number(settings.limit);
+          if (isNaN(limit) || limit < 1) {
+            return res.status(400).json({ error: `${overlay}.limit must be a positive number` });
+          }
+          settings.limit = limit;
+        }
+
+        if (settings.messageTimeout !== undefined) {
+          const timeout = Number(settings.messageTimeout);
+          if (isNaN(timeout) || timeout < 1) {
+            return res.status(400).json({ error: `${overlay}.messageTimeout must be a positive number` });
+          }
+          settings.messageTimeout = timeout;
+        }
+
+        if (settings.goal !== undefined) {
+          const goal = Number(settings.goal);
+          if (isNaN(goal) || goal < 1) {
+            return res.status(400).json({ error: `${overlay}.goal must be a positive number` });
+          }
+          settings.goal = goal;
+        }
+
+        // Validate boolean values
+        if (settings.enabled !== undefined && typeof settings.enabled !== 'boolean') {
+          settings.enabled = !!settings.enabled;
+        }
+
+        if (settings.showTime !== undefined && typeof settings.showTime !== 'boolean') {
+          settings.showTime = !!settings.showTime;
+        }
+
+        if (settings.hideBot !== undefined && typeof settings.hideBot !== 'boolean') {
+          settings.hideBot = !!settings.hideBot;
+        }
+      }
+    }
+
     await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
     broadcastState({ type: 'obsConfig', data: config });
     res.json({ success: true, config });
@@ -651,12 +719,81 @@ app.post('/obs/config/:overlay', async (req, res) => {
   try {
     const config = JSON.parse(await fs.readFile(obsConfigFile, 'utf8'));
     const overlay = req.params.overlay.toLowerCase();
+    const validOverlays = ['alerts', 'recentEvents', 'chatBox', 'goalBar'];
 
-    if (!config.overlays[overlay]) {
-      return res.status(404).json({ error: `Overlay '${overlay}' not found` });
+    if (!validOverlays.includes(overlay)) {
+      return res.status(400).json({ error: `Invalid overlay. Must be one of: ${validOverlays.join(', ')}` });
     }
 
-    config.overlays[overlay] = { ...config.overlays[overlay], ...req.body };
+    if (!config.overlays[overlay]) {
+      return res.status(404).json({ error: `Overlay '${overlay}' not found in configuration` });
+    }
+
+    const updates = req.body;
+
+    // Validate numeric values based on overlay type
+    if (overlay === 'alerts') {
+      if (updates.volume !== undefined) {
+        const vol = Number(updates.volume);
+        if (isNaN(vol) || vol < 0 || vol > 1) {
+          return res.status(400).json({ error: 'volume must be a number between 0 and 1' });
+        }
+        updates.volume = vol;
+      }
+      if (updates.duration !== undefined) {
+        const dur = Number(updates.duration);
+        if (isNaN(dur) || dur < 1) {
+          return res.status(400).json({ error: 'duration must be a positive number' });
+        }
+        updates.duration = dur;
+      }
+    }
+
+    if (overlay === 'recentEvents') {
+      if (updates.limit !== undefined) {
+        const limit = Number(updates.limit);
+        if (isNaN(limit) || limit < 1) {
+          return res.status(400).json({ error: 'limit must be a positive number' });
+        }
+        updates.limit = limit;
+      }
+      if (updates.showTime !== undefined && typeof updates.showTime !== 'boolean') {
+        updates.showTime = !!updates.showTime;
+      }
+    }
+
+    if (overlay === 'chatBox') {
+      if (updates.messageTimeout !== undefined) {
+        const timeout = Number(updates.messageTimeout);
+        if (isNaN(timeout) || timeout < 1) {
+          return res.status(400).json({ error: 'messageTimeout must be a positive number' });
+        }
+        updates.messageTimeout = timeout;
+      }
+      if (updates.hideBot !== undefined && typeof updates.hideBot !== 'boolean') {
+        updates.hideBot = !!updates.hideBot;
+      }
+    }
+
+    if (overlay === 'goalBar') {
+      if (updates.goal !== undefined) {
+        const goal = Number(updates.goal);
+        if (isNaN(goal) || goal < 1) {
+          return res.status(400).json({ error: 'goal must be a positive number' });
+        }
+        updates.goal = goal;
+      }
+      if (updates.type !== undefined && !['follow', 'subscriber'].includes(updates.type)) {
+        return res.status(400).json({ error: "type must be 'follow' or 'subscriber'" });
+      }
+    }
+
+    // Validate enabled flag for all overlays
+    if (updates.enabled !== undefined && typeof updates.enabled !== 'boolean') {
+      updates.enabled = !!updates.enabled;
+    }
+
+    config.overlays[overlay] = { ...config.overlays[overlay], ...updates };
     await fs.writeFile(obsConfigFile, JSON.stringify(config, null, 2));
     broadcastState({ type: 'obsConfig', data: config });
 

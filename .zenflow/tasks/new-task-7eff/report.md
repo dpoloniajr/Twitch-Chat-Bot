@@ -406,6 +406,12 @@ Response: { overlays: { alerts: {...}, recentEvents: {...}, ... } }
 POST /obs/config
 Body: { overlays: { alerts: {...}, ... } }
 Response: { success: true, config: {...} }
+
+Validation:
+- overlays object is required
+- volume: 0-1 range (numeric)
+- duration, limit, messageTimeout, goal: positive numbers
+- enabled, showTime, hideBot: boolean values
 ```
 
 **Update Specific Overlay**
@@ -414,6 +420,14 @@ POST /obs/config/:overlay
 Body: { enabled: true, duration: 5, ... }
 Response: { success: true, config: {...} }
 Example: POST /obs/config/alerts with body { duration: 3, volume: 0.8 }
+
+Valid overlay names: alerts, recentEvents, chatBox, goalBar
+
+Validation by overlay type:
+- alerts: volume (0-1), duration (positive number)
+- recentEvents: limit (positive number), showTime (boolean)
+- chatBox: messageTimeout (positive number), hideBot (boolean)
+- goalBar: goal (positive number), type ('follow' or 'subscriber')
 ```
 
 ### Test Alerts
@@ -513,6 +527,50 @@ The OBS integration is fully implemented and ready for use. All core features ar
 ✅ Automatic EventSub event broadcasting
 
 Users can now add OBS browser sources pointing to the overlay pages and receive real-time Twitch alerts with animations and sounds directly in their stream.
+
+---
+
+## Input Validation & Security
+
+### Configuration Validation
+
+All configuration endpoints include comprehensive input validation:
+
+**Type Validation**:
+- Numeric fields automatically convert strings to numbers
+- Boolean fields automatically convert truthy/falsy values
+- Invalid types are rejected with descriptive error messages
+
+**Range Validation**:
+- `volume`: Must be 0-1 range (e.g., `0.5` = 50% volume)
+- `duration`, `limit`, `messageTimeout`, `goal`: Must be positive integers
+- Type-specific validation ensures overlays receive correct configuration
+
+**Overlay Validation**:
+- Only valid overlay names accepted: `alerts`, `recentEvents`, `chatBox`, `goalBar`
+- Missing overlays return 404 (not found)
+- Invalid overlay names return 400 (bad request)
+
+**Example Validation Errors**:
+```bash
+# Invalid volume (out of range)
+curl -X POST http://localhost:3001/obs/config/alerts \
+  -d '{"volume":1.5}' \
+  -H "Content-Type: application/json"
+# Response: 400 - "volume must be a number between 0 and 1"
+
+# Invalid duration (negative)
+curl -X POST http://localhost:3001/obs/config/alerts \
+  -d '{"duration":-5}' \
+  -H "Content-Type: application/json"
+# Response: 400 - "duration must be a positive number"
+
+# Invalid overlay name
+curl -X POST http://localhost:3001/obs/config/invalid \
+  -d '{"enabled":true}' \
+  -H "Content-Type: application/json"
+# Response: 400 - "Invalid overlay. Must be one of: alerts, recentEvents, chatBox, goalBar"
+```
 
 ---
 
