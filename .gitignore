@@ -146,3 +146,6 @@ token-generator.js.backup
 PHASE7_COMPLETION_SUMMARY.md
 .encryption-key
 accounts.encrypted.json
+
+# Zenflow task tracking and artifacts
+.zenflow
