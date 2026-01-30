@@ -429,6 +429,35 @@ app.get('/api/eventsub-events', async (req, res) => {
   }
 });
 
+// Test alert endpoint for OBS overlay testing
+app.post('/api/test-alert', (req, res) => {
+  const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward } = req.body;
+
+  const validTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  if (!validTypes.includes(alertType)) {
+    return res.status(400).json({ error: `Invalid alertType. Must be one of: ${validTypes.join(', ')}` });
+  }
+
+  const alertData = {
+    alertType,
+    user,
+    timestamp: new Date().toISOString()
+  };
+
+  // Add type-specific fields
+  if (message) alertData.message = message;
+  if (alertType === 'subscription' && tier) alertData.tier = tier;
+  if (alertType === 'bits' && amount) alertData.amount = Number(amount);
+  if (alertType === 'raid' && viewers) alertData.viewers = Number(viewers);
+  if (alertType === 'redemption' && reward) alertData.reward = reward;
+
+  // Broadcast to all connected clients (including OBS overlays)
+  broadcastState({ type: 'alert', data: alertData });
+
+  console.log('[TestAlert] Sent:', alertData);
+  res.json({ success: true, alert: alertData });
+});
+
 // Chat Filters API
 
 // Get current filter configuration

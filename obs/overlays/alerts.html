@@ -25,6 +25,19 @@
      * Usage: Add as Browser Source in OBS
      * URL: http://localhost:3001/obs/overlays/alerts.html
      * Recommended size: 800x200 or custom based on your scene
+     *
+     * URL Parameters:
+     *   ?duration=5000    - How long alert displays (ms)
+     *   ?delay=1000       - Delay between alerts (ms)
+     *   ?enter=bounceIn   - Enter animation class name
+     *   ?exit=fadeOutUp   - Exit animation class name
+     *   ?exitDuration=500 - Time to wait for exit animation (ms)
+     *   ?sound=false      - Disable sounds
+     *   ?volume=0.5       - Sound volume (0-1)
+     *
+     * Note: exitDuration should match your CSS animation duration.
+     * Default CSS animations in overlay-base.css are 500ms.
+     * If using custom exit animations, set exitDuration to match.
      */
     (function() {
       'use strict';
@@ -52,12 +65,22 @@
         onHide: hideAlert
       });
 
-      // Load sounds (paths to be configured)
-      // alertQueue.loadSound('follow', '../assets/sounds/follow.mp3');
-      // alertQueue.loadSound('subscription', '../assets/sounds/subscribe.mp3');
-      // alertQueue.loadSound('bits', '../assets/sounds/bits.mp3');
-      // alertQueue.loadSound('raid', '../assets/sounds/raid.mp3');
-      // alertQueue.loadSound('redemption', '../assets/sounds/redemption.mp3');
+      // Load sounds - users can add their own to /obs/assets/sounds/
+      // Note: Audio elements are created immediately but errors only surface
+      // when playback is attempted (handled silently in alertQueue.playSound())
+      const soundBasePath = '../assets/sounds/';
+      const soundFiles = {
+        follow: 'follow.mp3',
+        subscription: 'subscribe.mp3',
+        bits: 'bits.mp3',
+        raid: 'raid.mp3',
+        redemption: 'redemption.mp3',
+        default: 'default.mp3'  // Fallback for any alert type without a specific sound
+      };
+
+      Object.entries(soundFiles).forEach(([type, filename]) => {
+        alertQueue.loadSound(type, soundBasePath + filename);
+      });
 
       /**
        * Build alert HTML based on type
@@ -165,11 +188,45 @@
       // Expose for debugging
       window.alertQueue = alertQueue;
       window.client = client;
-      window.testAlert = (type = 'follow', user = 'TestUser') => {
-        alertQueue.add({ alertType: type, user: user, message: 'Test alert message!' });
+
+      /**
+       * Test alert function - call from browser console
+       * @param {string} type - Alert type: follow, subscription, bits, raid, redemption
+       * @param {string} user - Username to display
+       * @param {object} options - Additional options (message, tier, amount, viewers, reward)
+       */
+      window.testAlert = (type = 'follow', user = 'TestUser', options = {}) => {
+        const alertData = {
+          alertType: type,
+          user: user,
+          ...options
+        };
+
+        // Add sensible defaults for type-specific fields if not provided
+        if (type === 'subscription' && !options.tier) alertData.tier = '1000';
+        if (type === 'bits' && !options.amount) alertData.amount = 100;
+        if (type === 'raid' && !options.viewers) alertData.viewers = 50;
+        if (type === 'redemption' && !options.reward) alertData.reward = 'Hydrate!';
+
+        alertQueue.add(alertData);
       };
 
-      console.log('[AlertsOverlay] Ready. Use testAlert() to test. Example: testAlert("follow", "Viewer123")');
+      /**
+       * Test all alert types in sequence
+       */
+      window.testAllAlerts = () => {
+        console.log('[AlertsOverlay] Testing all alert types...');
+        testAlert('follow', 'FollowUser');
+        testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' });
+        testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' });
+        testAlert('raid', 'RaidUser', { viewers: 150 });
+        testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' });
+      };
+
+      console.log('[AlertsOverlay] Ready!');
+      console.log('  testAlert(type, user, options) - Test single alert');
+      console.log('  testAllAlerts() - Test all alert types in sequence');
+      console.log('  Types: follow, subscription, bits, raid, redemption');
     })();
   </script>
 </body>
