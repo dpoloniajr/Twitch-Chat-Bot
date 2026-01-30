@@ -62,14 +62,14 @@ async function upsertEnvValue(key, value) {
 async function initLogs() {
   try {
     await fs.mkdir(logsDir, { recursive: true });
-    
+
     // Initialize command logs
     try {
       await fs.access(commandLogsFile);
     } catch {
       await fs.writeFile(commandLogsFile, JSON.stringify([], null, 2));
     }
-    
+
     // Initialize user stats
     try {
       await fs.access(userStatsFile);
@@ -195,18 +195,18 @@ app.post('/api/logs', async (req, res) => {
       success: req.body.success !== false
     };
     logs.push(newLog);
-    
+
     // Keep only last 1000 logs
     if (logs.length > 1000) {
       logs.shift();
     }
-    
+
     await fs.writeFile(commandLogsFile, JSON.stringify(logs, null, 2));
-    
+
     botState.commandsExecuted++;
     botState.lastCommand = newLog;
     broadcastState({ type: 'log', data: newLog });
-    
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -247,21 +247,21 @@ app.put('/api/builtin-commands/:name', async (req, res) => {
   try {
     const { cooldownSeconds } = req.body;
     const targetName = req.params.name.trim().toLowerCase();
-    
+
     if (!targetName.startsWith('!')) {
       return res.status(400).json({ error: 'Command name must start with !' });
     }
-    
+
     const commands = JSON.parse(await fs.readFile(builtinCommandsFile, 'utf8'));
     const command = commands.find(cmd => cmd.name === targetName);
-    
+
     if (!command) {
       return res.status(404).json({ error: 'Command not found' });
     }
-    
+
     // Update cooldown
     command.cooldownSeconds = Number.isFinite(Number(cooldownSeconds)) && Number(cooldownSeconds) >= 0 ? Number(cooldownSeconds) : 0;
-    
+
     await fs.writeFile(builtinCommandsFile, JSON.stringify(commands, null, 2));
     broadcastState({ type: 'builtinCommands', data: commands });
     res.json({ success: true, command });
@@ -331,17 +331,17 @@ app.post('/api/stats/:username', async (req, res) => {
   try {
     const stats = JSON.parse(await fs.readFile(userStatsFile, 'utf8'));
     const username = req.params.username.toLowerCase();
-    
+
     if (!stats[username]) {
       stats[username] = { commands: 0, firstSeen: new Date().toISOString(), lastCommand: null };
     }
-    
+
     stats[username].commands++;
     stats[username].lastCommand = new Date().toISOString();
-    
+
     await fs.writeFile(userStatsFile, JSON.stringify(stats, null, 2));
     broadcastState({ type: 'stats', data: stats });
-    
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -472,8 +472,8 @@ app.post('/api/test-alert', (req, res) => {
   console.log('[TestAlert] Sent:', alertData);
   res.json({ success: true, alert: alertData });
 });
-// OBS Recent Events API
 
+// OBS Recent Events API
 // Get recent events by type for the recent-events overlay
 // Helper function to handle the recent events response
 const handleRecentEventsRequest = async (req, res, eventType = 'all') => {
@@ -550,7 +550,6 @@ app.get('/obs/recent/:type', async (req, res) => {
   await handleRecentEventsRequest(req, res);
 });
 
-
 // Chat Filters API
 
 // Get current filter configuration
@@ -562,7 +561,7 @@ app.get('/api/filters', (req, res) => {
 app.post('/api/filters', async (req, res) => {
   try {
     const { filterUrls, filterAllCaps, filterRepeatChars, filterSpam, filterAction, timeoutDurationSeconds } = req.body;
-    
+
     // Update in-memory state
     if (filterUrls !== undefined) {
       chatFilters.filterUrls = !!filterUrls;
@@ -604,7 +603,7 @@ app.post('/api/filters/words', async (req, res) => {
     if (!word || typeof word !== 'string' || word.trim().length === 0) {
       return res.status(400).json({ error: 'Word must be a non-empty string' });
     }
-    
+
     const normalized = word.trim().toLowerCase();
     if (!chatFilters.blacklistWords.includes(normalized)) {
       chatFilters.blacklistWords.push(normalized);
@@ -818,10 +817,10 @@ app.post('/obs/config/:overlay', async (req, res) => {
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Dashboard client connected');
-  
+
   // Send initial state
   ws.send(JSON.stringify({ type: 'state', data: botState }));
-  
+
   ws.on('close', () => {
     console.log('Dashboard client disconnected');
   });
@@ -836,7 +835,7 @@ const PORT = process.env.DASHBOARD_PORT || 3001;
 
 async function start() {
   await initLogs();
-  
+
   server.listen(PORT, () => {
     console.log(`Dashboard server running at http://localhost:${PORT}`);
   });
