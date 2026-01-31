@@ -86,8 +86,8 @@ function updateDashboard() {
   if (botState.commands && botState.commands.length > 0) {
     commandsListEl.innerHTML = botState.commands.map(cmd => `
       <div class="command-item">
-        <div class="command-name">${cmd.name}</div>
-        <div class="command-desc">${cmd.description}</div>
+        <div class="command-name">${escapeHtml(cmd.name)}</div>
+        <div class="command-desc">${escapeHtml(cmd.description)}</div>
       </div>
     `).join('');
   }
@@ -164,9 +164,9 @@ async function refreshLogs() {
     logsListEl.innerHTML = logs.reverse().map(log => `
       <tr>
         <td>${new Date(log.timestamp).toLocaleString()}</td>
-        <td>${log.user}</td>
-        <td><code>${log.command}</code></td>
-        <td>${log.channel}</td>
+        <td>${escapeHtml(log.user)}</td>
+        <td><code>${escapeHtml(log.command)}</code></td>
+        <td>${escapeHtml(log.channel)}</td>
         <td class="${log.success ? 'status-success' : 'status-error'}">
           ${log.success ? '✓ Success' : '✗ Failed'}
         </td>
@@ -250,7 +250,7 @@ async function refreshStats() {
     
     statsListEl.innerHTML = sorted.map(([username, data]) => `
       <tr>
-        <td><strong>${username}</strong></td>
+        <td><strong>${escapeHtml(username)}</strong></td>
         <td>${data.commands}</td>
         <td>${new Date(data.firstSeen).toLocaleDateString()}</td>
         <td>${new Date(data.lastCommand).toLocaleString()}</td>
@@ -281,9 +281,9 @@ function renderCustomCommands() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(cmd => `
       <tr>
-        <td>${cmd.name}</td>
-        <td>${cmd.response || ''}</td>
-        <td>${cmd.level}</td>
+        <td>${escapeHtml(cmd.name)}</td>
+        <td>${escapeHtml(cmd.response || '')}</td>
+        <td>${escapeHtml(cmd.level)}</td>
         <td>${cmd.fetchEnabled ? 'Yes' : 'No'}</td>
         <td>${cmd.cooldownSeconds || 0}s</td>
         <td>
@@ -356,14 +356,14 @@ function renderBuiltinCommands(commands) {
 
   tbody.innerHTML = commands.map(cmd => `
     <tr>
-      <td><strong>${cmd.name}</strong></td>
-      <td>${cmd.description}</td>
-      <td>${cmd.permission}</td>
+      <td><strong>${escapeHtml(cmd.name)}</strong></td>
+      <td>${escapeHtml(cmd.description)}</td>
+      <td>${escapeHtml(cmd.permission)}</td>
       <td>
-        <input type="number" 
-               id="cooldown-${cmd.name.replace('!', '')}" 
-               value="${cmd.cooldownSeconds || 0}" 
-               min="0" 
+        <input type="number"
+               id="cooldown-${cmd.name.replace('!', '')}"
+               value="${cmd.cooldownSeconds || 0}"
+               min="0"
                style="width: 80px; padding: 5px;">
       </td>
       <td>
@@ -820,8 +820,8 @@ function renderBlacklist(words) {
   container.innerHTML = words
     .map(word => `
       <div class="blacklist-word">
-        <span>${word}</span>
-        <button onclick="removeFilterWord('${word}')" class="btn btn-small btn-danger">Remove</button>
+        <span>${escapeHtml(word)}</span>
+        <button onclick="removeFilterWord('${word.replace(/'/g, "\\'")}')" class="btn btn-small btn-danger">Remove</button>
       </div>
     `)
     .join('');
