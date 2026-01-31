@@ -1578,8 +1578,8 @@ async function handleCommands(channel) {
 async function handleCustomCommand(channel, username, displayName, command, args) {
   const cmd = customCommands.find(c => c.name.toLowerCase() === command);
   if (!cmd) return;
-  
-  const { rendered, error } = await processCustomCommand(cmd, {
+
+  const { rendered, error } = await renderCustomCommand(cmd, {
     user: username,
     displayName: displayName || username,
     channel,
