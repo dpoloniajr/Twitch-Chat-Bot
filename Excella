@@ -716,7 +716,7 @@ async function renderCustomCommand(cmd, context) {
       const blockedPatterns = ['localhost', '127.0.0.1', '192.168.', '10.', '172.16.', '169.254.'];
       for (const pattern of blockedPatterns) {
         if (url.hostname.includes(pattern)) {
-          return { error: 'Internal URLs are not allowed' };
+          return { success: false, error: 'Internal URLs are not allowed' };
         }
       }
 
@@ -724,9 +724,9 @@ async function renderCustomCommand(cmd, context) {
       data = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
     } catch (err) {
       if (err instanceof Error && err.message.includes('Internal URLs')) {
-        return { error: err.message };
+        return { success: false, error: err.message };
       }
-      return { error: `Failed to fetch URL: ${err.message}` };
+      return { success: false, error: `Failed to fetch URL: ${err.message}` };
     }
   }
 
@@ -1321,8 +1321,8 @@ async function handleClip(channel, username) {
     return;
   }
   const result = await createClip();
-  if (result.error) {
-    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
     logCommandExecution(username, '!clip', [], 'failed');
   } else {
     sendChatMessage(channel, `@${username} Clip created! ${result.url}`);
@@ -1588,8 +1588,8 @@ async function handleTitle(channel, username, newTitle) {
     return;
   }
   const result = await updateStreamTitle(newTitle);
-  if (result.error) {
-    sendChatMessage(channel, `Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `Error: ${result.error || result.message}`);
     logCommandExecution(username, '!title', [newTitle], 'failed');
   } else {
     sendChatMessage(channel, `✓ Stream title updated to: "${newTitle}"`);
@@ -1603,8 +1603,8 @@ async function handleGame(channel, username, gameQuery) {
     return;
   }
   const result = await updateStreamGame(gameQuery);
-  if (result.error) {
-    sendChatMessage(channel, `Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `Error: ${result.error || result.message}`);
     logCommandExecution(username, '!game', [gameQuery], 'failed');
   } else {
     sendChatMessage(channel, `✓ Game updated to: ${result.gameName}`);
