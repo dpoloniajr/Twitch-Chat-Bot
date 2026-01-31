@@ -103,6 +103,9 @@ let builtinCommands = [];
 let eventSub = null;
 let broadcasterEventSub = null;
 
+// File write lock to prevent race conditions when updating .env
+let envWriteLock = Promise.resolve();
+
 // Token validation caching (avoid repeated HTTP calls)
 let cachedTokenValidation = {
   bot: { lastCheck: 0, isValid: false, expiresAt: 0 },
@@ -112,6 +115,9 @@ const TOKEN_CACHE_DURATION = 3600000; // 1 hour
 
 // Scope validation caching
 let cachedScopeValidation = {};
+
+// Message history cleanup tracking
+let lastMessageHistoryCleanup = Date.now();
 
 // Expose clients for easy access
 const authProvider = global.authProvider;
@@ -193,7 +199,9 @@ function logCommandExecution(username, command, args, result) {
     command,
     args: args.join(' '),
     result
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error('[Logging] Failed to post command log:', err.message);
+  });
 }
 
 // Send alert to OBS overlays via dashboard WebSocket
@@ -262,13 +270,16 @@ function checkChatFilters(message, username) {
       }
     }
     messageHistory.set(username, { text, time: now });
-    
-    // Time-based cleanup: remove messages older than 10 minutes
-    const tenMinutesAgo = now - 600000;
-    for (const [user, msg] of messageHistory.entries()) {
-      if (msg.time < tenMinutesAgo) {
-        messageHistory.delete(user);
+
+    // Periodic cleanup: remove messages older than 10 minutes (run every 60 seconds)
+    if (now - lastMessageHistoryCleanup > 60000) {
+      const tenMinutesAgo = now - 600000;
+      for (const [user, msg] of messageHistory.entries()) {
+        if (msg.time < tenMinutesAgo) {
+          messageHistory.delete(user);
+        }
       }
+      lastMessageHistoryCleanup = now;
     }
   }
 
@@ -700,10 +711,32 @@ async function renderCustomCommand(cmd, context) {
 
   if (cmd.fetchEnabled && cmd.fetchUrl) {
     try {
+      // Validate URL to prevent SSRF attacks
+      const url = new URL(cmd.fetchUrl);
+
+      // Block requests to internal IP addresses and reserved hostnames
+      const hostname = url.hostname.toLowerCase();
+
+      // Exact matches for localhost variants
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+        return { success: false, error: 'Internal URLs are not allowed' };
+      }
+
+      // Block private IP ranges (RFC 1918, RFC 5733)
+      const privateRanges = [/^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./, /^169\.254\./];
+      for (const range of privateRanges) {
+        if (range.test(hostname)) {
+          return { success: false, error: 'Internal URLs are not allowed' };
+        }
+      }
+
       const resp = await axios.get(cmd.fetchUrl, { timeout: 5000 });
       data = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
     } catch (err) {
-      return { error: `Failed to fetch URL: ${err.message}` };
+      if (err instanceof Error && err.message.includes('Internal URLs')) {
+        return { success: false, error: err.message };
+      }
+      return { success: false, error: `Failed to fetch URL: ${err.message}` };
     }
   }
 
@@ -886,7 +919,7 @@ async function refreshToken(accessToken, refreshToken, accountType) {
       console.log(`  No refresh token available for ${accountType} account`);
       return null;
     }
-    
+
     const response = await apiClient_axios.post(TWITCH_TOKEN_URL, null, {
       params: {
         client_id: config.clientId,
@@ -895,43 +928,52 @@ async function refreshToken(accessToken, refreshToken, accountType) {
         refresh_token: refreshToken
       }
     });
-    
+
     const newAccessToken = response.data.access_token;
     const newRefreshToken = response.data.refresh_token;
-    
-    // Update .env file with new tokens
-    let envContent = fs.readFileSync('.env', 'utf8');
-    
-    if (accountType === 'bot') {
-      envContent = envContent.replace(
-        /TWITCH_ACCESS_TOKEN=.*/,
-        `TWITCH_ACCESS_TOKEN=${newAccessToken}`
-      );
-      envContent = envContent.replace(
-        /TWITCH_REFRESH_TOKEN=.*/,
-        `TWITCH_REFRESH_TOKEN=${newRefreshToken}`
-      );
-    } else {
-      envContent = envContent.replace(
-        /TWITCH_BROADCASTER_ACCESS_TOKEN=.*/,
-        `TWITCH_BROADCASTER_ACCESS_TOKEN=${newAccessToken}`
-      );
-      envContent = envContent.replace(
-        /TWITCH_BROADCASTER_REFRESH_TOKEN=.*/,
-        `TWITCH_BROADCASTER_REFRESH_TOKEN=${newRefreshToken}`
-      );
-    }
-    
-    fs.writeFileSync('.env', envContent);
-    console.log(`  Updated ${accountType} tokens in .env`);
-    
+
+    // Update .env file with new tokens using a file write lock to prevent race conditions
+    await envWriteLock;
+    envWriteLock = (async () => {
+      try {
+        let envContent = fs.readFileSync('.env', 'utf8');
+
+        if (accountType === 'bot') {
+          envContent = envContent.replace(
+            /TWITCH_ACCESS_TOKEN=.*/,
+            `TWITCH_ACCESS_TOKEN=${newAccessToken}`
+          );
+          envContent = envContent.replace(
+            /TWITCH_REFRESH_TOKEN=.*/,
+            `TWITCH_REFRESH_TOKEN=${newRefreshToken}`
+          );
+        } else {
+          envContent = envContent.replace(
+            /TWITCH_BROADCASTER_ACCESS_TOKEN=.*/,
+            `TWITCH_BROADCASTER_ACCESS_TOKEN=${newAccessToken}`
+          );
+          envContent = envContent.replace(
+            /TWITCH_BROADCASTER_REFRESH_TOKEN=.*/,
+            `TWITCH_BROADCASTER_REFRESH_TOKEN=${newRefreshToken}`
+          );
+        }
+
+        fs.writeFileSync('.env', envContent);
+        console.log(`  Updated ${accountType} tokens in .env`);
+      } catch (err) {
+        console.error(`Failed to update .env file for ${accountType} token:`, err.message);
+        throw err;
+      }
+    })();
+    await envWriteLock;
+
     // Also update process.env for broadcaster tokens
     if (accountType === 'broadcaster') {
       process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = newRefreshToken;
     } else {
       process.env.TWITCH_REFRESH_TOKEN = newRefreshToken;
     }
-    
+
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
   } catch (error) {
     console.error(`Error refreshing ${accountType} token:`, error.message);
@@ -990,17 +1032,17 @@ async function init() {
 async function createClip() {
   try {
     if (!initComplete) {
-      return { error: 'Bot is still initializing. Please try again in a moment.' };
+      return { success: false, error: 'Bot is still initializing. Please try again in a moment.' };
     }
 
     if (!broadcasterId) {
-      return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
+      return { success: false, error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
     }
 
     // Check if required scope is present (cached)
     if (!hasScope(config.scopes, 'clips:edit')) {
       console.error('Missing required scope: clips:edit');
-      return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
+      return { success: false, error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
 
     // Ensure broadcasterId is a string
@@ -1019,7 +1061,7 @@ async function createClip() {
     const clipId = response.data?.data?.[0]?.id;
     if (!clipId) {
       console.error('[DEBUG] Clip API returned no clip ID. Response:', response.data);
-      return { error: 'Clip API returned no clip ID' };
+      return { success: false, error: 'Clip API returned no clip ID' };
     }
 
     const clipUrl = `https://clips.twitch.tv/${clipId}`;
@@ -1028,49 +1070,49 @@ async function createClip() {
   } catch (error) {
     console.error('Failed to create clip:', error?.response?.data || error);
     const errorMsg = (error?.response?.data?.message) || error.message || error.toString();
-    return { error: errorMsg };
+    return { success: false, error: errorMsg };
   }
-  }
+}
 
 // Get follow age
 async function getFollowAge(username) {
   try {
     const user = await apiClient.users.getUserByName(username);
-    if (!user) return null;
+    if (!user) return { success: false, error: 'User not found' };
 
     // getChannelFollowers returns a paginated result with a 'data' property
     const followsResult = await apiClient.channels.getChannelFollowers(broadcasterId, user.id);
     const follows = followsResult?.data || [];
 
     if (!follows || follows.length === 0) {
-      return 'not following';
+      return { success: false, message: 'Not following' };
     }
 
     // Debug log to check the follower data structure
     console.log('[DEBUG] Follower data:', follows[0]);
-    
+
     const followedAt = new Date(follows[0].followDate || follows[0].followedAt);
     if (isNaN(followedAt.getTime())) {
       console.error('[DEBUG] Invalid followedAt date:', follows[0]);
-      return null;
+      return { success: false, error: 'Invalid follow date' };
     }
-    
+
     const now = new Date();
     const diff = now - followedAt;
-    
-    const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365));
-    const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
-    const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30)) / (1000 * 60 * 60 * 24));
-    
+
+    const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+    const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30.44));
+    const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30.44)) / (1000 * 60 * 60 * 24));
+
     let ageStr = '';
     if (years > 0) ageStr += `${years} year${years > 1 ? 's' : ''} `;
     if (months > 0) ageStr += `${months} month${months > 1 ? 's' : ''} `;
     if (days > 0 || ageStr === '') ageStr += `${days} day${days !== 1 ? 's' : ''}`;
-    
-    return ageStr.trim();
+
+    return { success: true, message: `Following for ${ageStr.trim()}` };
   } catch (error) {
     console.error('Failed to get follow age:', error.message);
-    return null;
+    return { success: false, error: error.message };
   }
 }
 
@@ -1289,8 +1331,8 @@ async function handleClip(channel, username) {
     return;
   }
   const result = await createClip();
-  if (result.error) {
-    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
     logCommandExecution(username, '!clip', [], 'failed');
   } else {
     sendChatMessage(channel, `@${username} Clip created! ${result.url}`);
@@ -1305,11 +1347,11 @@ async function handleFollowage(channel, username, targetUser) {
     return;
   }
   const result = await getFollowAge(targetUser);
-  if (result.error) {
-    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
     logCommandExecution(username, '!followage', [targetUser], 'failed');
   } else {
-    sendChatMessage(channel, result.message);
+    sendChatMessage(channel, `@${username} ${result.message}`);
     logCommandExecution(username, '!followage', [targetUser], 'success');
   }
 }
@@ -1320,8 +1362,8 @@ async function handleShoutout(channel, username, targetUser) {
     return;
   }
   const result = await sendShoutout(targetUser);
-  if (result.error) {
-    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
     logCommandExecution(username, '!shoutout', [targetUser], 'failed');
   } else {
     sendChatMessage(channel, result.message);
@@ -1363,8 +1405,11 @@ async function handlePoll(channel, username, args) {
         sendChatMessage(channel, `@${username} Polls require 2-5 options.`);
         return;
       }
-      
-      const duration = Math.max(15, Math.min(1800, parseInt(durationStr) || 300)); // 15s-30m, default 5m
+
+      const parsedDuration = parseInt(durationStr, 10);
+      const duration = Math.max(15, Math.min(1800,
+        Number.isFinite(parsedDuration) ? parsedDuration : 300
+      )); // 15s-30m, default 5m
       
       // Check scope
       if (!hasScope(config.scopes, 'channel:manage:polls')) {
@@ -1470,8 +1515,11 @@ async function handlePrediction(channel, username, args) {
         sendChatMessage(channel, `@${username} Predictions require exactly 2 outcomes.`);
         return;
       }
-      
-      const duration = Math.max(60, Math.min(1800, parseInt(durationStr) || 300)); // 1m-30m, default 5m
+
+      const parsedDuration = parseInt(durationStr, 10);
+      const duration = Math.max(60, Math.min(1800,
+        Number.isFinite(parsedDuration) ? parsedDuration : 300
+      )); // 1m-30m, default 5m
       
       // Check scope
       if (!hasScope(config.scopes, 'channel:manage:predictions')) {
@@ -1550,8 +1598,8 @@ async function handleTitle(channel, username, newTitle) {
     return;
   }
   const result = await updateStreamTitle(newTitle);
-  if (result.error) {
-    sendChatMessage(channel, `Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `Error: ${result.error || result.message}`);
     logCommandExecution(username, '!title', [newTitle], 'failed');
   } else {
     sendChatMessage(channel, `✓ Stream title updated to: "${newTitle}"`);
@@ -1565,8 +1613,8 @@ async function handleGame(channel, username, gameQuery) {
     return;
   }
   const result = await updateStreamGame(gameQuery);
-  if (result.error) {
-    sendChatMessage(channel, `Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `Error: ${result.error || result.message}`);
     logCommandExecution(username, '!game', [gameQuery], 'failed');
   } else {
     sendChatMessage(channel, `✓ Game updated to: ${result.gameName}`);

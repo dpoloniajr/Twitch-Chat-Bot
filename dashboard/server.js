@@ -472,8 +472,8 @@ app.post('/api/test-alert', (req, res) => {
   console.log('[TestAlert] Sent:', alertData);
   res.json({ success: true, alert: alertData });
 });
-// OBS Recent Events API
 
+// OBS Recent Events API
 // Get recent events by type for the recent-events overlay
 // Helper function to handle the recent events response
 const handleRecentEventsRequest = async (req, res, eventType) => {
@@ -549,12 +549,6 @@ app.get('/obs/recent', async (req, res) => {
 app.get('/obs/recent/:type', async (req, res) => {
   await handleRecentEventsRequest(req, res);
 });
-
-// Route: Get recent events by specific type
-app.get('/obs/recent/:type', async (req, res) => {
-  await handleRecentEventsRequest(req, res);
-});
-
 
 // Chat Filters API
 
