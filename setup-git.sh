@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit on error, undefined variables, and pipeline failures
+set -euo pipefail
+
 # Git Setup and Validation Script
 # This script ensures that your git configuration is correct for pushing to the repository
 
@@ -34,8 +37,7 @@ else
     read -p "Do you want to fix the fetch refspec? (y/n) " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        git config remote.origin.fetch "$expected_fetch"
-        if [ $? -eq 0 ]; then
+        if git config remote.origin.fetch "$expected_fetch"; then
             echo "✓ Fetch refspec updated successfully"
         else
             echo "❌ Failed to update fetch refspec"
