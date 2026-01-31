@@ -713,9 +713,19 @@ async function renderCustomCommand(cmd, context) {
     try {
       // Validate URL to prevent SSRF attacks
       const url = new URL(cmd.fetchUrl);
-      const blockedPatterns = ['localhost', '127.0.0.1', '192.168.', '10.', '172.16.', '169.254.'];
-      for (const pattern of blockedPatterns) {
-        if (url.hostname.includes(pattern)) {
+
+      // Block requests to internal IP addresses and reserved hostnames
+      const hostname = url.hostname.toLowerCase();
+
+      // Exact matches for localhost variants
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+        return { success: false, error: 'Internal URLs are not allowed' };
+      }
+
+      // Block private IP ranges (RFC 1918, RFC 5733)
+      const privateRanges = [/^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./, /^169\.254\./];
+      for (const range of privateRanges) {
+        if (range.test(hostname)) {
           return { success: false, error: 'Internal URLs are not allowed' };
         }
       }
