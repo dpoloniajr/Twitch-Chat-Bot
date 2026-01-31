@@ -99,7 +99,7 @@ function updateDashboard() {
 }
 
 // Page navigation
-function showPage(pageId) {
+function showPage(pageId, eventObj) {
   // Hide all pages
   document.querySelectorAll('.page').forEach(page => {
     page.classList.remove('active');
@@ -112,7 +112,9 @@ function showPage(pageId) {
 
   // Show selected page
   document.getElementById(pageId).classList.add('active');
-  event.target.classList.add('active');
+  if (eventObj && eventObj.target) {
+    eventObj.target.classList.add('active');
+  }
 }
 
 // Command tester
