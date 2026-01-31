@@ -811,18 +811,26 @@ function removeFilterWord(word) {
 
 function renderBlacklist(words) {
   const container = document.getElementById('blacklistContainer');
-  
+
   if (!words || words.length === 0) {
     container.innerHTML = '<p class="info-text">No words in blacklist yet.</p>';
     return;
   }
-  
+
   container.innerHTML = words
-    .map(word => `
+    .map((word, index) => `
       <div class="blacklist-word">
         <span>${escapeHtml(word)}</span>
-        <button onclick="removeFilterWord('${word.replace(/'/g, "\\'")}')" class="btn btn-small btn-danger">Remove</button>
+        <button class="btn btn-small btn-danger remove-filter-btn" data-word-index="${index}">Remove</button>
       </div>
     `)
     .join('');
+
+  // Add event listeners to remove buttons
+  container.querySelectorAll('.remove-filter-btn').forEach((btn, index) => {
+    btn.addEventListener('click', () => {
+      const word = words[index];
+      removeFilterWord(word);
+    });
+  });
 }
