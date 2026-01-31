@@ -452,6 +452,8 @@ The bot automatically refreshes expired tokens using the refresh token. No manua
 
 ## Troubleshooting
 
+For detailed troubleshooting, including git push issues, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 ### Bot fails to start: "Missing required environment variables"
 
 **Solution:** Ensure all required variables are set in `.env`:
