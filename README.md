@@ -521,6 +521,18 @@ Then open `http://localhost:3000` in your browser.
 - ✓ Bot hasn't fully connected yet (wait a few seconds)
 - ✓ Channel name in `TWITCH_CHANNELS` is incorrect
 
+### GitHub Authentication Issues (For Contributors)
+
+If you're experiencing "Authentication failed" errors when trying to push to GitHub:
+
+**Solution:** GitHub requires Personal Access Tokens or SSH keys instead of passwords.
+
+For detailed instructions on fixing authentication issues, see our [Contributing Guide](CONTRIBUTING.md#fixing-github-authentication-issues), which includes:
+- Step-by-step setup for GitHub Desktop
+- Command-line Git authentication solutions
+- SSH key configuration
+- Common error messages and fixes
+
 ## Architecture
 
 ### token-generator.js
@@ -586,6 +598,14 @@ chatClient.onMessage(async (channel, user, message, msg) => {
 | Create clips | `clips:edit` |
 | Follow age | `moderator:read:followers` |
 | Moderation | `moderation:read`, `moderator:manage:banned_users` |
+
+## Contributing
+
+Interested in contributing to this project? Check out our [Contributing Guide](CONTRIBUTING.md) for:
+- Setting up your development environment
+- Fixing GitHub authentication issues
+- Development workflow and code style guidelines
+- How to submit pull requests
 
 ## Support
 
