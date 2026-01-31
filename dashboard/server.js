@@ -476,9 +476,9 @@ app.post('/api/test-alert', (req, res) => {
 // OBS Recent Events API
 // Get recent events by type for the recent-events overlay
 // Helper function to handle the recent events response
-const handleRecentEventsRequest = async (req, res, eventType) => {
+const handleRecentEventsRequest = async (req, res, eventType = 'all') => {
   try {
-    const finalEventType = eventType ?? req.params.type?.toLowerCase() ?? 'all';
+    const finalEventType = eventType || req.params.type?.toLowerCase() || 'all';
     const events = JSON.parse(await fs.readFile(eventSubEventsFile, 'utf8'));
 
     // Map event types to match alertType naming
