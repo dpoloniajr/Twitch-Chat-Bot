@@ -149,3 +149,4 @@ accounts.encrypted.json
 
 # Zenflow task tracking and artifacts
 .zenflow
+/.zencoder
