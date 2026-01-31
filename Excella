@@ -162,7 +162,9 @@ function checkModPermission(msg, channel, username) {
 // Send chat message with consistent formatting
 function sendChatMessage(channel, message) {
   try {
-    chatClient.say(channel, message);
+    const msgStr = String(message || '').trim();
+    if (!msgStr) return;
+    chatClient.say(channel, msgStr);
   } catch (error) {
     console.error(`Failed to send message to ${channel}:`, error.message);
   }
@@ -1106,8 +1108,9 @@ async function sendShoutout(targetUsername) {
       }
     }
     
-    return { 
-      success: true, 
+    return {
+      success: true,
+      message: `📢 Shoutout to ${user.displayName}! They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
       username: user.displayName,
       gameName: gameName,
       isLive: isLive
