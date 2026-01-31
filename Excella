@@ -1022,17 +1022,17 @@ async function init() {
 async function createClip() {
   try {
     if (!initComplete) {
-      return { error: 'Bot is still initializing. Please try again in a moment.' };
+      return { success: false, error: 'Bot is still initializing. Please try again in a moment.' };
     }
 
     if (!broadcasterId) {
-      return { error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
+      return { success: false, error: 'Bot not initialized. Broadcaster ID is missing. Restart the bot.' };
     }
 
     // Check if required scope is present (cached)
     if (!hasScope(config.scopes, 'clips:edit')) {
       console.error('Missing required scope: clips:edit');
-      return { error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
+      return { success: false, error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
 
     // Ensure broadcasterId is a string
@@ -1051,7 +1051,7 @@ async function createClip() {
     const clipId = response.data?.data?.[0]?.id;
     if (!clipId) {
       console.error('[DEBUG] Clip API returned no clip ID. Response:', response.data);
-      return { error: 'Clip API returned no clip ID' };
+      return { success: false, error: 'Clip API returned no clip ID' };
     }
 
     const clipUrl = `https://clips.twitch.tv/${clipId}`;
@@ -1060,9 +1060,9 @@ async function createClip() {
   } catch (error) {
     console.error('Failed to create clip:', error?.response?.data || error);
     const errorMsg = (error?.response?.data?.message) || error.message || error.toString();
-    return { error: errorMsg };
+    return { success: false, error: errorMsg };
   }
-  }
+}
 
 // Get follow age
 async function getFollowAge(username) {
@@ -1352,8 +1352,8 @@ async function handleShoutout(channel, username, targetUser) {
     return;
   }
   const result = await sendShoutout(targetUser);
-  if (result.error) {
-    sendChatMessage(channel, `@${username} Error: ${result.error}`);
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
     logCommandExecution(username, '!shoutout', [targetUser], 'failed');
   } else {
     sendChatMessage(channel, result.message);
