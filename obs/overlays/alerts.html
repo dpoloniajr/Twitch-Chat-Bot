@@ -292,6 +292,25 @@
         client.on('alertConfig', (newConfig) => {
           alertConfig = newConfig;
           console.log('[Alerts] Config updated:', alertConfig);
+
+          // Propagate config changes to runtime components
+          if (ttsManager && typeof ttsManager.updateConfig === 'function') {
+            ttsManager.updateConfig({
+              enabled: alertConfig.global?.ttsEnabled,
+              voice: alertConfig.global?.ttsVoice,
+              rate: alertConfig.global?.ttsRate,
+              pitch: alertConfig.global?.ttsPitch,
+              volume: alertConfig.global?.defaultVolume
+            });
+          }
+
+          if (alertQueue && typeof alertQueue.updateConfig === 'function') {
+            alertQueue.updateConfig({
+              alertDuration: (alertConfig.global?.defaultDuration || 5) * 1000,
+              alertDelay: (alertConfig.global?.defaultDelay || 1) * 1000,
+              soundVolume: alertConfig.global?.defaultVolume
+            });
+          }
         });
 
         // Expose for debugging
