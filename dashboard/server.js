@@ -1048,15 +1048,77 @@ app.get('/api/alerts/config', async (req, res) => {
   }
 });
 
+// Validate alert config structure and ranges
+function validateAlertConfig(config) {
+  if (!config || typeof config !== 'object') {
+    throw new ValidationError('Config must be a valid object', 400);
+  }
+
+  // Validate global settings
+  if (!config.global || typeof config.global !== 'object') {
+    throw new ValidationError('Config must have a "global" object', 400);
+  }
+
+  const global = config.global;
+  if (typeof global.enabled !== 'boolean' && global.enabled !== undefined) {
+    throw new ValidationError('global.enabled must be a boolean', 400);
+  }
+  if (global.defaultVolume !== undefined && (typeof global.defaultVolume !== 'number' || global.defaultVolume < 0 || global.defaultVolume > 1)) {
+    throw new ValidationError('global.defaultVolume must be a number between 0 and 1', 400);
+  }
+  if (global.defaultDuration !== undefined && (typeof global.defaultDuration !== 'number' || global.defaultDuration < 1)) {
+    throw new ValidationError('global.defaultDuration must be a positive number', 400);
+  }
+  if (global.defaultDelay !== undefined && (typeof global.defaultDelay !== 'number' || global.defaultDelay < 0)) {
+    throw new ValidationError('global.defaultDelay must be a non-negative number', 400);
+  }
+  if (global.ttsRate !== undefined && (typeof global.ttsRate !== 'number' || global.ttsRate < 0.5 || global.ttsRate > 2)) {
+    throw new ValidationError('global.ttsRate must be a number between 0.5 and 2', 400);
+  }
+  if (global.ttsPitch !== undefined && (typeof global.ttsPitch !== 'number' || global.ttsPitch < 0.5 || global.ttsPitch > 2)) {
+    throw new ValidationError('global.ttsPitch must be a number between 0.5 and 2', 400);
+  }
+
+  // Validate alertTypes structure
+  if (!config.alertTypes || typeof config.alertTypes !== 'object') {
+    throw new ValidationError('Config must have an "alertTypes" object', 400);
+  }
+
+  const validAlertTypeKeys = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  for (const alertType of validAlertTypeKeys) {
+    if (config.alertTypes[alertType]) {
+      const typeConfig = config.alertTypes[alertType];
+      if (typeof typeConfig !== 'object') {
+        throw new ValidationError(`alertTypes.${alertType} must be an object`, 400);
+      }
+
+      // Validate numeric ranges for alert type
+      if (typeConfig.duration !== undefined && (typeof typeConfig.duration !== 'number' || typeConfig.duration < 1)) {
+        throw new ValidationError(`alertTypes.${alertType}.duration must be a positive number`, 400);
+      }
+      if (typeConfig.volume !== undefined && (typeof typeConfig.volume !== 'number' || typeConfig.volume < 0 || typeConfig.volume > 1)) {
+        throw new ValidationError(`alertTypes.${alertType}.volume must be a number between 0 and 1`, 400);
+      }
+      if (typeConfig.fontSize !== undefined && (typeof typeConfig.fontSize !== 'number' || typeConfig.fontSize < 8 || typeConfig.fontSize > 120)) {
+        throw new ValidationError(`alertTypes.${alertType}.fontSize must be a number between 8 and 120`, 400);
+      }
+    }
+  }
+
+  return true;
+}
+
 // Update full alert configuration
 app.post('/api/alerts/config', async (req, res) => {
   try {
     const config = req.body;
+    validateAlertConfig(config);
     await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
     broadcastState({ type: 'alertConfig', data: config });
     res.json({ success: true, config });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
