@@ -3,7 +3,6 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs').promises;
-const fsSync = require('fs');
 const crypto = require('crypto');
 require('dotenv').config(path.join(__dirname, '..', '.env'));
 
