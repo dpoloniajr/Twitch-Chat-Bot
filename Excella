@@ -816,19 +816,34 @@ async function validateAndRefreshTokens() {
   // If tokens were updated, recreate auth provider and clients
   if (tokensUpdated) {
     console.log('Recreating auth provider with refreshed tokens...');
-    recreateAuthProvider();
+    await recreateAuthProvider();
   }
   
   console.log('');
 }
 
 // Recreate API clients with updated tokens
-function recreateAuthProvider() {
+async function recreateAuthProvider() {
   // Update API client token
   global.apiClient.setAccessToken(config.accessToken);
 
   // Update chat client token (will reconnect if needed)
-  global.chatClient.updateToken(config.accessToken);
+  try {
+    await global.chatClient.updateToken(config.accessToken);
+  } catch (error) {
+    console.error('Failed to update chat client token:', error.message);
+    throw error;
+  }
+
+  // Update bot EventSub client token if it exists
+  if (eventSub) {
+    try {
+      eventSub.setAccessToken(config.accessToken);
+      console.log('Bot EventSub client token updated');
+    } catch (error) {
+      console.error('Failed to update bot EventSub token:', error.message);
+    }
+  }
 
   // Update broadcaster API client if broadcaster token exists
   if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
@@ -841,6 +856,16 @@ function recreateAuthProvider() {
       });
     }
     console.log('Broadcaster API client recreated with new tokens');
+
+    // Update broadcaster EventSub client token if it exists
+    if (broadcasterEventSub) {
+      try {
+        broadcasterEventSub.setAccessToken(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN);
+        console.log('Broadcaster EventSub client token updated');
+      } catch (error) {
+        console.error('Failed to update broadcaster EventSub token:', error.message);
+      }
+    }
   }
 
   console.log('API clients recreated with new tokens');
