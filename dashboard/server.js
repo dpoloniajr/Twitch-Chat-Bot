@@ -78,6 +78,15 @@ function checkUploadRateLimit(ip) {
   return true;
 }
 
+// Custom error class for validation errors (client errors)
+class ValidationError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'ValidationError';
+    this.statusCode = statusCode;
+  }
+}
+
 // Default alert configuration template
 const DEFAULT_ALERT_CONFIG = {
   global: {
@@ -1214,11 +1223,11 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
       allowedTypes = SUPPORTED_AUDIO_TYPES;
       break;
     default:
-      throw new Error('Invalid media type');
+      throw new ValidationError('Invalid media type', 400);
   }
 
   if (!allowedTypes.includes(ext)) {
-    throw new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
+    throw new ValidationError(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`, 415);
   }
 
   // Remove base64 prefix if present
@@ -1227,12 +1236,12 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
 
   // Validate file size (max 10MB)
   if (buffer.length > 10 * 1024 * 1024) {
-    throw new Error('File size exceeds 10MB limit');
+    throw new ValidationError('File size exceeds 10MB limit', 413);
   }
 
   // Validate MIME type using magic numbers to prevent content-type spoofing
   if (!validateMimeType(buffer, ext)) {
-    throw new Error(`File content does not match ${ext} format. Detected content-type spoofing attempt.`);
+    throw new ValidationError(`File content does not match ${ext} format. Possible content-type spoofing.`, 415);
   }
 
   // Generate unique filename
@@ -1268,7 +1277,8 @@ app.post('/api/uploads/image', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'image');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
@@ -1289,7 +1299,8 @@ app.post('/api/uploads/video', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'video');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
@@ -1310,7 +1321,8 @@ app.post('/api/uploads/sound', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'sound');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
