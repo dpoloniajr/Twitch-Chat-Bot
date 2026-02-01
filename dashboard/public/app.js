@@ -1115,8 +1115,8 @@ function showAlertTypeConfig(alertType, event) {
   if (configEl) configEl.classList.add('active');
 
   // Mark tab as active
-  if (event && event.target) {
-    event.target.classList.add('active');
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
   }
 }
 
