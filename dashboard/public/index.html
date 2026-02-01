@@ -22,6 +22,7 @@
         <li><a href="#custom" onclick="showPage('custom', event)" class="nav-link">Custom Commands</a></li>
         <li><a href="#logs" onclick="showPage('logs', event)" class="nav-link">Logs</a></li>
         <li><a href="#stats" onclick="showPage('stats', event)" class="nav-link">Stats</a></li>
+        <li><a href="#alert-config" onclick="showPage('alert-config', event)" class="nav-link">Alert Config</a></li>
         <li><a href="#obs-overlays" onclick="showPage('obs-overlays', event)" class="nav-link">OBS Overlays</a></li>
       </ul>
     </div>
@@ -408,6 +409,929 @@
         </thead>
         <tbody id="statsList"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Alert Configuration Page -->
+  <div id="alert-config" class="page">
+    <div class="container">
+      <h2>Stream Alerts Configuration</h2>
+      <p class="info-text">Configure your stream alerts similar to Twitch Alerts. Set custom media, sounds, animations, TTS, and variations for each alert type.</p>
+
+      <!-- Global Settings -->
+      <div class="alert-config-section">
+        <div class="section-header" onclick="toggleSection('global-settings')">
+          <h3>Global Settings</h3>
+          <span class="toggle-icon">▼</span>
+        </div>
+        <div id="global-settings" class="section-content">
+          <div class="config-grid">
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="globalEnabled" checked onchange="updateGlobalSetting('enabled', this.checked)">
+                Alerts Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Default Volume</label>
+              <input type="range" id="globalVolume" min="0" max="1" step="0.1" value="0.8" onchange="updateGlobalSetting('defaultVolume', parseFloat(this.value))">
+              <span id="globalVolumeDisplay">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Default Duration (seconds)</label>
+              <input type="number" id="globalDuration" min="1" max="30" value="5" onchange="updateGlobalSetting('defaultDuration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Alert Delay (seconds)</label>
+              <input type="number" id="globalDelay" min="0" max="10" step="0.5" value="1" onchange="updateGlobalSetting('defaultDelay', parseFloat(this.value))">
+            </div>
+          </div>
+
+          <h4>Text-to-Speech (TTS)</h4>
+          <div class="config-grid">
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="globalTtsEnabled" onchange="updateGlobalSetting('ttsEnabled', this.checked)">
+                Enable TTS Globally
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Voice</label>
+              <select id="globalTtsVoice" onchange="updateGlobalSetting('ttsVoice', this.value)">
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="en-AU">English (Australia)</option>
+                <option value="es-ES">Spanish (Spain)</option>
+                <option value="es-MX">Spanish (Mexico)</option>
+                <option value="fr-FR">French</option>
+                <option value="de-DE">German</option>
+                <option value="pt-BR">Portuguese (Brazil)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>TTS Rate</label>
+              <input type="range" id="globalTtsRate" min="0.5" max="2" step="0.1" value="1" onchange="updateGlobalSetting('ttsRate', parseFloat(this.value))">
+              <span id="globalTtsRateDisplay">1.0</span>
+            </div>
+            <div class="form-group">
+              <label>TTS Pitch</label>
+              <input type="range" id="globalTtsPitch" min="0.5" max="2" step="0.1" value="1" onchange="updateGlobalSetting('ttsPitch', parseFloat(this.value))">
+              <span id="globalTtsPitchDisplay">1.0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alert Type Tabs -->
+      <div class="alert-type-tabs">
+        <button class="alert-tab active" onclick="showAlertTypeConfig('follow', event)">
+          <span class="tab-icon">👤</span> Follows
+        </button>
+        <button class="alert-tab" onclick="showAlertTypeConfig('subscription', event)">
+          <span class="tab-icon">⭐</span> Subscriptions
+        </button>
+        <button class="alert-tab" onclick="showAlertTypeConfig('bits', event)">
+          <span class="tab-icon">💎</span> Bits/Cheers
+        </button>
+        <button class="alert-tab" onclick="showAlertTypeConfig('raid', event)">
+          <span class="tab-icon">🎮</span> Raids
+        </button>
+        <button class="alert-tab" onclick="showAlertTypeConfig('redemption', event)">
+          <span class="tab-icon">🎁</span> Redemptions
+        </button>
+      </div>
+
+      <!-- Follow Alert Config -->
+      <div id="follow-config" class="alert-type-config active">
+        <div class="alert-config-header">
+          <h3>Follow Alerts</h3>
+          <div class="alert-header-actions">
+            <button class="btn btn-secondary" onclick="testAlertType('follow')">Test Alert</button>
+            <button class="btn btn-danger btn-small" onclick="resetAlertType('follow')">Reset to Default</button>
+          </div>
+        </div>
+
+        <div class="alert-config-grid">
+          <!-- Basic Settings -->
+          <div class="config-card">
+            <h4>Basic Settings</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="follow-enabled" checked onchange="updateAlertSetting('follow', 'enabled', this.checked)">
+                Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Duration (seconds)</label>
+              <input type="number" id="follow-duration" min="1" max="30" value="5" onchange="updateAlertSetting('follow', 'duration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Volume</label>
+              <input type="range" id="follow-volume" min="0" max="1" step="0.1" value="0.8" onchange="updateAlertSetting('follow', 'volume', parseFloat(this.value))">
+              <span id="follow-volume-display">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Alert Message</label>
+              <input type="text" id="follow-messageTemplate" value="New Follower!" onchange="updateAlertSetting('follow', 'messageTemplate', this.value)">
+            </div>
+          </div>
+
+          <!-- Animation Settings -->
+          <div class="config-card">
+            <h4>Animations</h4>
+            <div class="form-group">
+              <label>Enter Animation</label>
+              <select id="follow-enterAnimation" onchange="updateAlertSetting('follow', 'enterAnimation', this.value)">
+                <option value="fadeIn">Fade In</option>
+                <option value="fadeInUp">Fade In Up</option>
+                <option value="fadeInDown">Fade In Down</option>
+                <option value="slideInLeft">Slide In Left</option>
+                <option value="slideInRight">Slide In Right</option>
+                <option value="scaleIn">Scale In</option>
+                <option value="bounceIn" selected>Bounce In</option>
+                <option value="rotateIn">Rotate In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exit Animation</label>
+              <select id="follow-exitAnimation" onchange="updateAlertSetting('follow', 'exitAnimation', this.value)">
+                <option value="fadeOut">Fade Out</option>
+                <option value="fadeOutUp" selected>Fade Out Up</option>
+                <option value="fadeOutDown">Fade Out Down</option>
+                <option value="slideOutLeft">Slide Out Left</option>
+                <option value="slideOutRight">Slide Out Right</option>
+                <option value="scaleOut">Scale Out</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Style Settings -->
+          <div class="config-card">
+            <h4>Style</h4>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="follow-textColor" value="#00ff7f" onchange="updateAlertSetting('follow', 'textColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Border Color</label>
+              <input type="color" id="follow-borderColor" value="#00ff7f" onchange="updateAlertSetting('follow', 'borderColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Font Size</label>
+              <input type="number" id="follow-fontSize" min="12" max="72" value="28" onchange="updateAlertSetting('follow', 'fontSize', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Media Settings -->
+          <div class="config-card">
+            <h4>Media</h4>
+            <div class="form-group">
+              <label>Sound</label>
+              <select id="follow-sound" onchange="updateAlertSetting('follow', 'sound', this.value)">
+                <option value="default">Default Sound</option>
+                <option value="none">No Sound</option>
+                <option value="custom">Custom Sound...</option>
+              </select>
+            </div>
+            <div class="form-group" id="follow-customSound-group" style="display:none;">
+              <label>Custom Sound File</label>
+              <input type="file" accept="audio/*" onchange="uploadAlertMedia('follow', 'customSound', this)">
+              <span id="follow-customSound-name" class="file-name"></span>
+            </div>
+            <div class="form-group">
+              <label>Alert Image (optional)</label>
+              <input type="file" accept="image/*" onchange="uploadAlertMedia('follow', 'image', this)">
+              <span id="follow-image-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('follow', 'image')" style="display:none;" id="follow-image-clear">Clear</button>
+            </div>
+            <div class="form-group">
+              <label>Alert Video (optional, overrides image)</label>
+              <input type="file" accept="video/*" onchange="uploadAlertMedia('follow', 'video', this)">
+              <span id="follow-video-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('follow', 'video')" style="display:none;" id="follow-video-clear">Clear</button>
+            </div>
+          </div>
+
+          <!-- TTS Settings -->
+          <div class="config-card">
+            <h4>Text-to-Speech</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="follow-ttsEnabled" onchange="updateAlertSetting('follow', 'ttsEnabled', this.checked)">
+                Enable TTS for this alert
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Template</label>
+              <input type="text" id="follow-ttsTemplate" value="{user} just followed!" onchange="updateAlertSetting('follow', 'ttsTemplate', this.value)">
+              <small class="help-text">Use {user} for username</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subscription Alert Config -->
+      <div id="subscription-config" class="alert-type-config">
+        <div class="alert-config-header">
+          <h3>Subscription Alerts</h3>
+          <div class="alert-header-actions">
+            <button class="btn btn-secondary" onclick="testAlertType('subscription')">Test Alert</button>
+            <button class="btn btn-danger btn-small" onclick="resetAlertType('subscription')">Reset to Default</button>
+          </div>
+        </div>
+
+        <div class="alert-config-grid">
+          <!-- Basic Settings -->
+          <div class="config-card">
+            <h4>Basic Settings</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="subscription-enabled" checked onchange="updateAlertSetting('subscription', 'enabled', this.checked)">
+                Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Duration (seconds)</label>
+              <input type="number" id="subscription-duration" min="1" max="30" value="6" onchange="updateAlertSetting('subscription', 'duration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Volume</label>
+              <input type="range" id="subscription-volume" min="0" max="1" step="0.1" value="0.8" onchange="updateAlertSetting('subscription', 'volume', parseFloat(this.value))">
+              <span id="subscription-volume-display">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Alert Message</label>
+              <input type="text" id="subscription-messageTemplate" value="New Subscriber!" onchange="updateAlertSetting('subscription', 'messageTemplate', this.value)">
+            </div>
+          </div>
+
+          <!-- Animation Settings -->
+          <div class="config-card">
+            <h4>Animations</h4>
+            <div class="form-group">
+              <label>Enter Animation</label>
+              <select id="subscription-enterAnimation" onchange="updateAlertSetting('subscription', 'enterAnimation', this.value)">
+                <option value="fadeIn">Fade In</option>
+                <option value="fadeInUp">Fade In Up</option>
+                <option value="fadeInDown">Fade In Down</option>
+                <option value="slideInLeft">Slide In Left</option>
+                <option value="slideInRight">Slide In Right</option>
+                <option value="scaleIn">Scale In</option>
+                <option value="bounceIn" selected>Bounce In</option>
+                <option value="rotateIn">Rotate In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exit Animation</label>
+              <select id="subscription-exitAnimation" onchange="updateAlertSetting('subscription', 'exitAnimation', this.value)">
+                <option value="fadeOut">Fade Out</option>
+                <option value="fadeOutUp" selected>Fade Out Up</option>
+                <option value="fadeOutDown">Fade Out Down</option>
+                <option value="slideOutLeft">Slide Out Left</option>
+                <option value="slideOutRight">Slide Out Right</option>
+                <option value="scaleOut">Scale Out</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Style Settings -->
+          <div class="config-card">
+            <h4>Style</h4>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="subscription-textColor" value="#ff6b9d" onchange="updateAlertSetting('subscription', 'textColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Border Color</label>
+              <input type="color" id="subscription-borderColor" value="#ff6b9d" onchange="updateAlertSetting('subscription', 'borderColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Font Size</label>
+              <input type="number" id="subscription-fontSize" min="12" max="72" value="28" onchange="updateAlertSetting('subscription', 'fontSize', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Media Settings -->
+          <div class="config-card">
+            <h4>Media</h4>
+            <div class="form-group">
+              <label>Sound</label>
+              <select id="subscription-sound" onchange="updateAlertSetting('subscription', 'sound', this.value)">
+                <option value="default">Default Sound</option>
+                <option value="none">No Sound</option>
+                <option value="custom">Custom Sound...</option>
+              </select>
+            </div>
+            <div class="form-group" id="subscription-customSound-group" style="display:none;">
+              <label>Custom Sound File</label>
+              <input type="file" accept="audio/*" onchange="uploadAlertMedia('subscription', 'customSound', this)">
+              <span id="subscription-customSound-name" class="file-name"></span>
+            </div>
+            <div class="form-group">
+              <label>Alert Image</label>
+              <input type="file" accept="image/*" onchange="uploadAlertMedia('subscription', 'image', this)">
+              <span id="subscription-image-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('subscription', 'image')" style="display:none;" id="subscription-image-clear">Clear</button>
+            </div>
+            <div class="form-group">
+              <label>Alert Video</label>
+              <input type="file" accept="video/*" onchange="uploadAlertMedia('subscription', 'video', this)">
+              <span id="subscription-video-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('subscription', 'video')" style="display:none;" id="subscription-video-clear">Clear</button>
+            </div>
+          </div>
+
+          <!-- TTS Settings -->
+          <div class="config-card">
+            <h4>Text-to-Speech</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="subscription-ttsEnabled" onchange="updateAlertSetting('subscription', 'ttsEnabled', this.checked)">
+                Enable TTS for this alert
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Template</label>
+              <input type="text" id="subscription-ttsTemplate" value="{user} just subscribed!" onchange="updateAlertSetting('subscription', 'ttsTemplate', this.value)">
+              <small class="help-text">Use {user}, {tier}, {months}</small>
+            </div>
+          </div>
+
+          <!-- Variations -->
+          <div class="config-card full-width">
+            <h4>Subscription Variations</h4>
+            <p class="info-text">Configure different alerts for different subscription types</p>
+            <div class="variations-grid">
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'prime', 'enabled', this.checked)">
+                  Prime
+                </label>
+                <input type="text" placeholder="Message" value="Prime Subscriber!" onchange="updateVariation('subscription', 'prime', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'tier1', 'enabled', this.checked)">
+                  Tier 1
+                </label>
+                <input type="text" placeholder="Message" value="Tier 1 Subscriber!" onchange="updateVariation('subscription', 'tier1', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'tier2', 'enabled', this.checked)">
+                  Tier 2
+                </label>
+                <input type="text" placeholder="Message" value="Tier 2 Subscriber!" onchange="updateVariation('subscription', 'tier2', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'tier3', 'enabled', this.checked)">
+                  Tier 3
+                </label>
+                <input type="text" placeholder="Message" value="Tier 3 Subscriber!" onchange="updateVariation('subscription', 'tier3', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'gift', 'enabled', this.checked)">
+                  Gift Sub
+                </label>
+                <input type="text" placeholder="Message" value="Gifted Sub!" onchange="updateVariation('subscription', 'gift', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('subscription', 'resub', 'enabled', this.checked)">
+                  Resub
+                </label>
+                <input type="text" placeholder="Message" value="Resubscribed!" onchange="updateVariation('subscription', 'resub', 'messageTemplate', this.value)">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bits Alert Config -->
+      <div id="bits-config" class="alert-type-config">
+        <div class="alert-config-header">
+          <h3>Bits/Cheer Alerts</h3>
+          <div class="alert-header-actions">
+            <button class="btn btn-secondary" onclick="testAlertType('bits')">Test Alert</button>
+            <button class="btn btn-danger btn-small" onclick="resetAlertType('bits')">Reset to Default</button>
+          </div>
+        </div>
+
+        <div class="alert-config-grid">
+          <!-- Basic Settings -->
+          <div class="config-card">
+            <h4>Basic Settings</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="bits-enabled" checked onchange="updateAlertSetting('bits', 'enabled', this.checked)">
+                Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Duration (seconds)</label>
+              <input type="number" id="bits-duration" min="1" max="30" value="5" onchange="updateAlertSetting('bits', 'duration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Volume</label>
+              <input type="range" id="bits-volume" min="0" max="1" step="0.1" value="0.8" onchange="updateAlertSetting('bits', 'volume', parseFloat(this.value))">
+              <span id="bits-volume-display">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Alert Message</label>
+              <input type="text" id="bits-messageTemplate" value="Cheer!" onchange="updateAlertSetting('bits', 'messageTemplate', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Minimum Bits to Trigger</label>
+              <input type="number" id="bits-minBits" min="1" value="1" onchange="updateAlertSetting('bits', 'minBits', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Animation Settings -->
+          <div class="config-card">
+            <h4>Animations</h4>
+            <div class="form-group">
+              <label>Enter Animation</label>
+              <select id="bits-enterAnimation" onchange="updateAlertSetting('bits', 'enterAnimation', this.value)">
+                <option value="fadeIn">Fade In</option>
+                <option value="fadeInUp">Fade In Up</option>
+                <option value="fadeInDown">Fade In Down</option>
+                <option value="slideInLeft">Slide In Left</option>
+                <option value="slideInRight">Slide In Right</option>
+                <option value="scaleIn">Scale In</option>
+                <option value="bounceIn" selected>Bounce In</option>
+                <option value="rotateIn">Rotate In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exit Animation</label>
+              <select id="bits-exitAnimation" onchange="updateAlertSetting('bits', 'exitAnimation', this.value)">
+                <option value="fadeOut">Fade Out</option>
+                <option value="fadeOutUp" selected>Fade Out Up</option>
+                <option value="fadeOutDown">Fade Out Down</option>
+                <option value="slideOutLeft">Slide Out Left</option>
+                <option value="slideOutRight">Slide Out Right</option>
+                <option value="scaleOut">Scale Out</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Style Settings -->
+          <div class="config-card">
+            <h4>Style</h4>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="bits-textColor" value="#ffbb00" onchange="updateAlertSetting('bits', 'textColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Border Color</label>
+              <input type="color" id="bits-borderColor" value="#ffbb00" onchange="updateAlertSetting('bits', 'borderColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Font Size</label>
+              <input type="number" id="bits-fontSize" min="12" max="72" value="28" onchange="updateAlertSetting('bits', 'fontSize', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Media Settings -->
+          <div class="config-card">
+            <h4>Media</h4>
+            <div class="form-group">
+              <label>Sound</label>
+              <select id="bits-sound" onchange="updateAlertSetting('bits', 'sound', this.value)">
+                <option value="default">Default Sound</option>
+                <option value="none">No Sound</option>
+                <option value="custom">Custom Sound...</option>
+              </select>
+            </div>
+            <div class="form-group" id="bits-customSound-group" style="display:none;">
+              <label>Custom Sound File</label>
+              <input type="file" accept="audio/*" onchange="uploadAlertMedia('bits', 'customSound', this)">
+              <span id="bits-customSound-name" class="file-name"></span>
+            </div>
+            <div class="form-group">
+              <label>Alert Image</label>
+              <input type="file" accept="image/*" onchange="uploadAlertMedia('bits', 'image', this)">
+              <span id="bits-image-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('bits', 'image')" style="display:none;" id="bits-image-clear">Clear</button>
+            </div>
+            <div class="form-group">
+              <label>Alert Video</label>
+              <input type="file" accept="video/*" onchange="uploadAlertMedia('bits', 'video', this)">
+              <span id="bits-video-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('bits', 'video')" style="display:none;" id="bits-video-clear">Clear</button>
+            </div>
+          </div>
+
+          <!-- TTS Settings -->
+          <div class="config-card">
+            <h4>Text-to-Speech</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="bits-ttsEnabled" onchange="updateAlertSetting('bits', 'ttsEnabled', this.checked)">
+                Enable TTS for this alert
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Template</label>
+              <input type="text" id="bits-ttsTemplate" value="{user} cheered {amount} bits!" onchange="updateAlertSetting('bits', 'ttsTemplate', this.value)">
+              <small class="help-text">Use {user}, {amount}, {message}</small>
+            </div>
+          </div>
+
+          <!-- Variations -->
+          <div class="config-card full-width">
+            <h4>Bit Thresholds</h4>
+            <p class="info-text">Configure different alerts for different bit amounts</p>
+            <div class="variations-grid">
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('bits', '1', 'enabled', this.checked)">
+                  1+ Bits
+                </label>
+                <input type="text" placeholder="Message" value="Cheer!" onchange="updateVariation('bits', '1', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('bits', '100', 'enabled', this.checked)">
+                  100+ Bits
+                </label>
+                <input type="text" placeholder="Message" value="Big Cheer!" onchange="updateVariation('bits', '100', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('bits', '1000', 'enabled', this.checked)">
+                  1,000+ Bits
+                </label>
+                <input type="text" placeholder="Message" value="Huge Cheer!" onchange="updateVariation('bits', '1000', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('bits', '5000', 'enabled', this.checked)">
+                  5,000+ Bits
+                </label>
+                <input type="text" placeholder="Message" value="Massive Cheer!" onchange="updateVariation('bits', '5000', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('bits', '10000', 'enabled', this.checked)">
+                  10,000+ Bits
+                </label>
+                <input type="text" placeholder="Message" value="Legendary Cheer!" onchange="updateVariation('bits', '10000', 'messageTemplate', this.value)">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Raid Alert Config -->
+      <div id="raid-config" class="alert-type-config">
+        <div class="alert-config-header">
+          <h3>Raid Alerts</h3>
+          <div class="alert-header-actions">
+            <button class="btn btn-secondary" onclick="testAlertType('raid')">Test Alert</button>
+            <button class="btn btn-danger btn-small" onclick="resetAlertType('raid')">Reset to Default</button>
+          </div>
+        </div>
+
+        <div class="alert-config-grid">
+          <!-- Basic Settings -->
+          <div class="config-card">
+            <h4>Basic Settings</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="raid-enabled" checked onchange="updateAlertSetting('raid', 'enabled', this.checked)">
+                Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Duration (seconds)</label>
+              <input type="number" id="raid-duration" min="1" max="30" value="7" onchange="updateAlertSetting('raid', 'duration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Volume</label>
+              <input type="range" id="raid-volume" min="0" max="1" step="0.1" value="0.8" onchange="updateAlertSetting('raid', 'volume', parseFloat(this.value))">
+              <span id="raid-volume-display">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Alert Message</label>
+              <input type="text" id="raid-messageTemplate" value="Raid!" onchange="updateAlertSetting('raid', 'messageTemplate', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Minimum Viewers to Trigger</label>
+              <input type="number" id="raid-minViewers" min="1" value="2" onchange="updateAlertSetting('raid', 'minViewers', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Animation Settings -->
+          <div class="config-card">
+            <h4>Animations</h4>
+            <div class="form-group">
+              <label>Enter Animation</label>
+              <select id="raid-enterAnimation" onchange="updateAlertSetting('raid', 'enterAnimation', this.value)">
+                <option value="fadeIn">Fade In</option>
+                <option value="fadeInUp">Fade In Up</option>
+                <option value="fadeInDown">Fade In Down</option>
+                <option value="slideInLeft">Slide In Left</option>
+                <option value="slideInRight">Slide In Right</option>
+                <option value="scaleIn">Scale In</option>
+                <option value="bounceIn" selected>Bounce In</option>
+                <option value="rotateIn">Rotate In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exit Animation</label>
+              <select id="raid-exitAnimation" onchange="updateAlertSetting('raid', 'exitAnimation', this.value)">
+                <option value="fadeOut">Fade Out</option>
+                <option value="fadeOutUp" selected>Fade Out Up</option>
+                <option value="fadeOutDown">Fade Out Down</option>
+                <option value="slideOutLeft">Slide Out Left</option>
+                <option value="slideOutRight">Slide Out Right</option>
+                <option value="scaleOut">Scale Out</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Style Settings -->
+          <div class="config-card">
+            <h4>Style</h4>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="raid-textColor" value="#00d4ff" onchange="updateAlertSetting('raid', 'textColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Border Color</label>
+              <input type="color" id="raid-borderColor" value="#00d4ff" onchange="updateAlertSetting('raid', 'borderColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Font Size</label>
+              <input type="number" id="raid-fontSize" min="12" max="72" value="28" onchange="updateAlertSetting('raid', 'fontSize', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Media Settings -->
+          <div class="config-card">
+            <h4>Media</h4>
+            <div class="form-group">
+              <label>Sound</label>
+              <select id="raid-sound" onchange="updateAlertSetting('raid', 'sound', this.value)">
+                <option value="default">Default Sound</option>
+                <option value="none">No Sound</option>
+                <option value="custom">Custom Sound...</option>
+              </select>
+            </div>
+            <div class="form-group" id="raid-customSound-group" style="display:none;">
+              <label>Custom Sound File</label>
+              <input type="file" accept="audio/*" onchange="uploadAlertMedia('raid', 'customSound', this)">
+              <span id="raid-customSound-name" class="file-name"></span>
+            </div>
+            <div class="form-group">
+              <label>Alert Image</label>
+              <input type="file" accept="image/*" onchange="uploadAlertMedia('raid', 'image', this)">
+              <span id="raid-image-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('raid', 'image')" style="display:none;" id="raid-image-clear">Clear</button>
+            </div>
+            <div class="form-group">
+              <label>Alert Video</label>
+              <input type="file" accept="video/*" onchange="uploadAlertMedia('raid', 'video', this)">
+              <span id="raid-video-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('raid', 'video')" style="display:none;" id="raid-video-clear">Clear</button>
+            </div>
+          </div>
+
+          <!-- TTS Settings -->
+          <div class="config-card">
+            <h4>Text-to-Speech</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="raid-ttsEnabled" onchange="updateAlertSetting('raid', 'ttsEnabled', this.checked)">
+                Enable TTS for this alert
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Template</label>
+              <input type="text" id="raid-ttsTemplate" value="{user} is raiding with {viewers} viewers!" onchange="updateAlertSetting('raid', 'ttsTemplate', this.value)">
+              <small class="help-text">Use {user}, {viewers}</small>
+            </div>
+          </div>
+
+          <!-- Variations -->
+          <div class="config-card full-width">
+            <h4>Raid Size Thresholds</h4>
+            <p class="info-text">Configure different alerts for different raid sizes</p>
+            <div class="variations-grid">
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('raid', '2', 'enabled', this.checked)">
+                  2+ Viewers
+                </label>
+                <input type="text" placeholder="Message" value="Raid!" onchange="updateVariation('raid', '2', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('raid', '10', 'enabled', this.checked)">
+                  10+ Viewers
+                </label>
+                <input type="text" placeholder="Message" value="Big Raid!" onchange="updateVariation('raid', '10', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('raid', '50', 'enabled', this.checked)">
+                  50+ Viewers
+                </label>
+                <input type="text" placeholder="Message" value="Huge Raid!" onchange="updateVariation('raid', '50', 'messageTemplate', this.value)">
+              </div>
+              <div class="variation-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked onchange="updateVariation('raid', '100', 'enabled', this.checked)">
+                  100+ Viewers
+                </label>
+                <input type="text" placeholder="Message" value="Massive Raid!" onchange="updateVariation('raid', '100', 'messageTemplate', this.value)">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Redemption Alert Config -->
+      <div id="redemption-config" class="alert-type-config">
+        <div class="alert-config-header">
+          <h3>Channel Points Redemption Alerts</h3>
+          <div class="alert-header-actions">
+            <button class="btn btn-secondary" onclick="testAlertType('redemption')">Test Alert</button>
+            <button class="btn btn-danger btn-small" onclick="resetAlertType('redemption')">Reset to Default</button>
+          </div>
+        </div>
+
+        <div class="alert-config-grid">
+          <!-- Basic Settings -->
+          <div class="config-card">
+            <h4>Basic Settings</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="redemption-enabled" checked onchange="updateAlertSetting('redemption', 'enabled', this.checked)">
+                Enabled
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Duration (seconds)</label>
+              <input type="number" id="redemption-duration" min="1" max="30" value="5" onchange="updateAlertSetting('redemption', 'duration', parseInt(this.value))">
+            </div>
+            <div class="form-group">
+              <label>Volume</label>
+              <input type="range" id="redemption-volume" min="0" max="1" step="0.1" value="0.8" onchange="updateAlertSetting('redemption', 'volume', parseFloat(this.value))">
+              <span id="redemption-volume-display">0.8</span>
+            </div>
+            <div class="form-group">
+              <label>Alert Message</label>
+              <input type="text" id="redemption-messageTemplate" value="Redemption!" onchange="updateAlertSetting('redemption', 'messageTemplate', this.value)">
+            </div>
+          </div>
+
+          <!-- Animation Settings -->
+          <div class="config-card">
+            <h4>Animations</h4>
+            <div class="form-group">
+              <label>Enter Animation</label>
+              <select id="redemption-enterAnimation" onchange="updateAlertSetting('redemption', 'enterAnimation', this.value)">
+                <option value="fadeIn">Fade In</option>
+                <option value="fadeInUp">Fade In Up</option>
+                <option value="fadeInDown">Fade In Down</option>
+                <option value="slideInLeft">Slide In Left</option>
+                <option value="slideInRight">Slide In Right</option>
+                <option value="scaleIn">Scale In</option>
+                <option value="bounceIn" selected>Bounce In</option>
+                <option value="rotateIn">Rotate In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exit Animation</label>
+              <select id="redemption-exitAnimation" onchange="updateAlertSetting('redemption', 'exitAnimation', this.value)">
+                <option value="fadeOut">Fade Out</option>
+                <option value="fadeOutUp" selected>Fade Out Up</option>
+                <option value="fadeOutDown">Fade Out Down</option>
+                <option value="slideOutLeft">Slide Out Left</option>
+                <option value="slideOutRight">Slide Out Right</option>
+                <option value="scaleOut">Scale Out</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Style Settings -->
+          <div class="config-card">
+            <h4>Style</h4>
+            <div class="form-group">
+              <label>Text Color</label>
+              <input type="color" id="redemption-textColor" value="#9147ff" onchange="updateAlertSetting('redemption', 'textColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Border Color</label>
+              <input type="color" id="redemption-borderColor" value="#9147ff" onchange="updateAlertSetting('redemption', 'borderColor', this.value)">
+            </div>
+            <div class="form-group">
+              <label>Font Size</label>
+              <input type="number" id="redemption-fontSize" min="12" max="72" value="28" onchange="updateAlertSetting('redemption', 'fontSize', parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- Media Settings -->
+          <div class="config-card">
+            <h4>Media</h4>
+            <div class="form-group">
+              <label>Sound</label>
+              <select id="redemption-sound" onchange="updateAlertSetting('redemption', 'sound', this.value)">
+                <option value="default">Default Sound</option>
+                <option value="none">No Sound</option>
+                <option value="custom">Custom Sound...</option>
+              </select>
+            </div>
+            <div class="form-group" id="redemption-customSound-group" style="display:none;">
+              <label>Custom Sound File</label>
+              <input type="file" accept="audio/*" onchange="uploadAlertMedia('redemption', 'customSound', this)">
+              <span id="redemption-customSound-name" class="file-name"></span>
+            </div>
+            <div class="form-group">
+              <label>Alert Image</label>
+              <input type="file" accept="image/*" onchange="uploadAlertMedia('redemption', 'image', this)">
+              <span id="redemption-image-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('redemption', 'image')" style="display:none;" id="redemption-image-clear">Clear</button>
+            </div>
+            <div class="form-group">
+              <label>Alert Video</label>
+              <input type="file" accept="video/*" onchange="uploadAlertMedia('redemption', 'video', this)">
+              <span id="redemption-video-name" class="file-name"></span>
+              <button class="btn btn-small btn-danger" onclick="clearAlertMedia('redemption', 'video')" style="display:none;" id="redemption-video-clear">Clear</button>
+            </div>
+          </div>
+
+          <!-- TTS Settings -->
+          <div class="config-card">
+            <h4>Text-to-Speech</h4>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="redemption-ttsEnabled" onchange="updateAlertSetting('redemption', 'ttsEnabled', this.checked)">
+                Enable TTS for this alert
+              </label>
+            </div>
+            <div class="form-group">
+              <label>TTS Template</label>
+              <input type="text" id="redemption-ttsTemplate" value="{user} redeemed {reward}!" onchange="updateAlertSetting('redemption', 'ttsTemplate', this.value)">
+              <small class="help-text">Use {user}, {reward}, {message}</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test Panel -->
+      <div class="alert-test-panel">
+        <h3>Alert Test Panel</h3>
+        <div class="test-panel-grid">
+          <div class="form-group">
+            <label>Alert Type</label>
+            <select id="testAlertType">
+              <option value="follow">Follow</option>
+              <option value="subscription">Subscription</option>
+              <option value="bits">Bits/Cheer</option>
+              <option value="raid">Raid</option>
+              <option value="redemption">Redemption</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="testAlertUser" value="TestUser">
+          </div>
+          <div class="form-group" id="testTierGroup" style="display:none;">
+            <label>Tier</label>
+            <select id="testAlertTier">
+              <option value="Prime">Prime</option>
+              <option value="1000">Tier 1</option>
+              <option value="2000">Tier 2</option>
+              <option value="3000">Tier 3</option>
+            </select>
+          </div>
+          <div class="form-group" id="testBitsGroup" style="display:none;">
+            <label>Bits Amount</label>
+            <input type="number" id="testAlertBits" value="100" min="1">
+          </div>
+          <div class="form-group" id="testViewersGroup" style="display:none;">
+            <label>Viewers</label>
+            <input type="number" id="testAlertViewers" value="50" min="1">
+          </div>
+          <div class="form-group" id="testRewardGroup" style="display:none;">
+            <label>Reward Name</label>
+            <input type="text" id="testAlertReward" value="Hydrate!">
+          </div>
+          <div class="form-group">
+            <label>Message (optional)</label>
+            <input type="text" id="testAlertMessage" placeholder="Test message...">
+          </div>
+          <div class="form-group">
+            <button class="btn btn-primary" onclick="sendTestAlert()">Send Test Alert</button>
+            <button class="btn btn-secondary" onclick="testAllAlertTypes()">Test All Types</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
