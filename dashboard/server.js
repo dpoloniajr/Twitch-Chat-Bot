@@ -3,6 +3,8 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
+const crypto = require('crypto');
 require('dotenv').config(path.join(__dirname, '..', '.env'));
 
 const app = express();
@@ -10,14 +12,19 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve uploaded media files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Serve OBS overlay files from the obs/ directory at root level
 app.use('/obs', express.static(path.join(__dirname, '..', 'obs')));
 
 // Paths for logs
 const logsDir = path.join(__dirname, 'logs');
+const uploadsDir = path.join(__dirname, 'uploads');
 const commandLogsFile = path.join(logsDir, 'commands.json');
 const userStatsFile = path.join(logsDir, 'stats.json');
 const customCommandsFile = path.join(logsDir, 'customCommands.json');
@@ -26,7 +33,160 @@ const announcementsFile = path.join(logsDir, 'announcements.json');
 const redemptionsFile = path.join(logsDir, 'redemptions.json');
 const eventSubEventsFile = path.join(logsDir, 'eventsub-events.json');
 const obsConfigFile = path.join(logsDir, 'obs-config.json');
+const alertConfigFile = path.join(logsDir, 'alert-config.json');
 const envPath = path.join(__dirname, '..', '.env');
+
+// Supported media types
+const SUPPORTED_IMAGE_TYPES = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+const SUPPORTED_VIDEO_TYPES = ['.mp4', '.webm', '.mov'];
+const SUPPORTED_AUDIO_TYPES = ['.mp3', '.ogg', '.wav', '.m4a'];
+
+// Default alert configuration template
+const DEFAULT_ALERT_CONFIG = {
+  global: {
+    enabled: true,
+    testMode: false,
+    defaultVolume: 0.8,
+    defaultDuration: 5,
+    defaultDelay: 1,
+    ttsEnabled: false,
+    ttsVoice: 'en-US',
+    ttsRate: 1.0,
+    ttsPitch: 1.0
+  },
+  alertTypes: {
+    follow: {
+      enabled: true,
+      duration: 5,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} just followed!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#00ff7f',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#00ff7f',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'New Follower!'
+    },
+    subscription: {
+      enabled: true,
+      duration: 6,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} just subscribed!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#ff6b9d',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#ff6b9d',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'New Subscriber!',
+      variations: {
+        prime: { enabled: true, sound: null, image: null, messageTemplate: 'Prime Subscriber!' },
+        tier1: { enabled: true, sound: null, image: null, messageTemplate: 'Tier 1 Subscriber!' },
+        tier2: { enabled: true, sound: null, image: null, messageTemplate: 'Tier 2 Subscriber!' },
+        tier3: { enabled: true, sound: null, image: null, messageTemplate: 'Tier 3 Subscriber!' },
+        gift: { enabled: true, sound: null, image: null, messageTemplate: 'Gifted Sub!' },
+        communityGift: { enabled: true, sound: null, image: null, messageTemplate: 'Community Gift!' },
+        resub: { enabled: true, sound: null, image: null, messageTemplate: 'Resubscribed!' }
+      }
+    },
+    bits: {
+      enabled: true,
+      duration: 5,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} cheered {amount} bits!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#ffbb00',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#ffbb00',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'Cheer!',
+      minBits: 1,
+      variations: {
+        '1': { enabled: true, sound: null, image: null, messageTemplate: 'Cheer!' },
+        '100': { enabled: true, sound: null, image: null, messageTemplate: 'Big Cheer!' },
+        '1000': { enabled: true, sound: null, image: null, messageTemplate: 'Huge Cheer!' },
+        '5000': { enabled: true, sound: null, image: null, messageTemplate: 'Massive Cheer!' },
+        '10000': { enabled: true, sound: null, image: null, messageTemplate: 'Legendary Cheer!' }
+      }
+    },
+    raid: {
+      enabled: true,
+      duration: 7,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} is raiding with {viewers} viewers!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#00d4ff',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#00d4ff',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'Raid!',
+      minViewers: 2,
+      variations: {
+        '2': { enabled: true, sound: null, image: null, messageTemplate: 'Raid!' },
+        '10': { enabled: true, sound: null, image: null, messageTemplate: 'Big Raid!' },
+        '50': { enabled: true, sound: null, image: null, messageTemplate: 'Huge Raid!' },
+        '100': { enabled: true, sound: null, image: null, messageTemplate: 'Massive Raid!' }
+      }
+    },
+    redemption: {
+      enabled: true,
+      duration: 5,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} redeemed {reward}!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#9147ff',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#9147ff',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'Redemption!',
+      customRewards: {}
+    }
+  }
+};
 
 // Helper to upsert a key in the .env file
 async function upsertEnvValue(key, value) {
@@ -58,10 +218,16 @@ async function upsertEnvValue(key, value) {
   }
 }
 
-// Initialize logs directory
+// Initialize logs directory and uploads
 async function initLogs() {
   try {
     await fs.mkdir(logsDir, { recursive: true });
+
+    // Initialize uploads directory with subdirectories
+    await fs.mkdir(uploadsDir, { recursive: true });
+    await fs.mkdir(path.join(uploadsDir, 'images'), { recursive: true });
+    await fs.mkdir(path.join(uploadsDir, 'videos'), { recursive: true });
+    await fs.mkdir(path.join(uploadsDir, 'sounds'), { recursive: true });
 
     // Initialize command logs
     try {
@@ -117,6 +283,13 @@ async function initLogs() {
           goalBar: { enabled: true, type: 'follow', goal: 1000 }
         }
       }, null, 2));
+    }
+
+    // Initialize alert configuration
+    try {
+      await fs.access(alertConfigFile);
+    } catch {
+      await fs.writeFile(alertConfigFile, JSON.stringify(DEFAULT_ALERT_CONFIG, null, 2));
     }
 
     // Initialize built-in commands configuration
@@ -812,6 +985,435 @@ app.post('/obs/config/:overlay', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ============================================
+// ALERT CONFIGURATION API
+// ============================================
+
+// Get full alert configuration
+app.get('/api/alerts/config', async (req, res) => {
+  try {
+    const data = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+    res.json(data);
+  } catch (error) {
+    // Return default config if file doesn't exist
+    res.json(DEFAULT_ALERT_CONFIG);
+  }
+});
+
+// Update full alert configuration
+app.post('/api/alerts/config', async (req, res) => {
+  try {
+    const config = req.body;
+    await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'alertConfig', data: config });
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update specific alert type configuration
+app.post('/api/alerts/config/:alertType', async (req, res) => {
+  try {
+    const alertType = req.params.alertType.toLowerCase();
+    const validTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+
+    if (!validTypes.includes(alertType)) {
+      return res.status(400).json({ error: `Invalid alert type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const config = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+    const updates = req.body;
+
+    // Merge updates into existing alert type config
+    config.alertTypes[alertType] = { ...config.alertTypes[alertType], ...updates };
+
+    await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'alertConfig', data: config });
+    res.json({ success: true, alertType, config: config.alertTypes[alertType] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update global settings
+app.post('/api/alerts/config/global', async (req, res) => {
+  try {
+    const config = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+    const updates = req.body;
+
+    config.global = { ...config.global, ...updates };
+
+    await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'alertConfig', data: config });
+    res.json({ success: true, global: config.global });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update alert variation
+app.post('/api/alerts/config/:alertType/variation/:variationKey', async (req, res) => {
+  try {
+    const { alertType, variationKey } = req.params;
+    const validTypes = ['subscription', 'bits', 'raid'];
+
+    if (!validTypes.includes(alertType)) {
+      return res.status(400).json({ error: `Alert variations only available for: ${validTypes.join(', ')}` });
+    }
+
+    const config = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+    const updates = req.body;
+
+    if (!config.alertTypes[alertType].variations) {
+      config.alertTypes[alertType].variations = {};
+    }
+
+    config.alertTypes[alertType].variations[variationKey] = {
+      ...config.alertTypes[alertType].variations[variationKey],
+      ...updates
+    };
+
+    await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+    broadcastState({ type: 'alertConfig', data: config });
+    res.json({ success: true, variation: config.alertTypes[alertType].variations[variationKey] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset alert configuration to defaults
+app.post('/api/alerts/config/reset', async (req, res) => {
+  try {
+    const { alertType } = req.body;
+
+    if (alertType) {
+      // Reset specific alert type
+      const config = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+      if (DEFAULT_ALERT_CONFIG.alertTypes[alertType]) {
+        config.alertTypes[alertType] = JSON.parse(JSON.stringify(DEFAULT_ALERT_CONFIG.alertTypes[alertType]));
+        await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+        broadcastState({ type: 'alertConfig', data: config });
+        res.json({ success: true, alertType, config: config.alertTypes[alertType] });
+      } else {
+        res.status(400).json({ error: 'Invalid alert type' });
+      }
+    } else {
+      // Reset all
+      await fs.writeFile(alertConfigFile, JSON.stringify(DEFAULT_ALERT_CONFIG, null, 2));
+      broadcastState({ type: 'alertConfig', data: DEFAULT_ALERT_CONFIG });
+      res.json({ success: true, config: DEFAULT_ALERT_CONFIG });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// MEDIA UPLOAD API
+// ============================================
+
+// Helper function to validate and save uploaded media
+async function saveUploadedMedia(base64Data, filename, mediaType) {
+  const ext = path.extname(filename).toLowerCase();
+  let targetDir;
+  let allowedTypes;
+
+  switch (mediaType) {
+    case 'image':
+      targetDir = path.join(uploadsDir, 'images');
+      allowedTypes = SUPPORTED_IMAGE_TYPES;
+      break;
+    case 'video':
+      targetDir = path.join(uploadsDir, 'videos');
+      allowedTypes = SUPPORTED_VIDEO_TYPES;
+      break;
+    case 'sound':
+      targetDir = path.join(uploadsDir, 'sounds');
+      allowedTypes = SUPPORTED_AUDIO_TYPES;
+      break;
+    default:
+      throw new Error('Invalid media type');
+  }
+
+  if (!allowedTypes.includes(ext)) {
+    throw new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
+  }
+
+  // Generate unique filename
+  const uniqueId = crypto.randomBytes(8).toString('hex');
+  const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const uniqueFilename = `${uniqueId}_${safeName}`;
+  const filePath = path.join(targetDir, uniqueFilename);
+
+  // Remove base64 prefix if present
+  const base64Content = base64Data.replace(/^data:[^;]+;base64,/, '');
+  const buffer = Buffer.from(base64Content, 'base64');
+
+  // Validate file size (max 10MB)
+  if (buffer.length > 10 * 1024 * 1024) {
+    throw new Error('File size exceeds 10MB limit');
+  }
+
+  await fs.writeFile(filePath, buffer);
+
+  return {
+    filename: uniqueFilename,
+    path: `/uploads/${mediaType}s/${uniqueFilename}`,
+    size: buffer.length,
+    type: mediaType
+  };
+}
+
+// Upload image
+app.post('/api/uploads/image', async (req, res) => {
+  try {
+    const { data, filename } = req.body;
+    if (!data || !filename) {
+      return res.status(400).json({ error: 'data and filename are required' });
+    }
+
+    const result = await saveUploadedMedia(data, filename, 'image');
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload video
+app.post('/api/uploads/video', async (req, res) => {
+  try {
+    const { data, filename } = req.body;
+    if (!data || !filename) {
+      return res.status(400).json({ error: 'data and filename are required' });
+    }
+
+    const result = await saveUploadedMedia(data, filename, 'video');
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload sound
+app.post('/api/uploads/sound', async (req, res) => {
+  try {
+    const { data, filename } = req.body;
+    if (!data || !filename) {
+      return res.status(400).json({ error: 'data and filename are required' });
+    }
+
+    const result = await saveUploadedMedia(data, filename, 'sound');
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List uploaded media
+app.get('/api/uploads/:mediaType', async (req, res) => {
+  try {
+    const mediaType = req.params.mediaType;
+    const validTypes = ['images', 'videos', 'sounds'];
+
+    if (!validTypes.includes(mediaType)) {
+      return res.status(400).json({ error: `Invalid media type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const targetDir = path.join(uploadsDir, mediaType);
+    const files = await fs.readdir(targetDir);
+
+    const fileList = await Promise.all(files.map(async (filename) => {
+      const filePath = path.join(targetDir, filename);
+      const stats = await fs.stat(filePath);
+      return {
+        filename,
+        path: `/uploads/${mediaType}/${filename}`,
+        size: stats.size,
+        modified: stats.mtime
+      };
+    }));
+
+    res.json({ success: true, files: fileList });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete uploaded media
+app.delete('/api/uploads/:mediaType/:filename', async (req, res) => {
+  try {
+    const { mediaType, filename } = req.params;
+    const validTypes = ['images', 'videos', 'sounds'];
+
+    if (!validTypes.includes(mediaType)) {
+      return res.status(400).json({ error: `Invalid media type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    // Sanitize filename to prevent directory traversal
+    const sanitizedFilename = path.basename(filename);
+    const filePath = path.join(uploadsDir, mediaType, sanitizedFilename);
+
+    await fs.unlink(filePath);
+    res.json({ success: true, deleted: sanitizedFilename });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+// ============================================
+// ENHANCED TEST ALERT ENDPOINT
+// ============================================
+
+// Enhanced test alert with full configuration support
+app.post('/api/alerts/test', async (req, res) => {
+  try {
+    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, useConfig = true } = req.body;
+
+    const validTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+    if (!validTypes.includes(alertType)) {
+      return res.status(400).json({ error: `Invalid alertType. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    // Load alert configuration
+    let alertConfig = DEFAULT_ALERT_CONFIG;
+    try {
+      alertConfig = JSON.parse(await fs.readFile(alertConfigFile, 'utf8'));
+    } catch {
+      // Use default if config file doesn't exist
+    }
+
+    const typeConfig = alertConfig.alertTypes[alertType];
+    const globalConfig = alertConfig.global;
+
+    // Build alert data with configuration
+    const alertData = {
+      alertType,
+      user,
+      timestamp: new Date().toISOString(),
+      isTest: true,
+      config: useConfig ? {
+        duration: typeConfig.duration * 1000,
+        volume: typeConfig.volume,
+        enterAnimation: typeConfig.enterAnimation,
+        exitAnimation: typeConfig.exitAnimation,
+        layout: typeConfig.layout,
+        showMessage: typeConfig.showMessage,
+        textColor: typeConfig.textColor,
+        backgroundColor: typeConfig.backgroundColor,
+        borderColor: typeConfig.borderColor,
+        fontFamily: typeConfig.fontFamily,
+        fontSize: typeConfig.fontSize,
+        messageTemplate: typeConfig.messageTemplate,
+        sound: typeConfig.sound,
+        customSound: typeConfig.customSound,
+        image: typeConfig.image,
+        video: typeConfig.video,
+        ttsEnabled: typeConfig.ttsEnabled && globalConfig.ttsEnabled,
+        ttsTemplate: typeConfig.ttsTemplate,
+        ttsVoice: globalConfig.ttsVoice,
+        ttsRate: globalConfig.ttsRate,
+        ttsPitch: globalConfig.ttsPitch
+      } : null
+    };
+
+    // Add type-specific fields
+    if (message) alertData.message = message;
+    if (alertType === 'subscription') {
+      alertData.tier = tier || '1000';
+      // Get variation config if applicable
+      const tierKey = tier === 'Prime' ? 'prime' : `tier${tier ? tier[0] : '1'}`;
+      if (typeConfig.variations && typeConfig.variations[tierKey]) {
+        alertData.variationConfig = typeConfig.variations[tierKey];
+      }
+    }
+    if (alertType === 'bits') {
+      alertData.amount = Number(amount) || 100;
+      // Get variation based on amount
+      if (typeConfig.variations) {
+        const thresholds = Object.keys(typeConfig.variations).map(Number).sort((a, b) => b - a);
+        const threshold = thresholds.find(t => alertData.amount >= t);
+        if (threshold && typeConfig.variations[threshold.toString()]) {
+          alertData.variationConfig = typeConfig.variations[threshold.toString()];
+        }
+      }
+    }
+    if (alertType === 'raid') {
+      alertData.viewers = Number(viewers) || 50;
+      // Get variation based on viewer count
+      if (typeConfig.variations) {
+        const thresholds = Object.keys(typeConfig.variations).map(Number).sort((a, b) => b - a);
+        const threshold = thresholds.find(t => alertData.viewers >= t);
+        if (threshold && typeConfig.variations[threshold.toString()]) {
+          alertData.variationConfig = typeConfig.variations[threshold.toString()];
+        }
+      }
+    }
+    if (alertType === 'redemption') {
+      alertData.reward = reward || 'Hydrate!';
+      // Check for custom reward config
+      if (typeConfig.customRewards && typeConfig.customRewards[reward]) {
+        alertData.variationConfig = typeConfig.customRewards[reward];
+      }
+    }
+
+    // Broadcast to all connected clients (including OBS overlays)
+    broadcastState({ type: 'alert', data: alertData });
+
+    console.log('[TestAlert] Sent:', alertData);
+    res.json({ success: true, alert: alertData });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List available animations
+app.get('/api/alerts/animations', (req, res) => {
+  res.json({
+    enter: [
+      { value: 'fadeIn', label: 'Fade In' },
+      { value: 'fadeInUp', label: 'Fade In Up' },
+      { value: 'fadeInDown', label: 'Fade In Down' },
+      { value: 'slideInLeft', label: 'Slide In Left' },
+      { value: 'slideInRight', label: 'Slide In Right' },
+      { value: 'scaleIn', label: 'Scale In' },
+      { value: 'bounceIn', label: 'Bounce In' },
+      { value: 'rotateIn', label: 'Rotate In' }
+    ],
+    exit: [
+      { value: 'fadeOut', label: 'Fade Out' },
+      { value: 'fadeOutUp', label: 'Fade Out Up' },
+      { value: 'fadeOutDown', label: 'Fade Out Down' },
+      { value: 'slideOutLeft', label: 'Slide Out Left' },
+      { value: 'slideOutRight', label: 'Slide Out Right' },
+      { value: 'scaleOut', label: 'Scale Out' }
+    ]
+  });
+});
+
+// List available TTS voices (browser will provide actual voices)
+app.get('/api/alerts/tts/voices', (req, res) => {
+  res.json({
+    voices: [
+      { value: 'en-US', label: 'English (US)' },
+      { value: 'en-GB', label: 'English (UK)' },
+      { value: 'en-AU', label: 'English (Australia)' },
+      { value: 'es-ES', label: 'Spanish (Spain)' },
+      { value: 'es-MX', label: 'Spanish (Mexico)' },
+      { value: 'fr-FR', label: 'French' },
+      { value: 'de-DE', label: 'German' },
+      { value: 'it-IT', label: 'Italian' },
+      { value: 'pt-BR', label: 'Portuguese (Brazil)' },
+      { value: 'ja-JP', label: 'Japanese' },
+      { value: 'ko-KR', label: 'Korean' }
+    ]
+  });
 });
 
 // WebSocket connection handler

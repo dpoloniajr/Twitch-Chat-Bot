@@ -208,6 +208,13 @@
     }
 
     /**
+     * Alias for add() - for backwards compatibility
+     */
+    queueAlert(alert) {
+      this.add(alert);
+    }
+
+    /**
      * Process next alert in queue
      */
     async _processNext() {
@@ -278,6 +285,130 @@
           sound.volume = this.soundVolume;
         });
       }
+    }
+  }
+
+  /**
+   * TTS Manager - Handles Text-to-Speech for alerts
+   */
+  class TTSManager {
+    constructor(options = {}) {
+      this.enabled = options.enabled !== false;
+      this.voice = options.voice || 'en-US';
+      this.rate = options.rate || 1.0;
+      this.pitch = options.pitch || 1.0;
+      this.volume = options.volume || 0.8;
+
+      this.synth = window.speechSynthesis;
+      this.voices = [];
+      this.selectedVoice = null;
+
+      // Load voices
+      this._loadVoices();
+      if (this.synth.onvoiceschanged !== undefined) {
+        this.synth.onvoiceschanged = () => this._loadVoices();
+      }
+    }
+
+    /**
+     * Load available voices
+     */
+    _loadVoices() {
+      this.voices = this.synth.getVoices();
+      this._selectVoice();
+    }
+
+    /**
+     * Select voice based on language/region
+     */
+    _selectVoice() {
+      if (this.voices.length === 0) return;
+
+      // Try to find exact match
+      this.selectedVoice = this.voices.find(v => v.lang === this.voice);
+
+      // Fallback to language family
+      if (!this.selectedVoice) {
+        const langPrefix = this.voice.split('-')[0];
+        this.selectedVoice = this.voices.find(v => v.lang.startsWith(langPrefix));
+      }
+
+      // Fallback to default
+      if (!this.selectedVoice) {
+        this.selectedVoice = this.voices.find(v => v.default) || this.voices[0];
+      }
+    }
+
+    /**
+     * Update TTS configuration
+     */
+    updateConfig(config) {
+      if (config.enabled !== undefined) this.enabled = config.enabled;
+      if (config.voice !== undefined) {
+        this.voice = config.voice;
+        this._selectVoice();
+      }
+      if (config.rate !== undefined) this.rate = config.rate;
+      if (config.pitch !== undefined) this.pitch = config.pitch;
+      if (config.volume !== undefined) this.volume = config.volume;
+    }
+
+    /**
+     * Speak text
+     * @param {string} text - Text to speak
+     * @param {Object} options - Override options
+     * @returns {Promise} Resolves when speech completes
+     */
+    speak(text, options = {}) {
+      return new Promise((resolve, reject) => {
+        if (!this.enabled) {
+          resolve();
+          return;
+        }
+
+        if (!text || text.trim() === '') {
+          resolve();
+          return;
+        }
+
+        // Cancel any ongoing speech
+        this.synth.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.voice = this.selectedVoice;
+        utterance.rate = options.rate || this.rate;
+        utterance.pitch = options.pitch || this.pitch;
+        utterance.volume = options.volume || this.volume;
+
+        utterance.onend = () => resolve();
+        utterance.onerror = (err) => {
+          console.warn('[TTS] Error:', err);
+          resolve(); // Resolve anyway to not block alerts
+        };
+
+        this.synth.speak(utterance);
+      });
+    }
+
+    /**
+     * Parse template and replace placeholders
+     * @param {string} template - Template with {placeholders}
+     * @param {Object} data - Data object with values
+     * @returns {string} Parsed text
+     */
+    parseTemplate(template, data) {
+      if (!template) return '';
+
+      return template.replace(/\{(\w+)\}/g, (match, key) => {
+        return data[key] !== undefined ? data[key] : match;
+      });
+    }
+
+    /**
+     * Stop any ongoing speech
+     */
+    stop() {
+      this.synth.cancel();
     }
   }
 
@@ -354,6 +485,7 @@
   // Export to global scope
   global.OverlayClient = OverlayClient;
   global.AlertQueue = AlertQueue;
+  global.TTSManager = TTSManager;
   global.OverlayUtils = Utils;
 
 })(typeof window !== 'undefined' ? window : this);

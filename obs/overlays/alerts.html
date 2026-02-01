@@ -3,250 +3,569 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alerts Overlay - OBS</title>
+  <title>Stream Alerts Overlay</title>
   <link rel="stylesheet" href="../css/overlay-base.css">
   <style>
-    /* Page-specific styles can go here */
+    /* Enhanced Alert Styles */
+    .overlay-container {
+      perspective: 1000px;
+    }
+
+    .alert-wrapper {
+      display: none;
+      position: relative;
+      text-align: center;
+    }
+
+    .alert-wrapper.visible {
+      display: block;
+    }
+
+    .alert-media {
+      max-width: 100%;
+      max-height: 300px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+
+    .alert-video {
+      max-width: 100%;
+      max-height: 300px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+
+    .alert-box {
+      display: inline-block;
+      min-width: 300px;
+      max-width: 600px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .alert-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .alert-type-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .alert-username {
+      transition: color 0.3s ease;
+    }
+
+    .alert-amount {
+      font-size: 32px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+
+    .alert-user-message {
+      font-style: italic;
+      color: #aaa;
+      margin-top: 15px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .alert-tier {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    .tier-prime {
+      background: linear-gradient(135deg, #5a4fbd, #8b7dd8);
+      color: white;
+    }
+
+    .tier-1 {
+      background: linear-gradient(135deg, #ff6b9d, #ff9ec4);
+      color: white;
+    }
+
+    .tier-2 {
+      background: linear-gradient(135deg, #9147ff, #bf94ff);
+      color: white;
+    }
+
+    .tier-3 {
+      background: linear-gradient(135deg, #00d4ff, #00ffff);
+      color: #000;
+    }
+
+    /* Debug panel (hidden by default) */
+    .debug-panel {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #00ff00;
+      font-family: monospace;
+      font-size: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      max-width: 300px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .debug-panel.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
   <div class="overlay-container">
-    <div id="alert-display" class="hidden">
-      <!-- Alert content will be dynamically inserted here -->
+    <div id="alertWrapper" class="alert-wrapper">
+      <!-- Media container (image or video) -->
+      <div id="mediaContainer"></div>
+
+      <!-- Alert content box -->
+      <div id="alertBox" class="alert-box">
+        <div id="alertIcon" class="alert-icon"></div>
+        <div id="alertTypeLabel" class="alert-type-label"></div>
+        <div id="alertUsername" class="alert-username"></div>
+        <div id="alertAmount" class="alert-amount" style="display:none;"></div>
+        <div id="alertMessage" class="alert-message"></div>
+        <div id="alertDetails" class="alert-details"></div>
+        <div id="alertTier" class="alert-tier" style="display:none;"></div>
+        <div id="alertUserMessage" class="alert-user-message" style="display:none;"></div>
+      </div>
     </div>
+  </div>
+
+  <div id="debugPanel" class="debug-panel">
+    <div>Status: <span id="debugStatus">Connecting...</span></div>
+    <div>Queue: <span id="debugQueue">0</span></div>
+    <div>Last Alert: <span id="debugLastAlert">None</span></div>
   </div>
 
   <script src="../js/overlay-client.js"></script>
   <script>
     /**
-     * Alerts Overlay
-     * Displays animated alerts for follows, subs, bits, raids, and redemptions
+     * Enhanced Alerts Overlay
+     * Displays animated alerts with custom media, TTS, and full configuration support
      *
      * Usage: Add as Browser Source in OBS
      * URL: http://localhost:3001/obs/overlays/alerts.html
-     * Recommended size: 800x200 or custom based on your scene
+     * Recommended size: 800x400 or custom based on your scene
      *
      * URL Parameters:
-     *   ?duration=5000    - How long alert displays (ms)
-     *   ?delay=1000       - Delay between alerts (ms)
-     *   ?enter=bounceIn   - Enter animation class name
-     *   ?exit=fadeOutUp   - Exit animation class name
-     *   ?exitDuration=500 - Time to wait for exit animation (ms)
-     *   ?sound=false      - Disable sounds
-     *   ?volume=0.5       - Sound volume (0-1)
-     *
-     * Note: exitDuration should match your CSS animation duration.
-     * Default CSS animations in overlay-base.css are 500ms.
-     * If using custom exit animations, set exitDuration to match.
+     *   ?debug=true       - Show debug panel
+     *   ?duration=5000    - Override alert duration (ms)
+     *   ?volume=0.5       - Override sound volume (0-1)
      */
     (function() {
       'use strict';
 
-      const alertDisplay = document.getElementById('alert-display');
+      // Configuration
+      const config = {
+        wsUrl: `ws://${window.location.host}`,
+        debug: OverlayUtils.getQueryParam('debug') === 'true',
 
-      // Configuration - loaded from dashboard /obs/config endpoint
-      let config = {
-        alertDuration: 5000,
-        alertDelay: 1000,
-        soundEnabled: true,
-        soundVolume: 0.5,
-        enterAnimation: 'bounceIn',
-        exitAnimation: 'fadeOutUp',
-        exitAnimationDuration: 500
+        // Default settings (will be overridden by server config)
+        defaultDuration: 5000,
+        defaultDelay: 1000,
+        defaultVolume: 0.8,
+        defaultEnterAnimation: 'bounceIn',
+        defaultExitAnimation: 'fadeOutUp'
       };
 
-      // Load configuration from dashboard
-      async function loadConfig() {
-        try {
-          const res = await fetch('/obs/config');
-          const obsConfig = await res.json();
-          const alertsConfig = obsConfig.overlays.alerts;
+      // Alert type icons
+      const alertIcons = {
+        follow: '👤',
+        subscription: '⭐',
+        bits: '💎',
+        raid: '🎮',
+        redemption: '🎁'
+      };
 
-          // Apply dashboard configuration
-          config.alertDuration = (alertsConfig.duration || 5) * 1000;
-          config.alertDelay = 1000;
-          config.soundEnabled = alertsConfig.enabled !== false;
-          config.soundVolume = alertsConfig.volume || 0.8;
-          config.enterAnimation = 'bounceIn';
-          config.exitAnimation = 'fadeOutUp';
-          config.exitAnimationDuration = 500;
+      // Alert type labels
+      const alertLabels = {
+        follow: 'New Follower',
+        subscription: 'New Subscriber',
+        bits: 'Cheer',
+        raid: 'Raid',
+        redemption: 'Channel Points'
+      };
 
-          // Allow URL parameters to override dashboard config
-          const paramDuration = parseInt(OverlayUtils.getQueryParam('duration'));
-          if (!isNaN(paramDuration)) config.alertDuration = paramDuration;
-          const paramDelay = parseInt(OverlayUtils.getQueryParam('delay'));
-          if (!isNaN(paramDelay)) config.alertDelay = paramDelay;
-          if (OverlayUtils.getQueryParam('sound') !== null) config.soundEnabled = OverlayUtils.getQueryParam('sound') !== 'false';
-          const paramVolume = parseFloat(OverlayUtils.getQueryParam('volume'));
-          if (!isNaN(paramVolume)) config.soundVolume = paramVolume;
-          if (OverlayUtils.getQueryParam('enter') !== null) config.enterAnimation = OverlayUtils.getQueryParam('enter');
-          if (OverlayUtils.getQueryParam('exit') !== null) config.exitAnimation = OverlayUtils.getQueryParam('exit');
-          const paramExitDuration = parseInt(OverlayUtils.getQueryParam('exitDuration'));
-          if (!isNaN(paramExitDuration)) config.exitAnimationDuration = paramExitDuration;
-        } catch (error) {
-          console.error('Failed to load OBS config, using defaults:', error);
-        }
+      // Default sounds (relative to overlay)
+      const defaultSounds = {
+        follow: '../assets/sounds/follow.mp3',
+        subscription: '../assets/sounds/subscribe.mp3',
+        bits: '../assets/sounds/bits.mp3',
+        raid: '../assets/sounds/raid.mp3',
+        redemption: '../assets/sounds/redemption.mp3',
+        default: '../assets/sounds/default.mp3'
+      };
 
-        // Reinitialize alert queue with loaded config
-        initializeAlertQueue();
+      // State
+      let alertConfig = null;
+      let ttsManager = null;
+      let alertQueue = null;
+      let client = null;
+
+      // DOM Elements
+      const alertWrapper = document.getElementById('alertWrapper');
+      const alertBox = document.getElementById('alertBox');
+      const alertIcon = document.getElementById('alertIcon');
+      const alertTypeLabel = document.getElementById('alertTypeLabel');
+      const alertUsername = document.getElementById('alertUsername');
+      const alertAmount = document.getElementById('alertAmount');
+      const alertMessage = document.getElementById('alertMessage');
+      const alertDetails = document.getElementById('alertDetails');
+      const alertTier = document.getElementById('alertTier');
+      const alertUserMessage = document.getElementById('alertUserMessage');
+      const mediaContainer = document.getElementById('mediaContainer');
+      const debugPanel = document.getElementById('debugPanel');
+
+      // Show debug panel if enabled
+      if (config.debug) {
+        debugPanel.classList.add('visible');
       }
 
-      let alertQueue; // Will be initialized after config loads
+      // Initialize
+      async function init() {
+        // Load alert configuration from server
+        try {
+          const res = await fetch('/api/alerts/config');
+          alertConfig = await res.json();
+          console.log('[Alerts] Loaded config:', alertConfig);
+        } catch (error) {
+          console.warn('[Alerts] Failed to load config, using defaults:', error);
+          alertConfig = { global: {}, alertTypes: {} };
+        }
 
-      function initializeAlertQueue() {
+        // Initialize TTS Manager
+        ttsManager = new TTSManager({
+          enabled: alertConfig.global?.ttsEnabled || false,
+          voice: alertConfig.global?.ttsVoice || 'en-US',
+          rate: alertConfig.global?.ttsRate || 1.0,
+          pitch: alertConfig.global?.ttsPitch || 1.0,
+          volume: alertConfig.global?.defaultVolume || 0.8
+        });
+
+        // Initialize Alert Queue
         alertQueue = new AlertQueue({
-          alertDuration: config.alertDuration,
-          alertDelay: config.alertDelay,
-          soundEnabled: config.soundEnabled,
-          soundVolume: config.soundVolume,
+          alertDuration: (alertConfig.global?.defaultDuration || 5) * 1000,
+          alertDelay: (alertConfig.global?.defaultDelay || 1) * 1000,
+          soundEnabled: true,
+          soundVolume: alertConfig.global?.defaultVolume || 0.8,
           onShow: showAlert,
           onHide: hideAlert
         });
 
-        // Load sounds
-        Object.entries(soundFiles).forEach(([type, filename]) => {
-          alertQueue.loadSound(type, soundBasePath + filename);
+        // Load default sounds
+        Object.keys(defaultSounds).forEach(type => {
+          alertQueue.loadSound(type, defaultSounds[type]);
         });
 
         // Connect to WebSocket
-        const client = new OverlayClient();
-        client.on('alert', (alert) => {
-          console.log('Alert received:', alert);
-          alertQueue.queueAlert(alert);
-        });
-      }
-
-      // Sound configuration
-      const soundBasePath = '../assets/sounds/';
-      const soundFiles = {
-        follow: 'follow.mp3',
-        subscription: 'subscribe.mp3',
-        bits: 'bits.mp3',
-        raid: 'raid.mp3',
-        redemption: 'redemption.mp3',
-        default: 'default.mp3'  // Fallback for any alert type without a specific sound
-      };
-
-      /**
-       * Build alert HTML based on type
-       */
-      function buildAlertHtml(alert) {
-        const type = alert.alertType || 'follow';
-        let title = '';
-        let details = '';
-        let message = alert.message ? `<div class="alert-message">${OverlayUtils.escapeHtml(alert.message)}</div>` : '';
-
-        switch (type) {
-          case 'follow':
-            title = 'New Follower!';
-            break;
-
-          case 'subscription':
-            title = 'New Subscriber!';
-            details = alert.tier ? `<div class="alert-details">${OverlayUtils.parseTier(alert.tier)}</div>` : '';
-            break;
-
-          case 'bits':
-            title = 'Cheer!';
-            details = alert.amount ? `<div class="alert-details">${OverlayUtils.formatNumber(alert.amount)} bits</div>` : '';
-            break;
-
-          case 'raid':
-            title = 'Raid!';
-            details = alert.viewers ? `<div class="alert-details">${OverlayUtils.formatNumber(alert.viewers)} viewers</div>` : '';
-            break;
-
-          case 'redemption':
-            title = 'Redemption!';
-            details = alert.reward ? `<div class="alert-details">${OverlayUtils.escapeHtml(alert.reward)}</div>` : '';
-            break;
-
-          default:
-            title = 'Alert!';
-        }
-
-        return `
-          <div class="alert-box ${type}">
-            <div class="alert-title">${title}</div>
-            <div class="alert-username">${OverlayUtils.escapeHtml(alert.user || 'Anonymous')}</div>
-            ${details}
-            ${message}
-          </div>
-        `;
-      }
-
-      /**
-       * Show alert on screen
-       */
-      function showAlert(alert) {
-        alertDisplay.innerHTML = buildAlertHtml(alert);
-        alertDisplay.classList.remove('hidden');
-        alertDisplay.classList.remove(`animate-${config.exitAnimation}`);
-        alertDisplay.classList.add(`animate-${config.enterAnimation}`);
-      }
-
-      /**
-       * Hide alert from screen
-       */
-      function hideAlert(alert) {
-        alertDisplay.classList.remove(`animate-${config.enterAnimation}`);
-        alertDisplay.classList.add(`animate-${config.exitAnimation}`);
-
-        // Wait for exit animation then hide (uses configurable duration)
-        setTimeout(() => {
-          alertDisplay.classList.add('hidden');
-          alertDisplay.innerHTML = '';
-        }, config.exitAnimationDuration);
-      }
-
-      // Load configuration from dashboard and initialize
-      loadConfig().then(() => {
-        // Initialize WebSocket client
-        const client = new OverlayClient();
-
-        // Listen for alert events
-        client.on('alert', (data) => {
-          console.log('[AlertsOverlay] Received alert:', data);
-          alertQueue.queueAlert(data);
-        });
-
-        // Also listen for eventsub-event for backwards compatibility
-        client.on('eventsub-event', (data) => {
-          // Convert eventsub event to alert format if needed
-          if (data.event) {
-            const alertData = {
-              alertType: data.event,
-              user: data.user || data.userName || data.username,
-              ...data
-            };
-            console.log('[AlertsOverlay] Converted eventsub-event to alert:', alertData);
-            alertQueue.queueAlert(alertData);
-          }
-        });
+        client = new OverlayClient({ wsUrl: config.wsUrl });
 
         client.on('connected', () => {
-          console.log('[AlertsOverlay] WebSocket connected');
+          console.log('[Alerts] WebSocket connected');
+          updateDebug('status', 'Connected');
         });
 
         client.on('disconnected', () => {
-          console.log('[AlertsOverlay] WebSocket disconnected, will reconnect...');
+          console.log('[Alerts] WebSocket disconnected');
+          updateDebug('status', 'Disconnected');
+        });
+
+        client.on('alert', handleAlert);
+        client.on('alertConfig', (newConfig) => {
+          alertConfig = newConfig;
+          console.log('[Alerts] Config updated:', alertConfig);
         });
 
         // Expose for debugging
         window.alertQueue = alertQueue;
         window.client = client;
-      });
+        window.testAlert = testAlert;
+        window.testAllAlerts = testAllAlerts;
 
-      /**
-       * Test alert function - call from browser console
-       * @param {string} type - Alert type: follow, subscription, bits, raid, redemption
-       * @param {string} user - Username to display
-       * @param {object} options - Additional options (message, tier, amount, viewers, reward)
-       */
-      window.testAlert = (type = 'follow', user = 'TestUser', options = {}) => {
+        console.log('[Alerts] Ready!');
+        console.log('  testAlert(type, user, options) - Test single alert');
+        console.log('  testAllAlerts() - Test all alert types in sequence');
+      }
+
+      // Handle incoming alert
+      function handleAlert(data) {
+        console.log('[Alerts] Received alert:', data);
+        updateDebug('lastAlert', `${data.alertType}: ${data.user}`);
+
+        // Get type-specific config
+        const typeConfig = alertConfig.alertTypes?.[data.alertType] || {};
+
+        // Check if alert type is enabled
+        if (typeConfig.enabled === false) {
+          console.log(`[Alerts] ${data.alertType} alerts are disabled`);
+          return;
+        }
+
+        // Check minimum thresholds
+        if (data.alertType === 'bits' && typeConfig.minBits) {
+          if ((data.amount || 0) < typeConfig.minBits) {
+            console.log(`[Alerts] Bits below minimum (${data.amount} < ${typeConfig.minBits})`);
+            return;
+          }
+        }
+        if (data.alertType === 'raid' && typeConfig.minViewers) {
+          if ((data.viewers || 0) < typeConfig.minViewers) {
+            console.log(`[Alerts] Raid below minimum viewers (${data.viewers} < ${typeConfig.minViewers})`);
+            return;
+          }
+        }
+
+        // Merge configs (data.config from server takes precedence, then typeConfig, then defaults)
+        const mergedConfig = {
+          duration: (data.config?.duration || (typeConfig.duration || 5) * 1000),
+          volume: data.config?.volume ?? typeConfig.volume ?? config.defaultVolume,
+          enterAnimation: data.config?.enterAnimation || typeConfig.enterAnimation || config.defaultEnterAnimation,
+          exitAnimation: data.config?.exitAnimation || typeConfig.exitAnimation || config.defaultExitAnimation,
+          textColor: data.config?.textColor || typeConfig.textColor,
+          borderColor: data.config?.borderColor || typeConfig.borderColor,
+          backgroundColor: data.config?.backgroundColor || typeConfig.backgroundColor,
+          fontSize: data.config?.fontSize || typeConfig.fontSize || 28,
+          fontFamily: data.config?.fontFamily || typeConfig.fontFamily || 'Segoe UI',
+          messageTemplate: data.variationConfig?.messageTemplate || data.config?.messageTemplate || typeConfig.messageTemplate,
+          sound: typeConfig.sound || 'default',
+          customSound: typeConfig.customSound,
+          image: data.variationConfig?.image || typeConfig.image,
+          video: data.variationConfig?.video || typeConfig.video,
+          ttsEnabled: (data.config?.ttsEnabled ?? typeConfig.ttsEnabled) && alertConfig.global?.ttsEnabled,
+          ttsTemplate: data.config?.ttsTemplate || typeConfig.ttsTemplate,
+          ttsVoice: data.config?.ttsVoice || alertConfig.global?.ttsVoice,
+          ttsRate: data.config?.ttsRate || alertConfig.global?.ttsRate,
+          ttsPitch: data.config?.ttsPitch || alertConfig.global?.ttsPitch
+        };
+
+        // Build alert object
+        const alert = {
+          ...data,
+          config: mergedConfig
+        };
+
+        // Update queue config for this alert
+        alertQueue.alertDuration = mergedConfig.duration;
+        alertQueue.soundVolume = mergedConfig.volume;
+
+        // Load custom sound if specified
+        if (mergedConfig.sound === 'custom' && mergedConfig.customSound) {
+          alertQueue.loadSound(data.alertType + '_custom', mergedConfig.customSound);
+        }
+
+        // Add to queue
+        alertQueue.add(alert);
+        updateDebug('queue', alertQueue.queue.length + 1);
+      }
+
+      // Show alert
+      function showAlert(alert) {
+        const cfg = alert.config || {};
+
+        // Reset state
+        mediaContainer.innerHTML = '';
+        alertAmount.style.display = 'none';
+        alertTier.style.display = 'none';
+        alertUserMessage.style.display = 'none';
+
+        // Set alert type class
+        alertBox.className = 'alert-box ' + alert.alertType;
+
+        // Apply custom styles
+        if (cfg.textColor) {
+          alertUsername.style.color = cfg.textColor;
+        }
+        if (cfg.borderColor) {
+          alertBox.style.borderColor = cfg.borderColor;
+          alertBox.style.boxShadow = `0 8px 32px ${cfg.borderColor}40`;
+        }
+        if (cfg.backgroundColor) {
+          alertBox.style.background = cfg.backgroundColor;
+        }
+        if (cfg.fontSize) {
+          alertUsername.style.fontSize = cfg.fontSize + 'px';
+        }
+        if (cfg.fontFamily) {
+          alertBox.style.fontFamily = cfg.fontFamily;
+        }
+
+        // Display media (video takes precedence)
+        if (cfg.video) {
+          const video = document.createElement('video');
+          video.src = cfg.video;
+          video.className = 'alert-video';
+          video.autoplay = true;
+          video.loop = true;
+          video.muted = true;
+          video.playsInline = true;
+          mediaContainer.appendChild(video);
+        } else if (cfg.image) {
+          const img = document.createElement('img');
+          img.src = cfg.image;
+          img.className = 'alert-media';
+          img.alt = 'Alert';
+          mediaContainer.appendChild(img);
+        }
+
+        // Set icon and labels
+        alertIcon.textContent = alertIcons[alert.alertType] || '🔔';
+        alertTypeLabel.textContent = alertLabels[alert.alertType] || 'Alert';
+        alertUsername.textContent = OverlayUtils.escapeHtml(alert.user || 'Unknown');
+
+        // Set message
+        let message = cfg.messageTemplate || '';
+        // Replace placeholders
+        message = message
+          .replace('{user}', alert.user || '')
+          .replace('{amount}', alert.amount || '')
+          .replace('{viewers}', alert.viewers || '')
+          .replace('{reward}', alert.reward || '')
+          .replace('{tier}', OverlayUtils.parseTier(alert.tier) || '');
+        alertMessage.textContent = message;
+
+        // Type-specific content
+        if (alert.alertType === 'bits' && alert.amount) {
+          alertAmount.textContent = OverlayUtils.formatNumber(alert.amount) + ' Bits';
+          alertAmount.style.display = 'block';
+          alertAmount.style.color = cfg.textColor || '#ffbb00';
+        }
+
+        if (alert.alertType === 'raid' && alert.viewers) {
+          alertDetails.textContent = OverlayUtils.formatNumber(alert.viewers) + ' viewers';
+        } else {
+          alertDetails.textContent = '';
+        }
+
+        if (alert.alertType === 'subscription' && alert.tier) {
+          const tierText = OverlayUtils.parseTier(alert.tier);
+          alertTier.textContent = tierText;
+          alertTier.className = 'alert-tier';
+          if (alert.tier === 'Prime') {
+            alertTier.classList.add('tier-prime');
+          } else if (alert.tier === '1000') {
+            alertTier.classList.add('tier-1');
+          } else if (alert.tier === '2000') {
+            alertTier.classList.add('tier-2');
+          } else if (alert.tier === '3000') {
+            alertTier.classList.add('tier-3');
+          }
+          alertTier.style.display = 'inline-block';
+        }
+
+        if (alert.alertType === 'redemption' && alert.reward) {
+          alertDetails.textContent = alert.reward;
+        }
+
+        // Show user message if present
+        if (alert.message) {
+          alertUserMessage.textContent = '"' + OverlayUtils.escapeHtml(alert.message) + '"';
+          alertUserMessage.style.display = 'block';
+        }
+
+        // Play sound
+        const soundType = (cfg.sound === 'custom' && cfg.customSound)
+          ? alert.alertType + '_custom'
+          : (cfg.sound === 'none' ? null : alert.alertType);
+        if (soundType) {
+          alertQueue.playSound(soundType);
+        }
+
+        // Show with animation
+        alertWrapper.classList.add('visible');
+        alertBox.classList.add('animate-' + (cfg.enterAnimation || 'bounceIn'));
+
+        // Handle TTS
+        if (cfg.ttsEnabled && cfg.ttsTemplate) {
+          // Parse TTS template
+          const ttsText = ttsManager.parseTemplate(cfg.ttsTemplate, {
+            user: alert.user || 'Someone',
+            amount: alert.amount || '',
+            viewers: alert.viewers || '',
+            reward: alert.reward || '',
+            tier: OverlayUtils.parseTier(alert.tier) || '',
+            message: alert.message || ''
+          });
+
+          // Speak after a short delay
+          setTimeout(() => {
+            ttsManager.speak(ttsText, {
+              rate: cfg.ttsRate,
+              pitch: cfg.ttsPitch,
+              volume: cfg.volume
+            });
+          }, 500);
+        }
+
+        updateDebug('queue', alertQueue.queue.length);
+      }
+
+      // Hide alert
+      function hideAlert(alert) {
+        const cfg = alert.config || {};
+        const exitAnimation = cfg.exitAnimation || 'fadeOutUp';
+
+        // Remove enter animation
+        alertBox.className = 'alert-box ' + alert.alertType;
+
+        // Add exit animation
+        alertBox.classList.add('animate-' + exitAnimation);
+
+        // Hide after animation
+        setTimeout(() => {
+          alertWrapper.classList.remove('visible');
+          alertBox.className = 'alert-box';
+
+          // Reset styles
+          alertUsername.style.color = '';
+          alertBox.style.borderColor = '';
+          alertBox.style.boxShadow = '';
+          alertBox.style.background = '';
+          alertUsername.style.fontSize = '';
+          alertBox.style.fontFamily = '';
+          alertAmount.style.color = '';
+
+          // Stop video if playing
+          const video = mediaContainer.querySelector('video');
+          if (video) {
+            video.pause();
+          }
+          mediaContainer.innerHTML = '';
+
+          updateDebug('queue', alertQueue.queue.length);
+        }, 500);
+      }
+
+      // Update debug panel
+      function updateDebug(field, value) {
+        if (!config.debug) return;
+        const el = document.getElementById('debug' + field.charAt(0).toUpperCase() + field.slice(1));
+        if (el) el.textContent = value;
+      }
+
+      // Test alert function
+      function testAlert(type = 'follow', user = 'TestUser', options = {}) {
         const alertData = {
           alertType: type,
           user: user,
+          isTest: true,
           ...options
         };
 
@@ -256,31 +575,21 @@
         if (type === 'raid' && !options.viewers) alertData.viewers = 50;
         if (type === 'redemption' && !options.reward) alertData.reward = 'Hydrate!';
 
-        if (alertQueue) {
-          alertQueue.queueAlert(alertData);
-        }
-      };
+        handleAlert(alertData);
+      }
 
-      /**
-       * Test all alert types in sequence
-       */
-      window.testAllAlerts = () => {
-        if (!alertQueue) {
-          console.error('Alert queue not initialized yet');
-          return;
-        }
-        console.log('[AlertsOverlay] Testing all alert types...');
-        window.testAlert('follow', 'FollowUser');
-        window.testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' });
-        window.testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' });
-        window.testAlert('raid', 'RaidUser', { viewers: 150 });
-        window.testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' });
-      };
+      // Test all alert types
+      function testAllAlerts() {
+        console.log('[Alerts] Testing all alert types...');
+        testAlert('follow', 'FollowUser');
+        setTimeout(() => testAlert('subscription', 'SubUser', { tier: '2000', message: 'Love the stream!' }), 2000);
+        setTimeout(() => testAlert('bits', 'BitsUser', { amount: 500, message: 'Here are some bits!' }), 4000);
+        setTimeout(() => testAlert('raid', 'RaidUser', { viewers: 150 }), 6000);
+        setTimeout(() => testAlert('redemption', 'RedeemUser', { reward: 'Highlight My Message', message: 'Notice me!' }), 8000);
+      }
 
-      console.log('[AlertsOverlay] Ready!');
-      console.log('  testAlert(type, user, options) - Test single alert');
-      console.log('  testAllAlerts() - Test all alert types in sequence');
-      console.log('  Types: follow, subscription, bits, raid, redemption');
+      // Initialize on load
+      init();
     })();
   </script>
 </body>
