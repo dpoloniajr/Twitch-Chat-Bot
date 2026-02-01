@@ -1029,15 +1029,6 @@ async function testAlertType(alertType) {
   }
 }
 
-// Test all alert types in sequence
-async function testAllAlertTypes() {
-  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
-  for (const type of types) {
-    await testAlertType(type);
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between alerts
-  }
-}
-
 // Update test panel fields based on alert type
 function updateTestPanelFields() {
   const alertType = document.getElementById('testAlertType').value;
