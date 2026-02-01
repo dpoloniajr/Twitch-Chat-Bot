@@ -1152,10 +1152,11 @@ async function sendShoutout(targetUsername) {
     
     return {
       success: true,
-      message: `📢 Shoutout to ${user.displayName}! They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
+      message: `📢 Shoutout to ${user.displayName}! Check out their channel: https://twitch.tv/${user.name} - They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
       username: user.displayName,
       gameName: gameName,
-      isLive: isLive
+      isLive: isLive,
+      channelUrl: `https://twitch.tv/${user.name}`
     };
   } catch (error) {
     console.error('Failed to send shoutout:', error.message);
