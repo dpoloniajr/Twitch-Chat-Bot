@@ -66,7 +66,7 @@ function updateDashboard() {
   channelsEl.textContent = botState.channels?.length > 0 ? botState.channels.join(', ') : '-';
 
   // Update command count
-  commandCountEl.textContent = botState.commandsExecuted || 0;
+  commandCountEl.textContent = botState.commandsExecuted ?? 0;
 
   // Update last command
   if (botState.lastCommand) {
@@ -330,7 +330,7 @@ function prefillCommand(name) {
   document.getElementById('ccLevel').value = cmd.level || 'everyone';
    document.getElementById('ccFetchUrl').value = cmd.fetchUrl || '';
    document.getElementById('ccFetchEnabled').value = cmd.fetchEnabled ? 'true' : 'false';
-   document.getElementById('ccCooldown').value = cmd.cooldownSeconds || 0;
+   document.getElementById('ccCooldown').value = cmd.cooldownSeconds ?? 0;
 }
 
 async function deleteCommand(name) {
@@ -554,20 +554,20 @@ async function loadObsOverlayConfig() {
     const config = await res.json();
 
     // Update UI with config values
-    document.getElementById('alertsDuration').value = config.overlays.alerts.duration || 5;
-    document.getElementById('alertsVolume').value = config.overlays.alerts.volume || 0.8;
+    document.getElementById('alertsDuration').value = config.overlays.alerts.duration ?? 5;
+    document.getElementById('alertsVolume').value = config.overlays.alerts.volume ?? 0.8;
     document.getElementById('alertsEnabled').checked = config.overlays.alerts.enabled !== false;
 
-    document.getElementById('recentEventsLimit').value = config.overlays.recentEvents.limit || 10;
+    document.getElementById('recentEventsLimit').value = config.overlays.recentEvents.limit ?? 10;
     document.getElementById('recentEventsShowTime').checked = config.overlays.recentEvents.showTime !== false;
     document.getElementById('recentEventsEnabled').checked = config.overlays.recentEvents.enabled !== false;
 
-    document.getElementById('chatBoxMessageTimeout').value = config.overlays.chatBox.messageTimeout || 8;
+    document.getElementById('chatBoxMessageTimeout').value = config.overlays.chatBox.messageTimeout ?? 8;
     document.getElementById('chatBoxHideBot').checked = config.overlays.chatBox.hideBot === true;
     document.getElementById('chatBoxEnabled').checked = config.overlays.chatBox.enabled !== false;
 
     document.getElementById('goalBarType').value = config.overlays.goalBar.type || 'follow';
-    document.getElementById('goalBarGoal').value = config.overlays.goalBar.goal || 1000;
+    document.getElementById('goalBarGoal').value = config.overlays.goalBar.goal ?? 1000;
     document.getElementById('goalBarEnabled').checked = config.overlays.goalBar.enabled !== false;
 
     updateOverlayUrls();
@@ -861,16 +861,16 @@ function populateAlertConfigUI() {
 
   // Global settings
   document.getElementById('globalEnabled').checked = global.enabled !== false;
-  document.getElementById('globalVolume').value = global.defaultVolume || 0.8;
-  document.getElementById('globalVolumeDisplay').textContent = global.defaultVolume || 0.8;
-  document.getElementById('globalDuration').value = global.defaultDuration || 5;
-  document.getElementById('globalDelay').value = global.defaultDelay || 1;
+  document.getElementById('globalVolume').value = global.defaultVolume ?? 0.8;
+  document.getElementById('globalVolumeDisplay').textContent = global.defaultVolume ?? 0.8;
+  document.getElementById('globalDuration').value = global.defaultDuration ?? 5;
+  document.getElementById('globalDelay').value = global.defaultDelay ?? 1;
   document.getElementById('globalTtsEnabled').checked = global.ttsEnabled === true;
   document.getElementById('globalTtsVoice').value = global.ttsVoice || 'en-US';
-  document.getElementById('globalTtsRate').value = global.ttsRate || 1;
-  document.getElementById('globalTtsRateDisplay').textContent = global.ttsRate || 1;
-  document.getElementById('globalTtsPitch').value = global.ttsPitch || 1;
-  document.getElementById('globalTtsPitchDisplay').textContent = global.ttsPitch || 1;
+  document.getElementById('globalTtsRate').value = global.ttsRate ?? 1;
+  document.getElementById('globalTtsRateDisplay').textContent = global.ttsRate ?? 1;
+  document.getElementById('globalTtsPitch').value = global.ttsPitch ?? 1;
+  document.getElementById('globalTtsPitchDisplay').textContent = global.ttsPitch ?? 1;
 
   // Per-alert-type settings
   const alertTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
@@ -883,13 +883,13 @@ function populateAlertConfigUI() {
     if (enabledEl) enabledEl.checked = config.enabled !== false;
 
     const durationEl = document.getElementById(`${type}-duration`);
-    if (durationEl) durationEl.value = config.duration || 5;
+    if (durationEl) durationEl.value = config.duration ?? 5;
 
     const volumeEl = document.getElementById(`${type}-volume`);
     if (volumeEl) {
-      volumeEl.value = config.volume || 0.8;
+      volumeEl.value = config.volume ?? 0.8;
       const displayEl = document.getElementById(`${type}-volume-display`);
-      if (displayEl) displayEl.textContent = config.volume || 0.8;
+      if (displayEl) displayEl.textContent = config.volume ?? 0.8;
     }
 
     const messageEl = document.getElementById(`${type}-messageTemplate`);
@@ -910,7 +910,7 @@ function populateAlertConfigUI() {
     if (borderColorEl) borderColorEl.value = config.borderColor || '#9147ff';
 
     const fontSizeEl = document.getElementById(`${type}-fontSize`);
-    if (fontSizeEl) fontSizeEl.value = config.fontSize || 28;
+    if (fontSizeEl) fontSizeEl.value = config.fontSize ?? 28;
 
     // Media settings
     const soundEl = document.getElementById(`${type}-sound`);
