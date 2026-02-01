@@ -1673,6 +1673,17 @@ const commandRegistry = new Map([
     await handleShoutout(channel, username, args[0]);
     if (cooldownSeconds > 0) setCooldown('shoutout');
   }}],
+  ['!so', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!shoutout');
+    if (isOnCooldown('shoutout', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('shoutout') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !so is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleShoutout(channel, username, args[0]);
+    if (cooldownSeconds > 0) setCooldown('shoutout');
+  }}],
   ['!poll', { perm: 'mod', handler: async ({ channel, username, args }) => {
     const cooldownSeconds = getCommandCooldown('!poll');
     if (isOnCooldown('poll', cooldownSeconds)) {
