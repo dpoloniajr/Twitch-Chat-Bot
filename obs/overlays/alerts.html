@@ -174,8 +174,9 @@
       'use strict';
 
       // Configuration
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const config = {
-        wsUrl: `ws://${window.location.host}`,
+        wsUrl: `${wsProtocol}//${window.location.host}`,
         debug: OverlayUtils.getQueryParam('debug') === 'true',
 
         // Default settings (will be overridden by server config)

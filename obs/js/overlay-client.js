@@ -12,7 +12,11 @@
    */
   class OverlayClient {
     constructor(options = {}) {
-      this.wsUrl = options.wsUrl || `ws://${window.location.host}`;
+      // Build wsUrl: use https->wss, http->ws
+      const defaultWsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const defaultWsUrl = typeof window !== 'undefined' ? `${defaultWsProtocol}//${window.location.host}` : 'ws://localhost:3001';
+
+      this.wsUrl = options.wsUrl || defaultWsUrl;
       this.reconnectInterval = options.reconnectInterval || 3000;
       this.maxReconnectAttempts = options.maxReconnectAttempts || Infinity;
 
