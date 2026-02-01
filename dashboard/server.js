@@ -53,7 +53,7 @@ const MIME_SIGNATURES = {
   '.mp3': [0x49, 0x44, 0x33], // "ID3" tag header commonly used at start of MP3 files
   '.ogg': [0x4f, 0x67, 0x67, 0x53],
   '.wav': [0x52, 0x49, 0x46, 0x46],
-  '.m4a': [0xff, 0xfb]
+  '.m4a': [0x66, 0x74, 0x79, 0x70] // ISO BMFF/MP4-style ftyp
 };
 
 // Rate limiting for uploads (IP-based, in-memory)
