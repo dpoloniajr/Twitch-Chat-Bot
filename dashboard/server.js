@@ -1178,6 +1178,13 @@ function validateMimeType(buffer, ext) {
     }
   }
 
+  // For MP4/MOV, check for 'ftyp' at offset 4 (after 4-byte size field in ISO BMFF)
+  if (ext === '.mp4' || ext === '.m4a' || ext === '.mov') {
+    if (buffer.length < 8) return false;
+    // Check for 'ftyp' (0x66, 0x74, 0x79, 0x70) at offset 4
+    return buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70;
+  }
+
   // Check basic signature match
   for (let i = 0; i < signature.length; i++) {
     if (buffer[i] !== signature[i]) {
