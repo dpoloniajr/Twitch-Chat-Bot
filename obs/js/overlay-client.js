@@ -300,14 +300,18 @@
       this.pitch = options.pitch || 1.0;
       this.volume = options.volume || 0.8;
 
-      this.synth = window.speechSynthesis;
+      // Check for speechSynthesis support
+      this.supported = !!window.speechSynthesis;
+      this.synth = window.speechSynthesis || null;
       this.voices = [];
       this.selectedVoice = null;
 
-      // Load voices
-      this._loadVoices();
-      if (this.synth.onvoiceschanged !== undefined) {
-        this.synth.onvoiceschanged = () => this._loadVoices();
+      // Load voices only if supported
+      if (this.supported) {
+        this._loadVoices();
+        if (this.synth.onvoiceschanged !== undefined) {
+          this.synth.onvoiceschanged = () => this._loadVoices();
+        }
       }
     }
 
@@ -362,7 +366,7 @@
      */
     speak(text, options = {}) {
       return new Promise((resolve, reject) => {
-        if (!this.enabled) {
+        if (!this.enabled || !this.supported) {
           resolve();
           return;
         }
