@@ -1029,63 +1029,6 @@ async function testAlertType(alertType) {
   }
 }
 
-// Reset alert type to defaults
-async function resetAlertType(alertType) {
-  if (!confirm(`Reset ${alertType} alert settings to defaults?`)) return;
-
-  try {
-    const res = await fetch('/api/alerts/config/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alertType })
-    });
-    if (res.ok) {
-      await loadAlertConfig();
-      alert(`${alertType} alert settings reset to defaults`);
-    }
-  } catch (error) {
-    console.error('Failed to reset alert type:', error);
-  }
-}
-
-// Send test alert from test panel
-async function sendTestAlert() {
-  const alertType = document.getElementById('testAlertType').value;
-  const user = document.getElementById('testAlertUser').value || 'TestUser';
-  const message = document.getElementById('testAlertMessage').value || '';
-
-  const testData = {
-    alertType,
-    user,
-    message: message || undefined,
-    useConfig: true
-  };
-
-  // Add type-specific data
-  if (alertType === 'subscription') {
-    testData.tier = document.getElementById('testAlertTier').value;
-  } else if (alertType === 'bits') {
-    testData.amount = parseInt(document.getElementById('testAlertBits').value) || 100;
-  } else if (alertType === 'raid') {
-    testData.viewers = parseInt(document.getElementById('testAlertViewers').value) || 50;
-  } else if (alertType === 'redemption') {
-    testData.reward = document.getElementById('testAlertReward').value || 'Test Reward';
-  }
-
-  try {
-    const res = await fetch('/api/alerts/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testData)
-    });
-    if (res.ok) {
-      console.log('[AlertConfig] Test alert sent:', testData);
-    }
-  } catch (error) {
-    console.error('Failed to send test alert:', error);
-  }
-}
-
 // Test all alert types in sequence
 async function testAllAlertTypes() {
   const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
