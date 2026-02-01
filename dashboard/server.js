@@ -1094,7 +1094,8 @@ app.post('/api/alerts/config/global', async (req, res) => {
 // Update alert variation
 app.post('/api/alerts/config/:alertType/variation/:variationKey', async (req, res) => {
   try {
-    const { alertType, variationKey } = req.params;
+    let { alertType, variationKey } = req.params;
+    alertType = alertType.toLowerCase();
     const validTypes = ['subscription', 'bits', 'raid'];
 
     if (!validTypes.includes(alertType)) {
