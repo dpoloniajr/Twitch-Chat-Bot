@@ -345,7 +345,7 @@ async function setupEventSub() {
 
     // These subscriptions work with bot token
     try {
-      eventSub.onStreamOnline(subId, ev => {
+      await eventSub.onStreamOnline(subId, ev => {
         console.log('EventSub: Stream online');
         config.channels.forEach(ch => sendChatMessage(ch, 'Stream is now live!'));
       });
@@ -354,7 +354,7 @@ async function setupEventSub() {
     }
 
     try {
-      eventSub.onStreamOffline(subId, ev => {
+      await eventSub.onStreamOffline(subId, ev => {
         console.log('EventSub: Stream offline');
       });
     } catch (err) {
@@ -419,7 +419,7 @@ async function setupBroadcasterEventSub() {
       try {
         // onChannelFollow requires (broadcasterId, moderatorUserId, handler)
         // Use broadcasterUserId since the broadcaster token is authorized to the broadcaster account
-        broadcasterEventSub.onChannelFollow(subId, broadcasterUserId, ev => {
+        await broadcasterEventSub.onChannelFollow(subId, broadcasterUserId, ev => {
           const name = ev.userDisplayName || ev.userName || 'someone';
           config.channels.forEach(ch => sendChatMessage(ch, `Thanks for the follow, ${name}!`));
 
@@ -437,7 +437,7 @@ async function setupBroadcasterEventSub() {
 
     // Raids
     try {
-      broadcasterEventSub.onChannelRaidTo(subId, ev => {
+      await broadcasterEventSub.onChannelRaidTo(subId, ev => {
         const from = ev.raidingBroadcasterDisplayName || ev.raidingBroadcasterName;
         const viewers = ev.viewers ?? 0;
         config.channels.forEach(ch => sendChatMessage(ch, `Incoming raid from ${from} with ${viewers} viewers! Welcome!`));
@@ -454,7 +454,7 @@ async function setupBroadcasterEventSub() {
     // Channel Points redemptions (requires broadcaster auth with channel:read:redemptions scope)
     if (hasRedemptionsScope) {
       try {
-        broadcasterEventSub.onChannelRedemptionAdd(subId, async ev => {
+        await broadcasterEventSub.onChannelRedemptionAdd(subId, async ev => {
           const reward = ev.rewardTitle || 'Reward';
           const user = ev.userDisplayName || ev.userName;
           const input = ev.userInput || '';
@@ -482,7 +482,7 @@ async function setupBroadcasterEventSub() {
     if (hasSubscriptionsScope) {
       try {
         // Regular subscription
-        broadcasterEventSub.onChannelSubscription(subId, ev => {
+        await broadcasterEventSub.onChannelSubscription(subId, ev => {
           const user = ev.userDisplayName || ev.userName || 'someone';
           const tier = ev.tier || '1000'; // '1000' = Tier 1, '2000' = Tier 2, '3000' = Tier 3
           const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
@@ -507,7 +507,7 @@ async function setupBroadcasterEventSub() {
 
       try {
         // Subscription message (resubs with message)
-        broadcasterEventSub.onChannelSubscriptionMessage(subId, ev => {
+        await broadcasterEventSub.onChannelSubscriptionMessage(subId, ev => {
           const user = ev.userDisplayName || ev.userName || 'someone';
           const tier = ev.tier || '1000';
           const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
@@ -532,7 +532,7 @@ async function setupBroadcasterEventSub() {
 
       try {
         // Gift subscription
-        broadcasterEventSub.onChannelSubscriptionGift(subId, ev => {
+        await broadcasterEventSub.onChannelSubscriptionGift(subId, ev => {
           const gifter = ev.gifterDisplayName || ev.gifterName || 'Anonymous';
           const tier = ev.tier || '1000';
           const tierName = tier === '3000' ? 'Tier 3' : tier === '2000' ? 'Tier 2' : 'Tier 1';
@@ -566,7 +566,7 @@ async function setupBroadcasterEventSub() {
     // Bits/Cheers (requires broadcaster auth with bits:read scope)
     if (hasBitsScope) {
       try {
-        broadcasterEventSub.onChannelCheer(subId, ev => {
+        await broadcasterEventSub.onChannelCheer(subId, ev => {
           const user = ev.userDisplayName || ev.userName || 'Anonymous';
           const bits = ev.bits || 0;
           const message = ev.message || '';
