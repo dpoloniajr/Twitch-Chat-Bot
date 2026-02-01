@@ -985,6 +985,202 @@ async function updateAlertSetting(alertType, setting, value) {
   }
 }
 
+// Update global alert settings
+function updateGlobalSetting(setting, value) {
+  if (!alertConfig) return;
+  alertConfig.global[setting] = value;
+
+  // Update display elements
+  if (setting === 'defaultVolume') {
+    document.getElementById('globalVolumeDisplay').textContent = value;
+  } else if (setting === 'ttsRate') {
+    document.getElementById('globalTtsRateDisplay').textContent = value;
+  } else if (setting === 'ttsPitch') {
+    document.getElementById('globalTtsPitchDisplay').textContent = value;
+  }
+
+  // Persist to server
+  fetch('/api/alerts/config/global', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [setting]: value })
+  }).catch(err => console.error('Failed to update global setting:', err));
+}
+
+// Show alert type config section
+function showAlertTypeConfig(alertType, event) {
+  document.querySelectorAll('.alert-type-config').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  document.querySelectorAll('.alert-tab').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  const configEl = document.getElementById(`${alertType}-config`);
+  if (configEl) configEl.classList.add('active');
+
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
+  }
+}
+
+// Toggle section collapse
+function toggleSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  const header = section.previousElementSibling;
+
+  if (section.classList.contains('collapsed')) {
+    section.classList.remove('collapsed');
+    header.classList.remove('collapsed');
+  } else {
+    section.classList.add('collapsed');
+    header.classList.add('collapsed');
+  }
+}
+
+// Update variation settings
+function updateVariation(alertType, variationKey, setting, value) {
+  if (!alertConfig || !alertConfig.alertTypes[alertType]) return;
+
+  if (!alertConfig.alertTypes[alertType].variations) {
+    alertConfig.alertTypes[alertType].variations = {};
+  }
+  if (!alertConfig.alertTypes[alertType].variations[variationKey]) {
+    alertConfig.alertTypes[alertType].variations[variationKey] = {};
+  }
+
+  alertConfig.alertTypes[alertType].variations[variationKey][setting] = value;
+
+  fetch(`/api/alerts/config/${alertType}/variation/${variationKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [setting]: value })
+  }).catch(err => console.error('Failed to update variation:', err));
+}
+
+// Upload media for alert
+async function uploadAlertMedia(alertType, mediaType, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+
+  let endpoint;
+  if (mediaType === 'image') endpoint = '/api/uploads/image';
+  else if (mediaType === 'video') endpoint = '/api/uploads/video';
+  else if (mediaType === 'customSound') endpoint = '/api/uploads/sound';
+  else return;
+
+  try {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+      const base64Data = e.target.result;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: base64Data, filename: file.name })
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        const settingName = mediaType === 'customSound' ? 'customSound' : mediaType;
+        await updateAlertSetting(alertType, settingName, result.path);
+
+        const nameEl = document.getElementById(`${alertType}-${mediaType}-name`);
+        if (nameEl) nameEl.textContent = file.name;
+
+        const clearEl = document.getElementById(`${alertType}-${mediaType}-clear`);
+        if (clearEl) clearEl.style.display = 'inline-block';
+
+        console.log(`[AlertConfig] Uploaded ${mediaType} for ${alertType}:`, result.path);
+      } else {
+        const error = await res.json();
+        alert('Upload failed: ' + error.error);
+      }
+    };
+    reader.readAsDataURL(file);
+  } catch (error) {
+    console.error('Upload error:', error);
+    alert('Upload failed: ' + error.message);
+  }
+}
+
+// Clear uploaded media
+async function clearAlertMedia(alertType, mediaType) {
+  await updateAlertSetting(alertType, mediaType, null);
+
+  const nameEl = document.getElementById(`${alertType}-${mediaType}-name`);
+  if (nameEl) nameEl.textContent = '';
+
+  const clearEl = document.getElementById(`${alertType}-${mediaType}-clear`);
+  if (clearEl) clearEl.style.display = 'none';
+}
+
+// Reset alert type to defaults
+async function resetAlertType(alertType) {
+  if (!confirm(`Reset ${alertType} alert settings to defaults?`)) return;
+
+  try {
+    const res = await fetch('/api/alerts/config/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alertType })
+    });
+    if (res.ok) {
+      await loadAlertConfig();
+      alert(`${alertType} alert settings reset to defaults`);
+    }
+  } catch (error) {
+    console.error('Failed to reset alert type:', error);
+  }
+}
+
+// Send test alert
+async function sendTestAlert() {
+  const alertType = document.getElementById('testAlertType').value;
+  const user = document.getElementById('testAlertUser').value || 'TestUser';
+  const message = document.getElementById('testAlertMessage').value || '';
+
+  const testData = {
+    alertType,
+    user,
+    message: message || undefined,
+    useConfig: true
+  };
+
+  if (alertType === 'subscription') {
+    testData.tier = document.getElementById('testAlertTier').value;
+  } else if (alertType === 'bits') {
+    testData.amount = parseInt(document.getElementById('testAlertBits').value) || 100;
+  } else if (alertType === 'raid') {
+    testData.viewers = parseInt(document.getElementById('testAlertViewers').value) || 50;
+  } else if (alertType === 'redemption') {
+    testData.reward = document.getElementById('testAlertReward').value || 'Test Reward';
+  }
+
+  try {
+    const res = await fetch('/api/alerts/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testData)
+    });
+    if (res.ok) {
+      console.log('[AlertConfig] Test alert sent:', testData);
+    }
+  } catch (error) {
+    console.error('Failed to send test alert:', error);
+  }
+}
+
+// Test all alert types in sequence
+async function testAllAlertTypes() {
+  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  for (const type of types) {
+    await testAlertType(type);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
 // Toggle custom sound input visibility
 function toggleCustomSoundInput(alertType, soundValue) {
   const groupEl = document.getElementById(`${alertType}-customSound-group`);
