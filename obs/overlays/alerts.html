@@ -506,11 +506,14 @@
 
           // Speak after a short delay
           setTimeout(() => {
-            ttsManager.speak(ttsText, {
+            // Update TTS manager config (voice, rate, pitch) before speaking
+            ttsManager.updateConfig({
+              voice: cfg.ttsVoice,
               rate: cfg.ttsRate,
               pitch: cfg.ttsPitch,
               volume: cfg.volume
             });
+            ttsManager.speak(ttsText);
           }, 500);
         }
 
