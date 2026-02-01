@@ -1,13 +1,10 @@
 {
   "dependencies": {
-    "@twurple/api": "^8.0.2",
-    "@twurple/auth": "^8.0.2",
-    "@twurple/chat": "^8.0.2",
-    "@twurple/eventsub-ws": "^8.0.2",
     "axios": "^1.13.2",
     "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "tmi.js": "^1.8.5",
     "ws": "^8.19.0"
   },
   "name": "twitch-chat-bot",
