@@ -993,68 +993,6 @@ function toggleCustomSoundInput(alertType, soundValue) {
   }
 }
 
-// Upload media for alert
-async function uploadAlertMedia(alertType, mediaType, inputEl) {
-  const file = inputEl.files[0];
-  if (!file) return;
-
-  // Determine upload endpoint
-  let endpoint;
-  if (mediaType === 'image') endpoint = '/api/uploads/image';
-  else if (mediaType === 'video') endpoint = '/api/uploads/video';
-  else if (mediaType === 'customSound') endpoint = '/api/uploads/sound';
-  else return;
-
-  try {
-    // Read file as base64
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-      const base64Data = e.target.result;
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: base64Data, filename: file.name })
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-
-        // Update alert config with new media path
-        const settingName = mediaType === 'customSound' ? 'customSound' : mediaType;
-        await updateAlertSetting(alertType, settingName, result.path);
-
-        // Update UI
-        const nameEl = document.getElementById(`${alertType}-${mediaType}-name`);
-        if (nameEl) nameEl.textContent = file.name;
-
-        const clearEl = document.getElementById(`${alertType}-${mediaType}-clear`);
-        if (clearEl) clearEl.style.display = 'inline-block';
-
-        console.log(`[AlertConfig] Uploaded ${mediaType} for ${alertType}:`, result.path);
-      } else {
-        const error = await res.json();
-        alert('Upload failed: ' + error.error);
-      }
-    };
-    reader.readAsDataURL(file);
-  } catch (error) {
-    console.error('Upload error:', error);
-    alert('Upload failed: ' + error.message);
-  }
-}
-
-// Clear uploaded media
-async function clearAlertMedia(alertType, mediaType) {
-  await updateAlertSetting(alertType, mediaType, null);
-
-  const nameEl = document.getElementById(`${alertType}-${mediaType}-name`);
-  if (nameEl) nameEl.textContent = '';
-
-  const clearEl = document.getElementById(`${alertType}-${mediaType}-clear`);
-  if (clearEl) clearEl.style.display = 'none';
-}
-
 // Show alert type config section
 function showAlertTypeConfig(alertType, event) {
   // Hide all config sections
