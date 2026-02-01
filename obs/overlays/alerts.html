@@ -362,10 +362,6 @@
           config: mergedConfig
         };
 
-        // Update queue config for this alert
-        alertQueue.alertDuration = mergedConfig.duration;
-        alertQueue.soundVolume = mergedConfig.volume;
-
         // Load custom sound if specified
         if (mergedConfig.sound === 'custom' && mergedConfig.customSound) {
           alertQueue.loadSound(data.alertType + '_custom', mergedConfig.customSound);

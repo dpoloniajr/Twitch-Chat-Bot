@@ -187,7 +187,8 @@
       if (sound) {
         // Clone audio to allow overlapping plays
         const clone = sound.cloneNode();
-        clone.volume = this.soundVolume;
+        // Use volume from current alert's config, fall back to instance property
+        clone.volume = this.currentAlert?.config?.volume ?? this.soundVolume;
         clone.play().catch(err => {
           console.warn('[AlertQueue] Sound play failed:', err);
         });
@@ -235,8 +236,11 @@
       // Show alert
       this.onShow(this.currentAlert);
 
+      // Get duration from alert's config, fall back to instance property
+      const duration = this.currentAlert.config?.duration ?? this.alertDuration;
+
       // Wait for display duration
-      await this._wait(this.alertDuration);
+      await this._wait(duration);
 
       // Hide alert
       this.onHide(this.currentAlert);
