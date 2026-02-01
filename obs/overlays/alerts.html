@@ -329,6 +329,12 @@
         console.log('[Alerts] Received alert:', data);
         updateDebug('lastAlert', `${data.alertType}: ${data.user}`);
 
+        // Check if alerts are globally enabled
+        if (alertConfig.global?.enabled === false) {
+          console.log('[Alerts] Alerts are globally disabled');
+          return;
+        }
+
         // Get type-specific config
         const typeConfig = alertConfig.alertTypes?.[data.alertType] || {};
 
