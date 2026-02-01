@@ -230,10 +230,7 @@
 
       console.log('[AlertQueue] Showing alert:', this.currentAlert.alertType);
 
-      // Play sound
-      this.playSound(this.currentAlert.alertType);
-
-      // Show alert
+      // Show alert (handler is responsible for sound playback based on config)
       this.onShow(this.currentAlert);
 
       // Get duration from alert's config, fall back to instance property
