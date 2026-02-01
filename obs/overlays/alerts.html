@@ -174,14 +174,15 @@
       'use strict';
 
       // Configuration
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const config = {
-        wsUrl: `ws://${window.location.host}`,
+        wsUrl: `${wsProtocol}//${window.location.host}`,
         debug: OverlayUtils.getQueryParam('debug') === 'true',
 
         // Default settings (will be overridden by server config)
-        defaultDuration: 5000,
+        defaultDuration: parseInt(OverlayUtils.getQueryParam('duration')) || 5000,
         defaultDelay: 1000,
-        defaultVolume: 0.8,
+        defaultVolume: parseFloat(OverlayUtils.getQueryParam('volume')) || 0.8,
         defaultEnterAnimation: 'bounceIn',
         defaultExitAnimation: 'fadeOutUp'
       };
@@ -292,6 +293,25 @@
         client.on('alertConfig', (newConfig) => {
           alertConfig = newConfig;
           console.log('[Alerts] Config updated:', alertConfig);
+
+          // Propagate config changes to runtime components
+          if (ttsManager && typeof ttsManager.updateConfig === 'function') {
+            ttsManager.updateConfig({
+              enabled: alertConfig.global?.ttsEnabled,
+              voice: alertConfig.global?.ttsVoice,
+              rate: alertConfig.global?.ttsRate,
+              pitch: alertConfig.global?.ttsPitch,
+              volume: alertConfig.global?.defaultVolume
+            });
+          }
+
+          if (alertQueue && typeof alertQueue.updateConfig === 'function') {
+            alertQueue.updateConfig({
+              alertDuration: (alertConfig.global?.defaultDuration || 5) * 1000,
+              alertDelay: (alertConfig.global?.defaultDelay || 1) * 1000,
+              soundVolume: alertConfig.global?.defaultVolume
+            });
+          }
         });
 
         // Expose for debugging
@@ -309,6 +329,12 @@
       function handleAlert(data) {
         console.log('[Alerts] Received alert:', data);
         updateDebug('lastAlert', `${data.alertType}: ${data.user}`);
+
+        // Check if alerts are globally enabled
+        if (alertConfig.global?.enabled === false) {
+          console.log('[Alerts] Alerts are globally disabled');
+          return;
+        }
 
         // Get type-specific config
         const typeConfig = alertConfig.alertTypes?.[data.alertType] || {};
@@ -346,9 +372,9 @@
           fontFamily: data.config?.fontFamily || typeConfig.fontFamily || 'Segoe UI',
           messageTemplate: data.variationConfig?.messageTemplate || data.config?.messageTemplate || typeConfig.messageTemplate,
           sound: typeConfig.sound || 'default',
-          customSound: typeConfig.customSound,
-          image: data.variationConfig?.image || typeConfig.image,
-          video: data.variationConfig?.video || typeConfig.video,
+          customSound: data.config?.customSound ?? typeConfig.customSound,
+          image: data.config?.image ?? data.variationConfig?.image ?? typeConfig.image,
+          video: data.config?.video ?? data.variationConfig?.video ?? typeConfig.video,
           ttsEnabled: (data.config?.ttsEnabled ?? typeConfig.ttsEnabled) && alertConfig.global?.ttsEnabled,
           ttsTemplate: data.config?.ttsTemplate || typeConfig.ttsTemplate,
           ttsVoice: data.config?.ttsVoice || alertConfig.global?.ttsVoice,
@@ -362,10 +388,6 @@
           config: mergedConfig
         };
 
-        // Update queue config for this alert
-        alertQueue.alertDuration = mergedConfig.duration;
-        alertQueue.soundVolume = mergedConfig.volume;
-
         // Load custom sound if specified
         if (mergedConfig.sound === 'custom' && mergedConfig.customSound) {
           alertQueue.loadSound(data.alertType + '_custom', mergedConfig.customSound);
@@ -373,7 +395,7 @@
 
         // Add to queue
         alertQueue.add(alert);
-        updateDebug('queue', alertQueue.queue.length + 1);
+        updateDebug('queue', alertQueue.queue.length);
       }
 
       // Show alert
@@ -428,17 +450,21 @@
         // Set icon and labels
         alertIcon.textContent = alertIcons[alert.alertType] || '🔔';
         alertTypeLabel.textContent = alertLabels[alert.alertType] || 'Alert';
-        alertUsername.textContent = OverlayUtils.escapeHtml(alert.user || 'Unknown');
+        alertUsername.textContent = alert.user || 'Unknown';
 
         // Set message
         let message = cfg.messageTemplate || '';
-        // Replace placeholders
-        message = message
-          .replace('{user}', alert.user || '')
-          .replace('{amount}', alert.amount || '')
-          .replace('{viewers}', alert.viewers || '')
-          .replace('{reward}', alert.reward || '')
-          .replace('{tier}', OverlayUtils.parseTier(alert.tier) || '');
+        // Replace placeholders (global regex for multiple occurrences)
+        message = message.replace(/\{(\w+)\}/g, (match, key) => {
+          const values = {
+            'user': alert.user || '',
+            'amount': alert.amount || '',
+            'viewers': alert.viewers || '',
+            'reward': alert.reward || '',
+            'tier': OverlayUtils.parseTier(alert.tier) || ''
+          };
+          return values[key] !== undefined ? values[key] : match;
+        });
         alertMessage.textContent = message;
 
         // Type-specific content
@@ -474,9 +500,9 @@
           alertDetails.textContent = alert.reward;
         }
 
-        // Show user message if present
-        if (alert.message) {
-          alertUserMessage.textContent = '"' + OverlayUtils.escapeHtml(alert.message) + '"';
+        // Show user message if present and not disabled by config
+        if (alert.message && cfg.showMessage !== false) {
+          alertUserMessage.textContent = '"' + alert.message + '"';
           alertUserMessage.style.display = 'block';
         }
 
@@ -506,11 +532,14 @@
 
           // Speak after a short delay
           setTimeout(() => {
-            ttsManager.speak(ttsText, {
+            // Update TTS manager config (voice, rate, pitch) before speaking
+            ttsManager.updateConfig({
+              voice: cfg.ttsVoice,
               rate: cfg.ttsRate,
               pitch: cfg.ttsPitch,
               volume: cfg.volume
             });
+            ttsManager.speak(ttsText);
           }, 500);
         }
 

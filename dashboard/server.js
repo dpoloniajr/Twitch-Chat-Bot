@@ -3,7 +3,6 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs').promises;
-const fsSync = require('fs');
 const crypto = require('crypto');
 require('dotenv').config(path.join(__dirname, '..', '.env'));
 
@@ -37,9 +36,56 @@ const alertConfigFile = path.join(logsDir, 'alert-config.json');
 const envPath = path.join(__dirname, '..', '.env');
 
 // Supported media types
-const SUPPORTED_IMAGE_TYPES = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+const SUPPORTED_IMAGE_TYPES = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const SUPPORTED_VIDEO_TYPES = ['.mp4', '.webm', '.mov'];
 const SUPPORTED_AUDIO_TYPES = ['.mp3', '.ogg', '.wav', '.m4a'];
+
+// MIME type signatures (magic numbers) for validation
+const MIME_SIGNATURES = {
+  '.png': [0x89, 0x50, 0x4e, 0x47],
+  '.jpg': [0xff, 0xd8, 0xff],
+  '.jpeg': [0xff, 0xd8, 0xff],
+  '.gif': [0x47, 0x49, 0x46],
+  '.webp': [0x52, 0x49, 0x46, 0x46], // RIFF for WebP
+  '.mp4': [0x66, 0x74, 0x79, 0x70], // ftyp
+  '.webm': [0x1a, 0x45, 0xdf, 0xa3],
+  '.mov': [0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70],
+  '.mp3': [0x49, 0x44, 0x33], // "ID3" tag header commonly used at start of MP3 files
+  '.ogg': [0x4f, 0x67, 0x67, 0x53],
+  '.wav': [0x52, 0x49, 0x46, 0x46],
+  '.m4a': [0x66, 0x74, 0x79, 0x70] // ISO BMFF/MP4-style ftyp
+};
+
+// Rate limiting for uploads (IP-based, in-memory)
+const uploadRateLimits = new Map();
+const UPLOAD_LIMIT_WINDOW = 60000; // 1 minute
+const UPLOAD_LIMIT_COUNT = 10; // max 10 uploads per minute
+
+function checkUploadRateLimit(ip) {
+  const now = Date.now();
+  if (!uploadRateLimits.has(ip)) {
+    uploadRateLimits.set(ip, []);
+  }
+
+  const timestamps = uploadRateLimits.get(ip).filter(t => now - t < UPLOAD_LIMIT_WINDOW);
+  uploadRateLimits.set(ip, timestamps);
+
+  if (timestamps.length >= UPLOAD_LIMIT_COUNT) {
+    return false;
+  }
+
+  timestamps.push(now);
+  return true;
+}
+
+// Custom error class for validation errors (client errors)
+class ValidationError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'ValidationError';
+    this.statusCode = statusCode;
+  }
+}
 
 // Default alert configuration template
 const DEFAULT_ALERT_CONFIG = {
@@ -1002,15 +1048,77 @@ app.get('/api/alerts/config', async (req, res) => {
   }
 });
 
+// Validate alert config structure and ranges
+function validateAlertConfig(config) {
+  if (!config || typeof config !== 'object') {
+    throw new ValidationError('Config must be a valid object', 400);
+  }
+
+  // Validate global settings
+  if (!config.global || typeof config.global !== 'object') {
+    throw new ValidationError('Config must have a "global" object', 400);
+  }
+
+  const global = config.global;
+  if (typeof global.enabled !== 'boolean' && global.enabled !== undefined) {
+    throw new ValidationError('global.enabled must be a boolean', 400);
+  }
+  if (global.defaultVolume !== undefined && (typeof global.defaultVolume !== 'number' || global.defaultVolume < 0 || global.defaultVolume > 1)) {
+    throw new ValidationError('global.defaultVolume must be a number between 0 and 1', 400);
+  }
+  if (global.defaultDuration !== undefined && (typeof global.defaultDuration !== 'number' || global.defaultDuration < 1)) {
+    throw new ValidationError('global.defaultDuration must be a positive number', 400);
+  }
+  if (global.defaultDelay !== undefined && (typeof global.defaultDelay !== 'number' || global.defaultDelay < 0)) {
+    throw new ValidationError('global.defaultDelay must be a non-negative number', 400);
+  }
+  if (global.ttsRate !== undefined && (typeof global.ttsRate !== 'number' || global.ttsRate < 0.5 || global.ttsRate > 2)) {
+    throw new ValidationError('global.ttsRate must be a number between 0.5 and 2', 400);
+  }
+  if (global.ttsPitch !== undefined && (typeof global.ttsPitch !== 'number' || global.ttsPitch < 0.5 || global.ttsPitch > 2)) {
+    throw new ValidationError('global.ttsPitch must be a number between 0.5 and 2', 400);
+  }
+
+  // Validate alertTypes structure
+  if (!config.alertTypes || typeof config.alertTypes !== 'object') {
+    throw new ValidationError('Config must have an "alertTypes" object', 400);
+  }
+
+  const validAlertTypeKeys = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  for (const alertType of validAlertTypeKeys) {
+    if (config.alertTypes[alertType]) {
+      const typeConfig = config.alertTypes[alertType];
+      if (typeof typeConfig !== 'object') {
+        throw new ValidationError(`alertTypes.${alertType} must be an object`, 400);
+      }
+
+      // Validate numeric ranges for alert type
+      if (typeConfig.duration !== undefined && (typeof typeConfig.duration !== 'number' || typeConfig.duration < 1)) {
+        throw new ValidationError(`alertTypes.${alertType}.duration must be a positive number`, 400);
+      }
+      if (typeConfig.volume !== undefined && (typeof typeConfig.volume !== 'number' || typeConfig.volume < 0 || typeConfig.volume > 1)) {
+        throw new ValidationError(`alertTypes.${alertType}.volume must be a number between 0 and 1`, 400);
+      }
+      if (typeConfig.fontSize !== undefined && (typeof typeConfig.fontSize !== 'number' || typeConfig.fontSize < 8 || typeConfig.fontSize > 120)) {
+        throw new ValidationError(`alertTypes.${alertType}.fontSize must be a number between 8 and 120`, 400);
+      }
+    }
+  }
+
+  return true;
+}
+
 // Update full alert configuration
 app.post('/api/alerts/config', async (req, res) => {
   try {
     const config = req.body;
+    validateAlertConfig(config);
     await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
     broadcastState({ type: 'alertConfig', data: config });
     res.json({ success: true, config });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
@@ -1057,7 +1165,8 @@ app.post('/api/alerts/config/global', async (req, res) => {
 // Update alert variation
 app.post('/api/alerts/config/:alertType/variation/:variationKey', async (req, res) => {
   try {
-    const { alertType, variationKey } = req.params;
+    let { alertType, variationKey } = req.params;
+    alertType = alertType.toLowerCase();
     const validTypes = ['subscription', 'bits', 'raid'];
 
     if (!validTypes.includes(alertType)) {
@@ -1115,6 +1224,47 @@ app.post('/api/alerts/config/reset', async (req, res) => {
 // MEDIA UPLOAD API
 // ============================================
 
+// Validate file against MIME type signatures (magic numbers)
+function validateMimeType(buffer, ext) {
+  const signature = MIME_SIGNATURES[ext];
+  if (!signature) {
+    return false; // Unknown extension
+  }
+
+  // For signatures that are position-specific (e.g., WebP and WAV use RIFF)
+  // we need more sophisticated validation
+  if (ext === '.webp' || ext === '.wav') {
+    if (buffer.length < 12) return false;
+    // Check RIFF header
+    if (buffer[0] !== 0x52 || buffer[1] !== 0x49 || buffer[2] !== 0x46 || buffer[3] !== 0x46) {
+      return false;
+    }
+    // For WebP, check for 'WEBP' at position 8
+    if (ext === '.webp') {
+      return buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    }
+    // For WAV, check for 'WAVE' at position 8
+    if (ext === '.wav') {
+      return buffer[8] === 0x57 && buffer[9] === 0x41 && buffer[10] === 0x56 && buffer[11] === 0x45;
+    }
+  }
+
+  // For MP4/MOV, check for 'ftyp' at offset 4 (after 4-byte size field in ISO BMFF)
+  if (ext === '.mp4' || ext === '.m4a' || ext === '.mov') {
+    if (buffer.length < 8) return false;
+    // Check for 'ftyp' (0x66, 0x74, 0x79, 0x70) at offset 4
+    return buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70;
+  }
+
+  // Check basic signature match
+  for (let i = 0; i < signature.length; i++) {
+    if (buffer[i] !== signature[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Helper function to validate and save uploaded media
 async function saveUploadedMedia(base64Data, filename, mediaType) {
   const ext = path.extname(filename).toLowerCase();
@@ -1135,18 +1285,12 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
       allowedTypes = SUPPORTED_AUDIO_TYPES;
       break;
     default:
-      throw new Error('Invalid media type');
+      throw new ValidationError('Invalid media type', 400);
   }
 
   if (!allowedTypes.includes(ext)) {
-    throw new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
+    throw new ValidationError(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`, 415);
   }
-
-  // Generate unique filename
-  const uniqueId = crypto.randomBytes(8).toString('hex');
-  const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const uniqueFilename = `${uniqueId}_${safeName}`;
-  const filePath = path.join(targetDir, uniqueFilename);
 
   // Remove base64 prefix if present
   const base64Content = base64Data.replace(/^data:[^;]+;base64,/, '');
@@ -1154,8 +1298,19 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
 
   // Validate file size (max 10MB)
   if (buffer.length > 10 * 1024 * 1024) {
-    throw new Error('File size exceeds 10MB limit');
+    throw new ValidationError('File size exceeds 10MB limit', 413);
   }
+
+  // Validate MIME type using magic numbers to prevent content-type spoofing
+  if (!validateMimeType(buffer, ext)) {
+    throw new ValidationError(`File content does not match ${ext} format. Possible content-type spoofing.`, 415);
+  }
+
+  // Generate unique filename
+  const uniqueId = crypto.randomBytes(8).toString('hex');
+  const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const uniqueFilename = `${uniqueId}_${safeName}`;
+  const filePath = path.join(targetDir, uniqueFilename);
 
   await fs.writeFile(filePath, buffer);
 
@@ -1170,6 +1325,12 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
 // Upload image
 app.post('/api/uploads/image', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
@@ -1178,13 +1339,20 @@ app.post('/api/uploads/image', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'image');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
 // Upload video
 app.post('/api/uploads/video', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
@@ -1193,13 +1361,20 @@ app.post('/api/uploads/video', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'video');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 
 // Upload sound
 app.post('/api/uploads/sound', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
@@ -1208,7 +1383,8 @@ app.post('/api/uploads/sound', async (req, res) => {
     const result = await saveUploadedMedia(data, filename, 'sound');
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const statusCode = error instanceof ValidationError ? error.statusCode : 500;
+    res.status(statusCode).json({ error: error.message });
   }
 });
 

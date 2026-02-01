@@ -12,7 +12,11 @@
    */
   class OverlayClient {
     constructor(options = {}) {
-      this.wsUrl = options.wsUrl || `ws://${window.location.host}`;
+      // Build wsUrl: use https->wss, http->ws
+      const defaultWsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const defaultWsUrl = typeof window !== 'undefined' ? `${defaultWsProtocol}//${window.location.host}` : 'ws://localhost:3001';
+
+      this.wsUrl = options.wsUrl || defaultWsUrl;
       this.reconnectInterval = options.reconnectInterval || 3000;
       this.maxReconnectAttempts = options.maxReconnectAttempts || Infinity;
 
@@ -187,7 +191,8 @@
       if (sound) {
         // Clone audio to allow overlapping plays
         const clone = sound.cloneNode();
-        clone.volume = this.soundVolume;
+        // Use volume from current alert's config, fall back to instance property
+        clone.volume = this.currentAlert?.config?.volume ?? this.soundVolume;
         clone.play().catch(err => {
           console.warn('[AlertQueue] Sound play failed:', err);
         });
@@ -229,14 +234,14 @@
 
       console.log('[AlertQueue] Showing alert:', this.currentAlert.alertType);
 
-      // Play sound
-      this.playSound(this.currentAlert.alertType);
-
-      // Show alert
+      // Show alert (handler is responsible for sound playback based on config)
       this.onShow(this.currentAlert);
 
+      // Get duration from alert's config, fall back to instance property
+      const duration = this.currentAlert.config?.duration ?? this.alertDuration;
+
       // Wait for display duration
-      await this._wait(this.alertDuration);
+      await this._wait(duration);
 
       // Hide alert
       this.onHide(this.currentAlert);
@@ -299,14 +304,18 @@
       this.pitch = options.pitch || 1.0;
       this.volume = options.volume || 0.8;
 
-      this.synth = window.speechSynthesis;
+      // Check for speechSynthesis support
+      this.supported = !!window.speechSynthesis;
+      this.synth = window.speechSynthesis || null;
       this.voices = [];
       this.selectedVoice = null;
 
-      // Load voices
-      this._loadVoices();
-      if (this.synth.onvoiceschanged !== undefined) {
-        this.synth.onvoiceschanged = () => this._loadVoices();
+      // Load voices only if supported
+      if (this.supported) {
+        this._loadVoices();
+        if (this.synth.onvoiceschanged !== undefined) {
+          this.synth.onvoiceschanged = () => this._loadVoices();
+        }
       }
     }
 
@@ -361,7 +370,7 @@
      */
     speak(text, options = {}) {
       return new Promise((resolve, reject) => {
-        if (!this.enabled) {
+        if (!this.enabled || !this.supported) {
           resolve();
           return;
         }

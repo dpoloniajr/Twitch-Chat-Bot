@@ -66,7 +66,7 @@ function updateDashboard() {
   channelsEl.textContent = botState.channels?.length > 0 ? botState.channels.join(', ') : '-';
 
   // Update command count
-  commandCountEl.textContent = botState.commandsExecuted || 0;
+  commandCountEl.textContent = botState.commandsExecuted ?? 0;
 
   // Update last command
   if (botState.lastCommand) {
@@ -330,7 +330,7 @@ function prefillCommand(name) {
   document.getElementById('ccLevel').value = cmd.level || 'everyone';
    document.getElementById('ccFetchUrl').value = cmd.fetchUrl || '';
    document.getElementById('ccFetchEnabled').value = cmd.fetchEnabled ? 'true' : 'false';
-   document.getElementById('ccCooldown').value = cmd.cooldownSeconds || 0;
+   document.getElementById('ccCooldown').value = cmd.cooldownSeconds ?? 0;
 }
 
 async function deleteCommand(name) {
@@ -554,20 +554,20 @@ async function loadObsOverlayConfig() {
     const config = await res.json();
 
     // Update UI with config values
-    document.getElementById('alertsDuration').value = config.overlays.alerts.duration || 5;
-    document.getElementById('alertsVolume').value = config.overlays.alerts.volume || 0.8;
+    document.getElementById('alertsDuration').value = config.overlays.alerts.duration ?? 5;
+    document.getElementById('alertsVolume').value = config.overlays.alerts.volume ?? 0.8;
     document.getElementById('alertsEnabled').checked = config.overlays.alerts.enabled !== false;
 
-    document.getElementById('recentEventsLimit').value = config.overlays.recentEvents.limit || 10;
+    document.getElementById('recentEventsLimit').value = config.overlays.recentEvents.limit ?? 10;
     document.getElementById('recentEventsShowTime').checked = config.overlays.recentEvents.showTime !== false;
     document.getElementById('recentEventsEnabled').checked = config.overlays.recentEvents.enabled !== false;
 
-    document.getElementById('chatBoxMessageTimeout').value = config.overlays.chatBox.messageTimeout || 8;
+    document.getElementById('chatBoxMessageTimeout').value = config.overlays.chatBox.messageTimeout ?? 8;
     document.getElementById('chatBoxHideBot').checked = config.overlays.chatBox.hideBot === true;
     document.getElementById('chatBoxEnabled').checked = config.overlays.chatBox.enabled !== false;
 
     document.getElementById('goalBarType').value = config.overlays.goalBar.type || 'follow';
-    document.getElementById('goalBarGoal').value = config.overlays.goalBar.goal || 1000;
+    document.getElementById('goalBarGoal').value = config.overlays.goalBar.goal ?? 1000;
     document.getElementById('goalBarEnabled').checked = config.overlays.goalBar.enabled !== false;
 
     updateOverlayUrls();
@@ -861,16 +861,16 @@ function populateAlertConfigUI() {
 
   // Global settings
   document.getElementById('globalEnabled').checked = global.enabled !== false;
-  document.getElementById('globalVolume').value = global.defaultVolume || 0.8;
-  document.getElementById('globalVolumeDisplay').textContent = global.defaultVolume || 0.8;
-  document.getElementById('globalDuration').value = global.defaultDuration || 5;
-  document.getElementById('globalDelay').value = global.defaultDelay || 1;
+  document.getElementById('globalVolume').value = global.defaultVolume ?? 0.8;
+  document.getElementById('globalVolumeDisplay').textContent = global.defaultVolume ?? 0.8;
+  document.getElementById('globalDuration').value = global.defaultDuration ?? 5;
+  document.getElementById('globalDelay').value = global.defaultDelay ?? 1;
   document.getElementById('globalTtsEnabled').checked = global.ttsEnabled === true;
   document.getElementById('globalTtsVoice').value = global.ttsVoice || 'en-US';
-  document.getElementById('globalTtsRate').value = global.ttsRate || 1;
-  document.getElementById('globalTtsRateDisplay').textContent = global.ttsRate || 1;
-  document.getElementById('globalTtsPitch').value = global.ttsPitch || 1;
-  document.getElementById('globalTtsPitchDisplay').textContent = global.ttsPitch || 1;
+  document.getElementById('globalTtsRate').value = global.ttsRate ?? 1;
+  document.getElementById('globalTtsRateDisplay').textContent = global.ttsRate ?? 1;
+  document.getElementById('globalTtsPitch').value = global.ttsPitch ?? 1;
+  document.getElementById('globalTtsPitchDisplay').textContent = global.ttsPitch ?? 1;
 
   // Per-alert-type settings
   const alertTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
@@ -883,13 +883,13 @@ function populateAlertConfigUI() {
     if (enabledEl) enabledEl.checked = config.enabled !== false;
 
     const durationEl = document.getElementById(`${type}-duration`);
-    if (durationEl) durationEl.value = config.duration || 5;
+    if (durationEl) durationEl.value = config.duration ?? 5;
 
     const volumeEl = document.getElementById(`${type}-volume`);
     if (volumeEl) {
-      volumeEl.value = config.volume || 0.8;
+      volumeEl.value = config.volume ?? 0.8;
       const displayEl = document.getElementById(`${type}-volume-display`);
-      if (displayEl) displayEl.textContent = config.volume || 0.8;
+      if (displayEl) displayEl.textContent = config.volume ?? 0.8;
     }
 
     const messageEl = document.getElementById(`${type}-messageTemplate`);
@@ -910,7 +910,7 @@ function populateAlertConfigUI() {
     if (borderColorEl) borderColorEl.value = config.borderColor || '#9147ff';
 
     const fontSizeEl = document.getElementById(`${type}-fontSize`);
-    if (fontSizeEl) fontSizeEl.value = config.fontSize || 28;
+    if (fontSizeEl) fontSizeEl.value = config.fontSize ?? 28;
 
     // Media settings
     const soundEl = document.getElementById(`${type}-sound`);
@@ -956,33 +956,6 @@ function populateAlertConfigUI() {
   });
 }
 
-// Update global setting
-async function updateGlobalSetting(setting, value) {
-  try {
-    const res = await fetch('/api/alerts/config/global', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [setting]: value })
-    });
-    if (res.ok) {
-      const result = await res.json();
-      if (alertConfig) alertConfig.global = result.global;
-      console.log(`[AlertConfig] Updated global.${setting}:`, value);
-
-      // Update display elements
-      if (setting === 'defaultVolume') {
-        document.getElementById('globalVolumeDisplay').textContent = value;
-      } else if (setting === 'ttsRate') {
-        document.getElementById('globalTtsRateDisplay').textContent = value;
-      } else if (setting === 'ttsPitch') {
-        document.getElementById('globalTtsPitchDisplay').textContent = value;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to update global setting:', error);
-  }
-}
-
 // Update alert type setting
 async function updateAlertSetting(alertType, setting, value) {
   try {
@@ -1012,28 +985,78 @@ async function updateAlertSetting(alertType, setting, value) {
   }
 }
 
-// Toggle custom sound input visibility
-function toggleCustomSoundInput(alertType, soundValue) {
-  const groupEl = document.getElementById(`${alertType}-customSound-group`);
-  if (groupEl) {
-    groupEl.style.display = soundValue === 'custom' ? 'block' : 'none';
+// Update global alert settings
+function updateGlobalSetting(setting, value) {
+  if (!alertConfig) return;
+  alertConfig.global[setting] = value;
+
+  // Update display elements
+  if (setting === 'defaultVolume') {
+    document.getElementById('globalVolumeDisplay').textContent = value;
+  } else if (setting === 'ttsRate') {
+    document.getElementById('globalTtsRateDisplay').textContent = value;
+  } else if (setting === 'ttsPitch') {
+    document.getElementById('globalTtsPitchDisplay').textContent = value;
+  }
+
+  // Persist to server
+  fetch('/api/alerts/config/global', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [setting]: value })
+  }).catch(err => console.error('Failed to update global setting:', err));
+}
+
+// Show alert type config section
+function showAlertTypeConfig(alertType, event) {
+  document.querySelectorAll('.alert-type-config').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  document.querySelectorAll('.alert-tab').forEach(el => {
+    el.classList.remove('active');
+  });
+
+  const configEl = document.getElementById(`${alertType}-config`);
+  if (configEl) configEl.classList.add('active');
+
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
   }
 }
 
-// Update variation
-async function updateVariation(alertType, variationKey, setting, value) {
-  try {
-    const res = await fetch(`/api/alerts/config/${alertType}/variation/${variationKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [setting]: value })
-    });
-    if (res.ok) {
-      console.log(`[AlertConfig] Updated ${alertType}.variations.${variationKey}.${setting}:`, value);
-    }
-  } catch (error) {
-    console.error('Failed to update variation:', error);
+// Toggle section collapse
+function toggleSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  const header = section.previousElementSibling;
+
+  if (section.classList.contains('collapsed')) {
+    section.classList.remove('collapsed');
+    header.classList.remove('collapsed');
+  } else {
+    section.classList.add('collapsed');
+    header.classList.add('collapsed');
   }
+}
+
+// Update variation settings
+function updateVariation(alertType, variationKey, setting, value) {
+  if (!alertConfig || !alertConfig.alertTypes[alertType]) return;
+
+  if (!alertConfig.alertTypes[alertType].variations) {
+    alertConfig.alertTypes[alertType].variations = {};
+  }
+  if (!alertConfig.alertTypes[alertType].variations[variationKey]) {
+    alertConfig.alertTypes[alertType].variations[variationKey] = {};
+  }
+
+  alertConfig.alertTypes[alertType].variations[variationKey][setting] = value;
+
+  fetch(`/api/alerts/config/${alertType}/variation/${variationKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [setting]: value })
+  }).catch(err => console.error('Failed to update variation:', err));
 }
 
 // Upload media for alert
@@ -1041,7 +1064,6 @@ async function uploadAlertMedia(alertType, mediaType, inputEl) {
   const file = inputEl.files[0];
   if (!file) return;
 
-  // Determine upload endpoint
   let endpoint;
   if (mediaType === 'image') endpoint = '/api/uploads/image';
   else if (mediaType === 'video') endpoint = '/api/uploads/video';
@@ -1049,7 +1071,6 @@ async function uploadAlertMedia(alertType, mediaType, inputEl) {
   else return;
 
   try {
-    // Read file as base64
     const reader = new FileReader();
     reader.onload = async function(e) {
       const base64Data = e.target.result;
@@ -1062,12 +1083,9 @@ async function uploadAlertMedia(alertType, mediaType, inputEl) {
 
       if (res.ok) {
         const result = await res.json();
-
-        // Update alert config with new media path
         const settingName = mediaType === 'customSound' ? 'customSound' : mediaType;
         await updateAlertSetting(alertType, settingName, result.path);
 
-        // Update UI
         const nameEl = document.getElementById(`${alertType}-${mediaType}-name`);
         if (nameEl) nameEl.textContent = file.name;
 
@@ -1098,39 +1116,76 @@ async function clearAlertMedia(alertType, mediaType) {
   if (clearEl) clearEl.style.display = 'none';
 }
 
-// Show alert type config section
-function showAlertTypeConfig(alertType, event) {
-  // Hide all config sections
-  document.querySelectorAll('.alert-type-config').forEach(el => {
-    el.classList.remove('active');
-  });
+// Reset alert type to defaults
+async function resetAlertType(alertType) {
+  if (!confirm(`Reset ${alertType} alert settings to defaults?`)) return;
 
-  // Remove active from all tabs
-  document.querySelectorAll('.alert-tab').forEach(el => {
-    el.classList.remove('active');
-  });
-
-  // Show selected section
-  const configEl = document.getElementById(`${alertType}-config`);
-  if (configEl) configEl.classList.add('active');
-
-  // Mark tab as active
-  if (event && event.target) {
-    event.target.classList.add('active');
+  try {
+    const res = await fetch('/api/alerts/config/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alertType })
+    });
+    if (res.ok) {
+      await loadAlertConfig();
+      alert(`${alertType} alert settings reset to defaults`);
+    }
+  } catch (error) {
+    console.error('Failed to reset alert type:', error);
   }
 }
 
-// Toggle section collapse
-function toggleSection(sectionId) {
-  const section = document.getElementById(sectionId);
-  const header = section.previousElementSibling;
+// Send test alert
+async function sendTestAlert() {
+  const alertType = document.getElementById('testAlertType').value;
+  const user = document.getElementById('testAlertUser').value || 'TestUser';
+  const message = document.getElementById('testAlertMessage').value || '';
 
-  if (section.classList.contains('collapsed')) {
-    section.classList.remove('collapsed');
-    header.classList.remove('collapsed');
-  } else {
-    section.classList.add('collapsed');
-    header.classList.add('collapsed');
+  const testData = {
+    alertType,
+    user,
+    message: message || undefined,
+    useConfig: true
+  };
+
+  if (alertType === 'subscription') {
+    testData.tier = document.getElementById('testAlertTier').value;
+  } else if (alertType === 'bits') {
+    testData.amount = parseInt(document.getElementById('testAlertBits').value) || 100;
+  } else if (alertType === 'raid') {
+    testData.viewers = parseInt(document.getElementById('testAlertViewers').value) || 50;
+  } else if (alertType === 'redemption') {
+    testData.reward = document.getElementById('testAlertReward').value || 'Test Reward';
+  }
+
+  try {
+    const res = await fetch('/api/alerts/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testData)
+    });
+    if (res.ok) {
+      console.log('[AlertConfig] Test alert sent:', testData);
+    }
+  } catch (error) {
+    console.error('Failed to send test alert:', error);
+  }
+}
+
+// Test all alert types in sequence
+async function testAllAlertTypes() {
+  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  for (const type of types) {
+    await testAlertType(type);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
+// Toggle custom sound input visibility
+function toggleCustomSoundInput(alertType, soundValue) {
+  const groupEl = document.getElementById(`${alertType}-customSound-group`);
+  if (groupEl) {
+    groupEl.style.display = soundValue === 'custom' ? 'block' : 'none';
   }
 }
 
@@ -1167,72 +1222,6 @@ async function testAlertType(alertType) {
     }
   } catch (error) {
     console.error('Failed to send test alert:', error);
-  }
-}
-
-// Reset alert type to defaults
-async function resetAlertType(alertType) {
-  if (!confirm(`Reset ${alertType} alert settings to defaults?`)) return;
-
-  try {
-    const res = await fetch('/api/alerts/config/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alertType })
-    });
-    if (res.ok) {
-      await loadAlertConfig();
-      alert(`${alertType} alert settings reset to defaults`);
-    }
-  } catch (error) {
-    console.error('Failed to reset alert type:', error);
-  }
-}
-
-// Send test alert from test panel
-async function sendTestAlert() {
-  const alertType = document.getElementById('testAlertType').value;
-  const user = document.getElementById('testAlertUser').value || 'TestUser';
-  const message = document.getElementById('testAlertMessage').value || '';
-
-  const testData = {
-    alertType,
-    user,
-    message: message || undefined,
-    useConfig: true
-  };
-
-  // Add type-specific data
-  if (alertType === 'subscription') {
-    testData.tier = document.getElementById('testAlertTier').value;
-  } else if (alertType === 'bits') {
-    testData.amount = parseInt(document.getElementById('testAlertBits').value) || 100;
-  } else if (alertType === 'raid') {
-    testData.viewers = parseInt(document.getElementById('testAlertViewers').value) || 50;
-  } else if (alertType === 'redemption') {
-    testData.reward = document.getElementById('testAlertReward').value || 'Test Reward';
-  }
-
-  try {
-    const res = await fetch('/api/alerts/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testData)
-    });
-    if (res.ok) {
-      console.log('[AlertConfig] Test alert sent:', testData);
-    }
-  } catch (error) {
-    console.error('Failed to send test alert:', error);
-  }
-}
-
-// Test all alert types in sequence
-async function testAllAlertTypes() {
-  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
-  for (const type of types) {
-    await testAlertType(type);
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between alerts
   }
 }
 
