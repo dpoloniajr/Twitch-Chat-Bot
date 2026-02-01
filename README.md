@@ -1,125 +1,242 @@
 # Twitch Chat Bot - Excella
 
-A modular Twitch chat bot built with Node.js and Twurple, featuring a dual-token architecture (bot + broadcaster), an enhanced setup wizard for OAuth scopes, and an optional web dashboard.
+A feature-rich, modular Twitch chat bot built with Node.js featuring a dual-token architecture (bot + broadcaster), an OAuth token generator with setup wizard, encrypted multi-account management, a real-time web dashboard, and OBS overlay integration for stream alerts.
 
 ## Table of Contents
 
 - [Features](#features)
 - [Quick Start](#quick-start)
-- [Setup](#setup)
+- [Installation](#installation)
 - [Configuration](#configuration)
+- [Running the Bot](#running-the-bot)
 - [Commands](#commands)
-- [Token Management](#token-management)
-- [EventSub](#eventsub)
+- [Chat Filtering](#chat-filtering)
+- [Custom Commands](#custom-commands)
 - [Dashboard](#dashboard)
+- [OBS Overlays](#obs-overlays)
+- [EventSub Integration](#eventsub-integration)
+- [Account Management](#account-management)
+- [Token Management](#token-management)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [Dependencies](#dependencies)
+- [License](#license)
 
 ## Features
 
-- ✨ **Setup Wizard (22 features)** - Choose bot capabilities and auto-map required scopes
-- 🔐 **Dual-Token Architecture** - Separate tokens for bot and broadcaster accounts
-- 💬 **Chat Integration** - Full chat read/write with commands and custom commands
-- 🎬 **Clips** - Create clips via command and API
-- 📣 **Announcements & Whispers** - Send announcements and whispers
-- 📢 **Shoutouts & Followage** - Manage shoutouts and read follower info
-- 📊 **Polls & Predictions** - Create and manage polls and predictions
-- ⭐ **Channel Points** - Read channel point redemptions
-- 🛡️ **Moderation Suite** - Ban/timeout, delete messages, AutoMod, Shield Mode, warnings
-- 👑 **Roles Management** - VIP and Moderator management
-- 📝 **Channel Management** - Title/game updates, schedule, ads, Guest Star
-- 📈 **Analytics & Info** - Hype trains, bits, subscriptions, followers, game analytics
-- ❤️ **Charity & Goals** - Read charity events and creator goals
-- 🔔 **EventSub (optional)** - Real-time events using broadcaster token
-- 🧭 **Token Validator** - Inspect token scopes and expiration
-- 🖥️ **Dashboard (optional)** - Manage announcements, polls/predictions, and logs
+### Core Bot Features
+- **Dual-Token Architecture** - Separate tokens for bot account and broadcaster account
+- **Chat Integration** - Full IRC-based chat read/write via tmi.js
+- **Custom Commands** - Create dynamic commands with URL fetching and templating
+- **Chat Filtering** - Comprehensive moderation with blacklist, URL, caps, spam detection
+- **Automatic Token Refresh** - Tokens are automatically refreshed when expired
+
+### Stream Interaction
+- **Clips** - Create clips via `!clip` command
+- **Announcements** - Scheduled announcements with configurable intervals
+- **Shoutouts** - Native Twitch shoutout API integration
+- **Followage** - Check how long users have been following
+- **Polls & Predictions** - Create and manage channel polls and predictions
+- **Channel Management** - Update stream title and game/category
+
+### EventSub Real-Time Events
+- **Follows** - Thank new followers automatically
+- **Subscriptions** - Welcome new subs, resubs, and gift subs
+- **Bits/Cheers** - Acknowledge bit donations
+- **Raids** - Welcome incoming raids with viewer counts
+- **Channel Points** - Track and respond to redemptions
+- **Stream Status** - Detect when stream goes online/offline
+
+### Web Dashboard
+- **Real-Time WebSocket** - Live updates for all events
+- **Command Logs** - Track all command executions
+- **User Statistics** - Per-user command usage stats
+- **Custom Command Management** - CRUD interface for custom commands
+- **Announcement Editor** - Manage scheduled announcements
+- **Chat Filter Configuration** - Configure moderation settings
+- **EventSub Event Log** - View recent stream events
+- **Redemption Log** - Track channel point redemptions
+
+### OBS Integration
+- **Alert Overlays** - Customizable alerts for follows, subs, bits, raids, redemptions
+- **Recent Events Widget** - Display recent stream activity
+- **Chat Box Overlay** - Live chat display for streams
+- **Goal Bar** - Visual progress bars for follower/subscriber goals
+- **Custom Animations** - Enter/exit animations for alerts
+- **Text-to-Speech** - Optional TTS for alert messages
+- **Media Upload** - Upload custom images, videos, and sounds
+
+### Account Management
+- **Multi-Account Support** - Manage multiple Twitch accounts
+- **AES-256 Encryption** - Secure credential storage
+- **Export/Import** - Export accounts to .env format
+- **Token Status Tracking** - Monitor token expiration
+
+### Token Generator
+- **Setup Wizard** - Visual scope selection with 22 feature categories
+- **Scope Presets** - Quick configurations for common setups
+- **Dual Authorization** - Separate flows for bot and broadcaster tokens
+- **Token Validator** - Inspect token owner, scopes, and expiration
+- **Auto .env Updates** - Tokens automatically saved to configuration
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
-- npm
-- A Twitch Developer Account with registered OAuth application
+- **Node.js** v16 or higher
+- **npm** v7 or higher
+- **Twitch Developer Account** with a registered OAuth application
 
 ### Installation
 
 ```bash
-# Clone or download the project
+# Clone the repository
+git clone https://github.com/your-repo/Twitch-Chat-Bot.git
 cd Twitch-Chat-Bot
 
 # Install dependencies
 npm install
 
-# Create .env file with your credentials
+# Create environment file
 cp .env.example .env
 # Edit .env with your Twitch app credentials
 ```
 
-### First Time Setup
+### First-Time Setup
 
-1. **Generate OAuth Tokens**
+1. **Register a Twitch Application**
+   - Go to [Twitch Developer Console](https://dev.twitch.tv/console)
+   - Create a new application
+   - Set OAuth Redirect URL to `http://localhost:3000/callback`
+   - Copy your Client ID and Client Secret
+
+2. **Configure Environment Variables**
+   ```env
+   TWITCH_CLIENT_ID=your_client_id
+   TWITCH_CLIENT_SECRET=your_client_secret
+   TWITCH_BROADCASTER_NAME=your_twitch_username
+   TWITCH_CHANNELS=channel1,channel2
+   ```
+
+3. **Generate OAuth Tokens**
+   ```bash
+   node token-generator.js
+   ```
+   Open `http://localhost:3000` in your browser and follow the setup wizard.
+
+4. **Start the Bot**
+   ```bash
+   npm run dev   # Starts bot and dashboard
+   ```
+
+## Installation
+
+### Detailed Installation Steps
+
+1. **Clone or Download**
+   ```bash
+   git clone https://github.com/your-repo/Twitch-Chat-Bot.git
+   cd Twitch-Chat-Bot
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Create Configuration**
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Get Twitch Credentials**
+   - Visit [Twitch Developer Console](https://dev.twitch.tv/console)
+   - Click "Register Your Application"
+   - Fill in:
+     - Name: Your bot name
+     - OAuth Redirect URLs: `http://localhost:3000/callback`
+     - Category: Chat Bot
+   - Click "Create"
+   - Copy the Client ID
+   - Click "New Secret" and copy the Client Secret
+
+5. **Configure .env**
+   Edit `.env` with your credentials (see [Configuration](#configuration))
+
+6. **Generate Tokens**
    ```bash
    node token-generator.js
    ```
 
-2. **Open Token Generator UI**
-   ```
-   http://localhost:3000
-   ```
+## Configuration
 
-3. **Select Features in the Wizard**
-   - Chat is always enabled (requires `chat:read`, `chat:edit`)
-   - Toggle additional features; scopes are auto-selected
+### Required Environment Variables
 
-4. **Authorize with Twitch (Dual Accounts)**
-   - Authorize the **Bot Account** for chat, moderation, and management scopes
-   - If using EventSub/analytics, authorize the **Broadcaster Account**
-   - Tokens and scopes are saved automatically to `.env`
+| Variable | Description |
+|----------|-------------|
+| `TWITCH_CLIENT_ID` | Your Twitch OAuth application Client ID |
+| `TWITCH_CLIENT_SECRET` | Your Twitch OAuth application Client Secret |
+| `TWITCH_BROADCASTER_NAME` | Your Twitch username (the channel to operate on) |
+| `TWITCH_CHANNELS` | Comma-separated list of channels to join |
+| `TWITCH_ACCESS_TOKEN` | Bot account OAuth token (generated by token-generator) |
+| `TWITCH_REFRESH_TOKEN` | Bot account refresh token (generated by token-generator) |
+| `TWITCH_SCOPES` | Space-separated list of OAuth scopes |
 
-5. **Start the Bot**
-   ```bash
-   node Excella
-   ```
+### Optional Environment Variables
 
-## Setup
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TWITCH_BROADCASTER_ACCESS_TOKEN` | - | Broadcaster account OAuth token (for EventSub) |
+| `TWITCH_BROADCASTER_REFRESH_TOKEN` | - | Broadcaster account refresh token |
+| `TWITCH_BROADCASTER_SCOPES` | - | Broadcaster token scopes |
+| `DISABLE_EVENTSUB` | `false` | Set to `1` to disable EventSub |
+| `DASHBOARD_PORT` | `3001` | Port for the dashboard server |
+| `ANNOUNCEMENT_INTERVAL_MS` | `900000` | Interval for announcements (15 min) |
+| `ANNOUNCEMENTS` | - | Pipe-separated list of announcements |
 
-### Step 1: Get Twitch Credentials
+### Chat Filter Configuration
 
-1. Go to [Twitch Developer Console](https://dev.twitch.tv/console)
-2. Create a new OAuth application
-3. Set OAuth Redirect URL to `http://localhost:3000/callback`
-4. Copy your Client ID and Client Secret
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHAT_FILTER_WORDS` | - | Pipe-separated blacklist words |
+| `CHAT_FILTER_URLS` | `false` | Block URLs in chat |
+| `CHAT_FILTER_ALLCAPS` | `false` | Block excessive caps |
+| `CHAT_FILTER_REPEAT` | `false` | Block repeated characters |
+| `CHAT_FILTER_SPAM` | `false` | Block spam/duplicate messages |
+| `CHAT_FILTER_ACTION` | `warn` | Action: `warn`, `timeout`, or `delete` |
+| `CHAT_FILTER_TIMEOUT_SEC` | `60` | Timeout duration in seconds |
 
-### Step 2: Configure Environment Variables
-
-Create a `.env` file in the project root:
+### Example .env File
 
 ```env
-# Required: Twitch App Credentials
-TWITCH_CLIENT_ID=your_client_id_here
-TWITCH_CLIENT_SECRET=your_client_secret_here
+# Twitch Application
+TWITCH_CLIENT_ID=abc123def456
+TWITCH_CLIENT_SECRET=xyz789secret
 
-# Generated by token generator (leave empty initially)
-# Bot account (used by chat client and most bot actions)
-TWITCH_ACCESS_TOKEN=
-TWITCH_REFRESH_TOKEN=
-TWITCH_SCOPES=
+# Bot Account Tokens (generated by token-generator)
+TWITCH_ACCESS_TOKEN=your_access_token
+TWITCH_REFRESH_TOKEN=your_refresh_token
+TWITCH_SCOPES=chat:read chat:edit clips:edit moderator:read:followers
 
-# Broadcaster account (used by EventSub and read-only analytics)
-TWITCH_BROADCASTER_ACCESS_TOKEN=
-TWITCH_BROADCASTER_REFRESH_TOKEN=
-TWITCH_BROADCASTER_SCOPES=
+# Broadcaster Account Tokens (optional, for EventSub)
+TWITCH_BROADCASTER_ACCESS_TOKEN=broadcaster_token
+TWITCH_BROADCASTER_REFRESH_TOKEN=broadcaster_refresh
+TWITCH_BROADCASTER_SCOPES=moderator:read:followers channel:read:redemptions
 
 # Bot Configuration
-TWITCH_BROADCASTER_NAME=your_twitch_username
-TWITCH_CHANNELS=channel1,channel2,channel3
+TWITCH_BROADCASTER_NAME=your_channel
+TWITCH_CHANNELS=your_channel,friend_channel
 
-# Optional settings
-DISABLE_EVENTSUB=true
+# Optional Settings
 DASHBOARD_PORT=3001
+DISABLE_EVENTSUB=false
+ANNOUNCEMENT_INTERVAL_MS=900000
+ANNOUNCEMENTS=Follow the stream!|Join our Discord!
 
-# Chat Filtering (optional)
-CHAT_FILTER_WORDS=badword1|badword2|etc
+# Chat Filtering
+CHAT_FILTER_WORDS=badword1|badword2
 CHAT_FILTER_URLS=true
 CHAT_FILTER_ALLCAPS=true
 CHAT_FILTER_REPEAT=true
@@ -128,471 +245,810 @@ CHAT_FILTER_ACTION=warn
 CHAT_FILTER_TIMEOUT_SEC=60
 ```
 
-### Step 3: Generate Tokens
+## Running the Bot
 
-Run the token generator to create OAuth tokens:
+### Start Commands
 
 ```bash
+# Start everything (bot + dashboard)
+npm run dev
+
+# Start only the bot
+npm run bot
+
+# Start only the dashboard
+npm run dashboard
+
+# Start the token generator
 node token-generator.js
 ```
 
-The token generator provides:
-- **Setup Wizard** with a feature grid (22 features) and auto-mapped scopes
-- **Dual Account Authorization** (Bot and Broadcaster) with separate scope lists
-- **Scope Presets** for common configurations (e.g., Basic Bot, Full Moderation)
-- **Token Validator** to inspect token owner, scopes, and expiration
-- **Automatic token saving** to `.env`
+### Using Account Manager
 
-#### Available Scope Categories
-
-| Category | Scopes |
-|----------|--------|
-| **Chat (IRC)** | `chat:read`, `chat:edit` |
-| **Engagement** | `moderator:manage:announcements`, `moderator:manage:shoutouts`, `moderator:read:followers`, `channel:manage:polls`, `channel:manage:predictions` |
-| **Moderation** | `moderator:manage:banned_users`, `moderator:manage:chat_messages`, `moderator:manage:automod`, `moderator:manage:automod_settings`, `moderator:manage:shield_mode`, `moderator:manage:warnings`, `moderator:manage:unban_requests`, `moderation:read` |
-| **Channel Management** | `channel:manage:broadcast`, `channel:manage:schedule`, `channel:manage:ads`, `channel:manage:guest_star`, `channel:manage:extensions` |
-| **Analytics (Broadcaster)** | `channel:read:redemptions`, `channel:read:hype_train`, `bits:read`, `channel:read:subscriptions`, `user:read:follows`, `analytics:read:games`, `channel:read:charity`, `channel:read:goals` |
-| **User** | `user:read:email`, `user:manage:whispers`, `whispers:read`, `whispers:edit` |
-| **Guest Star** | `channel:read:guest_star`, `channel:manage:guest_star`, `moderator:read:guest_star`, `moderator:manage:guest_star` |
-| **Other** | `channel:read:charity`, `channel:read:goals`, `channel:read:hype_train`, `user:read:blocked_users`, `user:manage:blocked_users`, `user:read:subscriptions`, `user:read:moderated_channels`, `user:read:whispers`, `user:manage:whispers`, `whispers:read`, `moderator:read:suspicious_users`, `moderator:read:unban_requests`, `moderator:manage:unban_requests`, `moderator:read:warnings`, `moderator:manage:warnings`, `channel:moderate`, `moderator:read:shield_mode`, `moderator:manage:shield_mode` |
-
-### Step 4: Run the Bot
+Run the bot with a specific account:
 
 ```bash
-node Excella
+node Excella --account my-account-name
 ```
 
-Expected output:
+### Expected Startup Output
+
 ```
-Configuring auth with scopes: [ 'chat:edit', 'chat:read', 'clips:edit', 'moderator:read:followers' ]
+✓ Loaded account: my-account
 Starting Twitch bot...
-✓ Got broadcaster ID: 12345678
+
+🔍 Validating tokens...
+Checking bot account token...
+✓ Bot token is valid
+Checking broadcaster account token...
+✓ Broadcaster token is valid
+
+Initializing... (broadcaster: your_channel)
+Got broadcaster ID: 12345678
+Token user ID: 87654321 (bot_username)
+✓ Loaded 8 built-in command configurations
+✓ Bot EventSub listener initialized successfully
 ✓ Connected to Twitch chat
 ✓ Joined channels: your_channel
 Bot is ready!
 Chat client connected!
 ```
 
-## Configuration
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `TWITCH_CLIENT_ID` | ✓ | Your Twitch OAuth application ID |
-| `TWITCH_CLIENT_SECRET` | ✓ | Your Twitch OAuth application secret |
-| `TWITCH_BROADCASTER_NAME` | ✓ | Your Twitch username |
-| `TWITCH_CHANNELS` | ✓ | Comma-separated list of channels to join |
-| `TWITCH_ACCESS_TOKEN` | ✓ | Generated by token generator |
-| `TWITCH_REFRESH_TOKEN` | ✓ | Generated by token generator |
-| `TWITCH_SCOPES` | ✓ | Space-separated OAuth scopes (auto-generated) |
-
-### Channel Configuration
-
-Add multiple channels by comma-separating them:
-
-```env
-TWITCH_CHANNELS=channel1,channel2,channel3
-```
-
 ## Commands
 
-The bot responds to the following commands in chat:
+### Everyone Commands
 
-### Command Summary
+| Command | Description | Required Scope | Cooldown |
+|---------|-------------|----------------|----------|
+| `!clip` | Create a clip of the current stream | `clips:edit` | 60s |
+| `!followage [user]` | Check follow duration | `moderator:read:followers` | - |
+| `!commands` / `!help` | List available commands | - | - |
 
-| Command | Permission | Scope | Purpose |
-|---------|-----------|-------|---------|
-| `!clip` | Everyone | `clips:edit` | Create a clip (60s cooldown) |
-| `!followage [user]` | Everyone | `moderator:read:followers` | Check follow duration |
-| `!commands` | Everyone | — | Show available commands |
-| `!shoutout [user]` | Mod+ | `moderator:manage:shoutouts` | Shout out another streamer |
-| `!poll start/end` | Mod+ | `channel:manage:polls` | Create/end polls |
-| `!prediction start/resolve` | Mod+ | `channel:manage:predictions` | Create/resolve predictions |
-| `!title "text"` | Mod+ | `channel:manage:broadcast` | Update stream title |
-| `!game <name>` | Mod+ | `channel:manage:broadcast` | Update stream game |
-| `!addfilter <word>` | Mod+ | — | Add word to blacklist |
-| `!removefilter <word>` | Mod+ | — | Remove word from blacklist |
-| `!filters` | Mod+ | — | Show active filters |
+### Moderator Commands
 
----
+| Command | Description | Required Scope |
+|---------|-------------|----------------|
+| `!shoutout <user>` / `!so <user>` | Shout out another streamer | `moderator:manage:shoutouts` |
+| `!poll start/end` | Create or end a poll | `channel:manage:polls` |
+| `!prediction start/resolve` | Create or resolve a prediction | `channel:manage:predictions` |
+| `!title "text"` | Update stream title | `channel:manage:broadcast` |
+| `!game <name>` | Update stream category | `channel:manage:broadcast` |
+| `!addfilter <word>` | Add word to blacklist | - |
+| `!removefilter <word>` | Remove word from blacklist | - |
+| `!filters` | Show active filter settings | - |
 
-### Viewer Commands (Everyone)
+### Command Details
 
 #### !clip
-
-Creates a clip of the current stream.
-
+Creates a clip of the current stream moment.
 ```
 Usage: !clip
 Response: @username Clip created! https://clips.twitch.tv/xxx
 ```
+- 60-second cooldown per channel
+- Stream must be live
+- Requires `clips:edit` scope
 
-**Features:** 60-second cooldown per channel  
-**Required Scope:** `clips:edit`
-
-#### !followage [username]
-
-Checks how long a user has been following the channel.
-
+#### !followage
+Check how long a user has been following.
 ```
 Usage: !followage @username
-Usage: !followage (checks your own follow age)
-Response: @username username has been following for 2 years 3 months 5 days!
+Usage: !followage          (checks your own)
+Response: @username Following for 2 years 3 months 5 days
 ```
+- Requires `moderator:read:followers` scope
 
-**Required Scope:** `moderator:read:followers`
-
-#### !commands / !help
-
-Displays all available bot commands.
-
-```
-Usage: !commands
-Usage: !help
-```
-
----
-
-### Moderator Commands (Mods & Broadcaster)
-
-#### !shoutout [username]
-
-Shouts out another streamer in chat. Displays their last played game.
-
+#### !shoutout / !so
+Shout out another streamer with their last played game.
 ```
 Usage: !shoutout @username
-Response: Go check out username at https://twitch.tv/username - they were last playing Valorant!
+Response: Shoutout to Username! Check out their channel: https://twitch.tv/username - They're playing Valorant!
 ```
-
-**Permission:** Moderator or Broadcaster only  
-**Required Scope:** `moderator:manage:shoutouts`
+- Moderator/Broadcaster only
+- Sends native Twitch shoutout if target is live
 
 #### !poll
-
-Manages channel polls (create and end).
-
-**Start a poll:**
+Create and manage channel polls.
 ```
-Usage: !poll start "Poll Question?" option1;option2;option3 [durationSeconds]
-Example: !poll start "What should I play?" Valorant;CS2;Overwatch 120
-Details: 
-  - Title: Required, must be quoted
-  - Options: 2-5 semicolon-separated choices
-  - Duration: 15-1800 seconds (default 300s)
-```
+Start: !poll start "What should I play?" Valorant;CS2;Overwatch 120
+End:   !poll end <poll_id>
 
-**End a poll:**
+Details:
+  - Title must be quoted
+  - 2-5 semicolon-separated options
+  - Duration: 15-1800 seconds (default 300)
 ```
-Usage: !poll end <poll_id>
-```
-
-**Permission:** Moderator or Broadcaster only  
-**Required Scope:** `channel:manage:polls`
 
 #### !prediction
-
-Manages channel predictions (create and resolve).
-
-**Start a prediction:**
+Create and resolve channel predictions.
 ```
-Usage: !prediction start "Title" Outcome1;Outcome2 [durationSeconds]
-Example: !prediction start "Will I clutch?" Yes;No 300
+Start:   !prediction start "Will I win?" Yes;No 300
+Resolve: !prediction resolve <prediction_id> <winning_outcome_id>
+
 Details:
-  - Title: Required, must be quoted
-  - Outcomes: Exactly 2 semicolon-separated choices
-  - Duration: 60-1800 seconds (default 300s)
+  - Title must be quoted
+  - Exactly 2 semicolon-separated outcomes
+  - Duration: 60-1800 seconds (default 300)
 ```
 
-**Resolve a prediction:**
-```
-Usage: !prediction resolve <prediction_id> <winning_outcome_id>
-```
-
-**Permission:** Moderator or Broadcaster only  
-**Required Scope:** `channel:manage:predictions`
-
-#### !title "new title"
-
-Updates the stream title.
-
+#### !title
+Update the stream title.
 ```
 Usage: !title "My New Stream Title"
-Response: @username Stream title updated to: My New Stream Title
 ```
 
-**Permission:** Moderator or Broadcaster only  
-**Required Scope:** `channel:manage:broadcast`
-
-#### !game <game name>
-
-Updates the stream game/category. Searches Twitch's game database for exact or similar matches.
-
+#### !game
+Update the stream category/game.
 ```
 Usage: !game Valorant
 Usage: !game "Just Chatting"
-Response: @username Stream game updated to: Valorant
 ```
-
-**Permission:** Moderator or Broadcaster only  
-**Required Scope:** `channel:manage:broadcast`
-
-#### !addfilter <word>
-
-Adds a word to the chat blacklist filter.
-
-```
-Usage: !addfilter badword
-Response: Word "badword" added to blacklist.
-```
-
-**Permission:** Moderator or Broadcaster only
-
-#### !removefilter <word>
-
-Removes a word from the chat blacklist filter.
-
-```
-Usage: !removefilter badword
-Response: Word "badword" removed from blacklist.
-```
-
-**Permission:** Moderator or Broadcaster only
-
-#### !filters
-
-Shows the current chat filter status and active filters.
-
-```
-Usage: !filters
-Response: Filters: {"blacklistWords":[...],"filterUrls":true,"filterAllCaps":true,...}
-```
-
-**Permission:** Moderator or Broadcaster only
 
 ## Chat Filtering
 
-The bot includes a comprehensive chat filtering system to keep your community safe.
+The bot includes a comprehensive chat filtering system with multiple detection types.
 
 ### Filter Types
 
-- **Blacklist Words**: Filter specific words (configurable per-stream via `!addfilter` / `!removefilter`)
-- **URL Filtering**: Block messages containing links (enable via `CHAT_FILTER_URLS=true`)
-- **ALL CAPS**: Warn/timeout users posting in all caps (enable via `CHAT_FILTER_ALLCAPS=true`)
-- **Repeated Characters**: Block excessive repeated characters like "sssssss" (enable via `CHAT_FILTER_REPEAT=true`)
-- **Spam Detection**: Prevent rapid duplicate messages from the same user (enable via `CHAT_FILTER_SPAM=true`)
+| Type | Description | Trigger |
+|------|-------------|---------|
+| **Blacklist Words** | Block specific words | Exact word match (case-insensitive) |
+| **URL Filtering** | Block HTTP/HTTPS links | URL pattern detection |
+| **All Caps** | Block excessive caps | >50% caps, minimum 5 characters |
+| **Repeated Characters** | Block spam patterns | 3+ consecutive identical characters |
+| **Spam Detection** | Block duplicate messages | Same message within 5 seconds |
 
-### Configuration
+### Filter Actions
 
-Set these in your `.env` file:
+| Action | Behavior |
+|--------|----------|
+| `warn` | Send a warning message to the user |
+| `timeout` | Timeout the user for configured duration |
+| `delete` | Silently block/delete the message |
 
+### Managing Filters
+
+**Via Chat Commands:**
+```
+!addfilter badword      # Add word to blacklist
+!removefilter badword   # Remove from blacklist
+!filters                # Show current filter settings
+```
+
+**Via Environment Variables:**
 ```env
-# Pipe-separated list of words to block (case-insensitive)
-CHAT_FILTER_WORDS=badword1|badword2|racist|nsfw
-
-# Enable/disable specific filters
+CHAT_FILTER_WORDS=word1|word2|word3
 CHAT_FILTER_URLS=true
 CHAT_FILTER_ALLCAPS=true
 CHAT_FILTER_REPEAT=true
 CHAT_FILTER_SPAM=true
-
-# Action to take: 'warn' (default), 'timeout', or 'delete'
 CHAT_FILTER_ACTION=warn
-
-# Timeout duration in seconds (for timeout action)
 CHAT_FILTER_TIMEOUT_SEC=60
 ```
 
-### Filter Actions
+**Via Dashboard API:**
+```bash
+# Update filter settings
+curl -X POST http://localhost:3001/api/filters \
+  -H "Content-Type: application/json" \
+  -d '{"filterUrls": true, "filterSpam": true}'
 
-- **warn**: Send a warning message to the user in chat
-- **timeout**: Automatically timeout (mute) the user for the specified duration
-- **delete**: Silently block the message (requires `moderator:manage:chat_messages` scope)
+# Add word to blacklist
+curl -X POST http://localhost:3001/api/filters/words \
+  -H "Content-Type: application/json" \
+  -d '{"word": "badword"}'
+```
 
 ### Moderator Bypass
 
-Moderators and the broadcaster can bypass filters and are never subject to filtering.
+Moderators and the broadcaster are exempt from all filters.
 
-### !commands / !help
+## Custom Commands
 
-Displays available bot commands.
+Create dynamic commands with optional URL fetching and template variables.
 
-```
-Usage: !commands
-Usage: !help
-Response: Available commands: !clip, !followage [username], !shoutout [username] (mods only), !poll, !prediction, !title "new title" (mods), !game <name> (mods), !commands
-```
+### Creating Custom Commands
 
-## Token Management
-
-### Updating Scopes
-
-To add or remove scopes without regenerating tokens:
-
-1. Stop the bot
-2. Run the token generator:
-   ```bash
-   node token-generator.js
-   ```
-3. The current scopes will be **pre-selected**
-4. Add/remove scopes as needed
-5. Click "Authorize with Selected Scopes"
-6. New scopes are saved to `.env`
-7. Restart the bot
-
-### Refreshing Tokens
-
-The bot automatically refreshes expired tokens using the refresh token. No manual action needed.
-
-### Token Expiration
-
-- Access tokens expire after ~3600 seconds
-- Refresh tokens are valid for 60 days of inactivity
-- The bot automatically handles refresh
-
-## Troubleshooting
-
-### Bot fails to start: "Missing required environment variables"
-
-**Solution:** Ensure all required variables are set in `.env`:
-```env
-TWITCH_CLIENT_ID=xxx
-TWITCH_CLIENT_SECRET=xxx
-TWITCH_ACCESS_TOKEN=xxx
-TWITCH_REFRESH_TOKEN=xxx
-TWITCH_BROADCASTER_ACCESS_TOKEN=xxx
-TWITCH_BROADCASTER_REFRESH_TOKEN=xxx
-TWITCH_BROADCASTER_NAME=xxx
-TWITCH_CHANNELS=xxx
-```
-
-### Bot connects but commands don't work
-
-**Solution:** Check that required scopes are authorized:
-- `chat:read` and `chat:edit` for chat functionality
-- `clips:edit` for clip creation
-- `moderator:read:followers` for follow age tracking
-
-Run token generator to verify and update scopes if needed.
-
-### "Invalid token supplied" error
-
-**Solution:** Tokens have expired or are invalid:
-1. Run the token generator: `node token-generator.js`
-2. Re-authorize with Twitch
-3. Restart the bot
-
-### Dual Tokens
-
-- **Bot Account** token powers chat, moderation, and most actions
-- **Broadcaster Account** token powers EventSub and read-only analytics
-- The setup wizard generates both sets when features require them
-
-### Token Validator
-
-- Use the Token Validator tab in the generator to check:
-   - Token owner and user ID
-   - Granted scopes
-   - Expiration status
-
-### Bot won't connect to chat
-
-**Possible causes:**
-- ✓ Verify `TWITCH_BROADCASTER_NAME` matches your actual Twitch username
-- ✓ Check internet connection
-- ✓ Ensure `TWITCH_CHANNELS` is set
-- ✓ Verify OAuth tokens are valid (not expired)
-
-### Token generator won't start
-
-**Solution:**
+**Via Dashboard API:**
 ```bash
-# Check if port 3000 is in use
-# Kill process on port 3000 or change PORT in token-generator.js
-node token-generator.js
+curl -X POST http://localhost:3001/api/custom-commands \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "!hello",
+    "response": "Hello, {user}! Welcome to the stream!",
+    "level": "everyone",
+    "cooldownSeconds": 5
+  }'
 ```
 
-Then open `http://localhost:3000` in your browser.
+### Template Variables
 
-### Commands not responding
+| Variable | Description |
+|----------|-------------|
+| `{user}` | Username of the command sender |
+| `{displayname}` | Display name of the sender |
+| `{channel}` | Channel name |
+| `{target}` | First argument (e.g., mentioned user) |
+| `{data}` | Data from fetched URL |
 
-**Possible causes:**
-- ✓ Bot account doesn't have permission to read chat (missing `chat:read` scope)
-- ✓ Bot hasn't fully connected yet (wait a few seconds)
-- ✓ Channel name in `TWITCH_CHANNELS` is incorrect
+### URL Fetching
 
-## Architecture
+Commands can fetch data from external URLs:
+```json
+{
+  "name": "!quote",
+  "response": "{data}",
+  "fetchEnabled": true,
+  "fetchUrl": "https://api.quotable.io/random",
+  "level": "everyone"
+}
+```
 
-### token-generator.js
+### Permission Levels
 
-Standalone OAuth server providing:
-- Setup Wizard with feature grid and auto scope mapping
-- Dual account authorization (bot + broadcaster)
-- Scope presets and current token display
-- Token validator API and UI
-- Automatic token-to-env conversion
-
-### Excella
-
-Main bot application featuring:
-- StaticAuthProvider for token management
-- ChatClient for Twitch IRC connection
-- ApiClient for Twitch REST API calls
-- Dual-token support for separate bot/broadcaster contexts
-- Dynamic command handlers
-
-### .env
-
-Centralized configuration file:
-- Credentials (read-only)
-- Generated tokens and scopes
-- Channel configuration
-- Broadcaster tokens and scopes for EventSub/analytics
-
-## EventSub
-
-- Enable real-time events using broadcaster token
-- Controlled via `DISABLE_EVENTSUB` in `.env`
-- Requires user-authenticated broadcaster scopes (e.g., `moderator:read:followers`)
+| Level | Who Can Use |
+|-------|-------------|
+| `everyone` | All users |
+| `mod` | Moderators and broadcaster |
+| `broadcaster` | Broadcaster only |
 
 ## Dashboard
 
-- Optional web dashboard (port `DASHBOARD_PORT`, default 3001)
-- Manage announcements, polls/predictions, redemptions, logs, and stats
-- See [dashboard/README.md](dashboard/README.md) for details
+The web dashboard provides real-time monitoring and configuration.
 
-## Development
+### Accessing the Dashboard
 
-### Adding New Commands
-
-Edit the message handler in `Excella`:
-
-```javascript
-chatClient.onMessage(async (channel, user, message, msg) => {
-  const text = message.trim().toLowerCase();
-  
-  if (text === '!newcommand') {
-    chatClient.say(channel, `@${user} Response here!`);
-  }
-});
+```bash
+npm run dashboard
+# or
+npm run dev
 ```
 
-### Required Scopes by Feature
+Open `http://localhost:3001` in your browser.
 
-| Feature | Scopes |
-|---------|--------|
-| Read chat | `chat:read` |
-| Send messages | `chat:edit` |
-| Create clips | `clips:edit` |
-| Follow age | `moderator:read:followers` |
-| Moderation | `moderation:read`, `moderator:manage:banned_users` |
+### Dashboard Features
 
-## Support
+- **Bot Status** - Connection status, uptime, channels
+- **Command Logs** - Real-time log of all command executions
+- **User Statistics** - Per-user command usage tracking
+- **Custom Commands** - Create, edit, delete custom commands
+- **Announcements** - Manage scheduled announcement messages
+- **Chat Filters** - Configure moderation settings
+- **EventSub Events** - View follows, subs, raids, bits, redemptions
+- **OBS Configuration** - Configure overlay settings
+- **Alert Configuration** - Customize alert appearances
 
-For issues with Twurple, visit: https://twurple.js.org/
+### WebSocket Events
 
-For Twitch API documentation: https://dev.twitch.tv/docs
+Connect to `ws://localhost:3001` to receive real-time updates:
+
+| Event Type | Description |
+|------------|-------------|
+| `state` | Bot state changes |
+| `log` | Command execution logs |
+| `stats` | User statistics updates |
+| `chat` | Chat messages |
+| `customCommands` | Custom command updates |
+| `announcements` | Announcement updates |
+| `redemption` | Channel point redemptions |
+| `eventsub-event` | EventSub events |
+| `alert` | OBS overlay alerts |
+| `obsConfig` | OBS configuration updates |
+| `alertConfig` | Alert configuration updates |
+| `filters` | Chat filter updates |
+
+## OBS Overlays
+
+The bot includes ready-to-use OBS browser source overlays.
+
+### Available Overlays
+
+| Overlay | URL | Description |
+|---------|-----|-------------|
+| **Alerts** | `/obs/overlays/alerts.html` | Stream alerts (follows, subs, bits, raids) |
+| **Recent Events** | `/obs/overlays/recent-events.html` | List of recent stream events |
+| **Chat Box** | `/obs/overlays/chat-box.html` | Live chat display |
+| **Goal Bar** | `/obs/overlays/goal-bar.html` | Progress bar for follower/sub goals |
+
+### Adding to OBS
+
+1. In OBS, add a new **Browser Source**
+2. Set the URL to: `http://localhost:3001/obs/overlays/alerts.html`
+3. Set recommended dimensions:
+   - Alerts: 800x600
+   - Recent Events: 400x600
+   - Chat Box: 400x600
+   - Goal Bar: 400x100
+4. Check "Refresh browser when scene becomes active"
+
+### Alert Types
+
+| Type | Trigger | Default Sound |
+|------|---------|---------------|
+| `follow` | New follower | `/obs/assets/sounds/follow.mp3` |
+| `subscription` | New sub/resub/gift | `/obs/assets/sounds/subscribe.mp3` |
+| `bits` | Bit cheer | `/obs/assets/sounds/bits.mp3` |
+| `raid` | Incoming raid | `/obs/assets/sounds/raid.mp3` |
+| `redemption` | Channel point redemption | `/obs/assets/sounds/redemption.mp3` |
+
+### Customizing Alerts
+
+**Via Dashboard API:**
+```bash
+# Update alert type configuration
+curl -X POST http://localhost:3001/api/alerts/config/follow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "duration": 6,
+    "volume": 0.8,
+    "enterAnimation": "bounceIn",
+    "exitAnimation": "fadeOutUp",
+    "textColor": "#00ff7f",
+    "messageTemplate": "Thanks for the follow!"
+  }'
+```
+
+### Available Animations
+
+**Enter Animations:**
+- `fadeIn`, `fadeInUp`, `fadeInDown`
+- `slideInLeft`, `slideInRight`
+- `scaleIn`, `bounceIn`, `rotateIn`
+
+**Exit Animations:**
+- `fadeOut`, `fadeOutUp`, `fadeOutDown`
+- `slideOutLeft`, `slideOutRight`
+- `scaleOut`
+
+### Testing Alerts
+
+```bash
+curl -X POST http://localhost:3001/api/test-alert \
+  -H "Content-Type: application/json" \
+  -d '{"alertType": "follow", "user": "TestUser"}'
+```
+
+### Media Uploads
+
+Upload custom images, videos, and sounds for alerts:
+
+```bash
+# Upload image
+curl -X POST http://localhost:3001/api/uploads/image \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "alert.png", "data": "base64-encoded-data"}'
+
+# Upload sound
+curl -X POST http://localhost:3001/api/uploads/sound \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "alert.mp3", "data": "base64-encoded-data"}'
+```
+
+**Supported Formats:**
+- Images: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+- Videos: `.mp4`, `.webm`, `.mov`
+- Audio: `.mp3`, `.ogg`, `.wav`, `.m4a`
+
+## EventSub Integration
+
+EventSub provides real-time events from Twitch for stream activity.
+
+### Required Scopes
+
+| Event | Required Scope | Token |
+|-------|----------------|-------|
+| Follows | `moderator:read:followers` | Broadcaster |
+| Subscriptions | `channel:read:subscriptions` | Broadcaster |
+| Bits/Cheers | `bits:read` | Broadcaster |
+| Raids | - | Bot or Broadcaster |
+| Redemptions | `channel:read:redemptions` | Broadcaster |
+| Stream Online/Offline | - | Bot |
+
+### Enabling EventSub
+
+1. Ensure broadcaster tokens are configured in `.env`
+2. Verify `DISABLE_EVENTSUB` is not set to `1`
+3. Restart the bot
+
+### Disabling EventSub
+
+```env
+DISABLE_EVENTSUB=1
+```
+
+### EventSub Events Flow
+
+```
+Twitch EventSub WebSocket
+       ↓
+   Excella Bot
+       ↓
+   Dashboard API
+       ↓
+   WebSocket Broadcast
+       ↓
+   OBS Overlays
+```
+
+## Account Management
+
+Manage multiple Twitch accounts with encrypted storage.
+
+### Account Manager Features
+
+- **Encrypted Storage** - AES-256-CBC encryption
+- **Multi-Account** - Store multiple bot configurations
+- **Token Tracking** - Monitor token expiration status
+- **Export/Import** - Convert to/from .env format
+
+### Using the Account Manager
+
+**Via Token Generator UI:**
+1. Run `node token-generator.js`
+2. Open `http://localhost:3000`
+3. Navigate to "Accounts" tab
+4. Create, authorize, and manage accounts
+
+**Via CLI:**
+```bash
+# Run bot with specific account
+node Excella --account production-bot
+
+# List accounts (in token-generator)
+# Visit http://localhost:3000/api/accounts
+```
+
+### Account Data Structure
+
+```javascript
+{
+  name: "my-bot",
+  clientId: "...",
+  clientSecret: "...",
+  broadcasterName: "my_channel",
+  channels: ["channel1", "channel2"],
+  accessToken: "...",
+  refreshToken: "...",
+  tokenScopes: ["chat:read", "chat:edit"],
+  broadcasterAccessToken: "...",
+  broadcasterRefreshToken: "...",
+  broadcasterScopes: ["moderator:read:followers"]
+}
+```
+
+### Security Files
+
+| File | Description |
+|------|-------------|
+| `accounts.encrypted.json` | Encrypted account data (gitignored) |
+| `.encryption-key` | AES-256 encryption key (gitignored, chmod 600) |
+
+## Token Management
+
+### Token Generator
+
+The token generator provides a web UI for OAuth authorization.
+
+```bash
+node token-generator.js
+# Open http://localhost:3000
+```
+
+### Features
+
+- **Setup Wizard** - Select features and auto-map required scopes
+- **Scope Categories** - Organized scope selection
+- **Dual Authorization** - Separate bot and broadcaster flows
+- **Token Validator** - Verify token status and scopes
+- **Scope Presets** - Quick configurations
+
+### Scope Categories
+
+| Category | Example Scopes |
+|----------|----------------|
+| Chat (IRC) | `chat:read`, `chat:edit` |
+| Clips | `clips:edit` |
+| Moderation | `moderator:manage:banned_users`, `moderator:read:followers` |
+| Channel Management | `channel:manage:broadcast`, `channel:manage:polls` |
+| Channel Points | `channel:read:redemptions`, `channel:manage:predictions` |
+| Analytics | `bits:read`, `channel:read:subscriptions` |
+
+### Refreshing Tokens
+
+Tokens are automatically refreshed by the bot when expired. Manual refresh:
+
+1. Run `node token-generator.js`
+2. Click "Refresh Token" in the UI
+3. Or re-authorize by clicking "Authorize with Selected Scopes"
+
+### Token Expiration
+
+- Access tokens expire after ~4 hours
+- Refresh tokens are valid for 60 days of inactivity
+- Bot automatically refreshes tokens before expiration
+
+## API Reference
+
+### Dashboard REST API
+
+Base URL: `http://localhost:3001`
+
+#### Status & Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/status` | Bot connection status |
+| POST | `/api/update-state` | Update bot state (internal) |
+
+#### Logs & Stats
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/logs` | Get command logs |
+| POST | `/api/logs` | Add command log |
+| DELETE | `/api/logs` | Clear all logs |
+| GET | `/api/stats` | Get user statistics |
+| POST | `/api/stats/:username` | Update user stats |
+
+#### Custom Commands
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/custom-commands` | List custom commands |
+| POST | `/api/custom-commands` | Create/update command |
+| DELETE | `/api/custom-commands/:name` | Delete command |
+
+#### Built-in Commands
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/builtin-commands` | List built-in commands config |
+| PUT | `/api/builtin-commands/:name` | Update command cooldown |
+
+#### Announcements
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/announcements` | Get announcements |
+| POST | `/api/announcements` | Save announcements |
+
+#### EventSub & Redemptions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/redemptions` | Get redemption log |
+| POST | `/api/redemptions` | Add redemption |
+| GET | `/api/eventsub-events` | Get EventSub events |
+| POST | `/api/eventsub-events` | Add EventSub event |
+
+#### Chat Filters
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/filters` | Get filter configuration |
+| POST | `/api/filters` | Update filter settings |
+| POST | `/api/filters/words` | Add word to blacklist |
+| DELETE | `/api/filters/words/:word` | Remove word from blacklist |
+
+#### OBS Configuration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/obs/config` | Get OBS config |
+| POST | `/obs/config` | Update OBS config |
+| POST | `/obs/config/:overlay` | Update specific overlay |
+| GET | `/obs/recent` | Get recent events |
+| GET | `/obs/recent/:type` | Get recent events by type |
+
+#### Alert Configuration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/alerts/config` | Get alert config |
+| POST | `/api/alerts/config` | Update alert config |
+| POST | `/api/alerts/config/:alertType` | Update specific alert |
+| POST | `/api/alerts/config/reset` | Reset to defaults |
+| POST | `/api/test-alert` | Send test alert |
+| POST | `/api/alerts/test` | Enhanced test alert |
+| GET | `/api/alerts/animations` | List available animations |
+
+#### Media Uploads
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/uploads/image` | Upload image |
+| POST | `/api/uploads/video` | Upload video |
+| POST | `/api/uploads/sound` | Upload sound |
+| GET | `/api/uploads/:mediaType` | List uploaded media |
+| DELETE | `/api/uploads/:mediaType/:filename` | Delete media file |
+
+## Project Structure
+
+```
+Twitch-Chat-Bot/
+├── Excella                      # Main bot application
+├── token-generator.js           # OAuth token generator server
+├── account-manager.js           # Encrypted account storage
+├── package.json                 # Dependencies and scripts
+├── .env                         # Configuration (gitignored)
+├── .env.example                 # Example configuration
+├── accounts.encrypted.json      # Encrypted accounts (gitignored)
+├── .encryption-key              # Encryption key (gitignored)
+│
+├── lib/
+│   ├── twitch-helix-api.js      # Twitch Helix API client
+│   ├── twitch-irc-client.js     # IRC/tmi.js wrapper
+│   └── twitch-eventsub-ws.js    # EventSub WebSocket client
+│
+├── dashboard/
+│   ├── server.js                # Express + WebSocket server
+│   ├── README.md                # Dashboard documentation
+│   ├── public/
+│   │   ├── index.html           # Dashboard UI
+│   │   ├── app.js               # Dashboard frontend
+│   │   └── style.css            # Dashboard styles
+│   ├── logs/                    # JSON data storage (gitignored)
+│   └── uploads/                 # Media uploads (gitignored)
+│
+├── obs/
+│   ├── overlays/
+│   │   ├── alerts.html          # Alert overlay
+│   │   ├── recent-events.html   # Recent events widget
+│   │   ├── chat-box.html        # Chat display
+│   │   └── goal-bar.html        # Goal progress bar
+│   ├── js/
+│   │   └── overlay-client.js    # WebSocket client for overlays
+│   ├── css/
+│   │   └── overlay-base.css     # Shared overlay styles
+│   └── assets/
+│       └── sounds/              # Default alert sounds
+│
+├── test-*.js                    # Manual test scripts
+├── CLAUDE.md                    # AI assistant documentation
+└── README.md                    # This file
+```
+
+## Troubleshooting
+
+### Bot Won't Start
+
+**"Missing required environment variables"**
+- Ensure all required variables are set in `.env`
+- Run `node token-generator.js` to generate missing tokens
+
+**"Invalid token supplied"**
+- Tokens have expired or are invalid
+- Run `node token-generator.js` and re-authorize
+
+**"Broadcaster not found"**
+- Check `TWITCH_BROADCASTER_NAME` matches your Twitch username exactly
+- Username is case-insensitive but should exist
+
+### Commands Not Working
+
+**Commands not responding:**
+- Verify `chat:read` and `chat:edit` scopes
+- Ensure bot has joined the channel (`TWITCH_CHANNELS`)
+- Check bot is a moderator in the channel for mod commands
+
+**"Missing scope" error:**
+- Re-run token generator and select the missing scope
+- Re-authorize with Twitch
+
+**Cooldown issues:**
+- Default cooldowns are configured in dashboard
+- Use `/api/builtin-commands/:name` to modify
+
+### EventSub Issues
+
+**Events not triggering:**
+- Ensure broadcaster tokens are configured
+- Check required scopes for each event type
+- Verify `DISABLE_EVENTSUB` is not set to `1`
+
+**"EventSub disabled" message:**
+- Missing broadcaster token
+- Missing required scopes
+- Set `DISABLE_EVENTSUB=1` intentionally
+
+### Dashboard Issues
+
+**Can't connect to dashboard:**
+- Check `DASHBOARD_PORT` (default 3001)
+- Ensure no port conflicts
+- Run `npm run dashboard` first
+
+**WebSocket disconnects:**
+- Dashboard auto-reconnects after 3 seconds
+- Check network connectivity
+
+### Token Issues
+
+**Token refresh failures:**
+- Verify client ID/secret match the token's application
+- Refresh token may have expired (60 days inactive)
+- Re-authorize via token generator
+
+**Scope validation errors:**
+- Token may have been generated with fewer scopes
+- Re-authorize with additional scopes
+
+### OBS Overlay Issues
+
+**Overlays not showing:**
+- Verify dashboard is running on correct port
+- Check browser source URL in OBS
+- Enable "Refresh browser when scene becomes active"
+
+**No sound on alerts:**
+- Check volume settings in alert configuration
+- Verify audio files exist in `/obs/assets/sounds/`
+- Browser may require user interaction first
+
+## Security
+
+### Credential Storage
+
+- **Tokens** - Stored in `.env` (gitignored)
+- **Multi-account** - AES-256-CBC encrypted in `accounts.encrypted.json`
+- **Encryption key** - Stored with chmod 600 in `.encryption-key`
+
+### Security Features
+
+- **XSS Prevention** - Input sanitization in dashboard
+- **SSRF Protection** - URL validation for custom command fetches
+- **Rate Limiting** - Upload rate limits (10/minute)
+- **MIME Validation** - Magic number validation for uploads
+- **Scope Validation** - Commands check scopes before execution
+
+### Gitignored Files
+
+```
+.env
+accounts.encrypted.json
+.encryption-key
+dashboard/logs/
+dashboard/uploads/
+node_modules/
+```
+
+### Best Practices
+
+1. Never commit `.env` or encryption keys
+2. Use separate tokens for bot and broadcaster
+3. Grant minimum required scopes
+4. Rotate tokens periodically
+5. Monitor token expiration
+
+## Dependencies
+
+### Core Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `tmi.js` | ^1.8.5 | Twitch IRC client |
+| `axios` | ^1.13.2 | HTTP client |
+| `express` | ^5.2.1 | Web framework |
+| `ws` | ^8.19.0 | WebSocket support |
+| `dotenv` | ^17.2.3 | Environment variables |
+| `concurrently` | ^9.2.1 | Multi-process runner |
+
+### Built-in Node.js Modules
+
+- `crypto` - AES-256 encryption
+- `fs` / `fs/promises` - File system operations
+- `path` - Path utilities
+- `http` - HTTP server
 
 ## License
 
 MIT
+
+---
+
+## Support
+
+- **Twitch API Documentation:** https://dev.twitch.tv/docs
+- **tmi.js Documentation:** https://tmijs.com/
+- **Issues:** Report bugs via GitHub Issues
