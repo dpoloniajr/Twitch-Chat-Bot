@@ -179,9 +179,9 @@
         debug: OverlayUtils.getQueryParam('debug') === 'true',
 
         // Default settings (will be overridden by server config)
-        defaultDuration: 5000,
+        defaultDuration: parseInt(OverlayUtils.getQueryParam('duration')) || 5000,
         defaultDelay: 1000,
-        defaultVolume: 0.8,
+        defaultVolume: parseFloat(OverlayUtils.getQueryParam('volume')) || 0.8,
         defaultEnterAnimation: 'bounceIn',
         defaultExitAnimation: 'fadeOutUp'
       };
