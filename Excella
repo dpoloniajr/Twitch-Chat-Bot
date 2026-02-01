@@ -1,7 +1,7 @@
-const { StaticAuthProvider } = require('@twurple/auth');
-const { ChatClient } = require('@twurple/chat');
-const { ApiClient } = require('@twurple/api');
-const { EventSubWsListener } = require('@twurple/eventsub-ws');
+// Replaced Twurple with direct Helix API, tmi.js for IRC, and native WebSocket for EventSub
+const TwitchHelixAPI = require('./lib/twitch-helix-api');
+const TwitchIRCClient = require('./lib/twitch-irc-client');
+const TwitchEventSubWS = require('./lib/twitch-eventsub-ws');
 const axios = require('axios');
 const fs = require('fs');
 require('dotenv').config();
@@ -78,18 +78,18 @@ const tokenData = {
   obtainmentTimestamp: 0
 };
 
-// Setup auth provider using StaticAuthProvider
-global.authProvider = new StaticAuthProvider(
-  config.clientId,
-  config.accessToken,
-  config.scopes
-);
+// Setup API client using direct Helix API
+global.apiClient = new TwitchHelixAPI({
+  clientId: config.clientId,
+  accessToken: config.accessToken
+});
 
-// Create API and Chat clients
-global.apiClient = new ApiClient({ authProvider: global.authProvider });
-global.chatClient = new ChatClient({ 
-  authProvider: global.authProvider, 
-  channels: config.channels 
+// Create Chat client using tmi.js wrapper
+// Note: username will be set during init() after token validation
+global.chatClient = new TwitchIRCClient({
+  username: config.broadcasterName, // Will be updated after token validation
+  accessToken: config.accessToken,
+  channels: config.channels
 });
 
 let broadcasterId = null;
@@ -120,22 +120,17 @@ let cachedScopeValidation = {};
 let lastMessageHistoryCleanup = Date.now();
 
 // Expose clients for easy access
-const authProvider = global.authProvider;
 const apiClient = global.apiClient;
 const chatClient = global.chatClient;
 
-// Setup broadcaster auth provider if broadcaster token is available
-let broadcasterAuthProvider = null;
+// Setup broadcaster API client if broadcaster token is available
 let broadcasterApiClient = null;
 
 if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
-  const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || 'moderator:read:followers channel:read:redemptions').split(' ').filter(s => s);
-  broadcasterAuthProvider = new StaticAuthProvider(
-    config.clientId,
-    process.env.TWITCH_BROADCASTER_ACCESS_TOKEN,
-    broadcasterScopes
-  );
-  broadcasterApiClient = new ApiClient({ authProvider: broadcasterAuthProvider });
+  broadcasterApiClient = new TwitchHelixAPI({
+    clientId: config.clientId,
+    accessToken: process.env.TWITCH_BROADCASTER_ACCESS_TOKEN
+  });
 }
 
 // Chat filtering system
@@ -302,7 +297,7 @@ async function startAnnouncements() {
       for (const channel of config.channels) {
         // Use chat announcement if available, else regular say
         try {
-          await apiClient.chat.createAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+          await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
         } catch {
           sendChatMessage(channel, msg);
         }
@@ -313,7 +308,7 @@ async function startAnnouncements() {
   }, ANNOUNCEMENT_INTERVAL_MS);
 }
 
-function setupEventSub() {
+async function setupEventSub() {
   if (eventSub) return;
   // Allow disabling EventSub via env if token auth is problematic
   if (process.env.DISABLE_EVENTSUB === '1') {
@@ -330,7 +325,7 @@ function setupEventSub() {
     return;
   }
   // Guard: token scopes must include moderator or user permissions, not just channel:bot
-  const hasUserScopes = config.scopes.some(s => 
+  const hasUserScopes = config.scopes.some(s =>
     s.startsWith('user:') || s.startsWith('moderator:') || s.startsWith('channel:manage') || s.startsWith('channel:read')
   );
   if (!hasUserScopes) {
@@ -338,13 +333,16 @@ function setupEventSub() {
     return;
   }
   try {
-    eventSub = new EventSubWsListener({ apiClient });
-    eventSub.start();
+    eventSub = new TwitchEventSubWS({
+      clientId: config.clientId,
+      accessToken: config.accessToken
+    });
+    await eventSub.start();
 
     // Stream online/offline
     const subId = String(broadcasterId);
     console.log('[EventSub-Bot] Subscribing with broadcasterId:', subId, 'isNumeric:', /^\d+$/.test(subId), 'tokenUserId:', tokenUserId);
-    
+
     // These subscriptions work with bot token
     try {
       eventSub.onStreamOnline(subId, ev => {
@@ -354,7 +352,7 @@ function setupEventSub() {
     } catch (err) {
       console.warn('[EventSub-Bot] Stream online subscription failed:', err.message);
     }
-    
+
     try {
       eventSub.onStreamOffline(subId, ev => {
         console.log('EventSub: Stream offline');
@@ -362,7 +360,7 @@ function setupEventSub() {
     } catch (err) {
       console.warn('[EventSub-Bot] Stream offline subscription failed:', err.message);
     }
-    
+
     console.log('✓ Bot EventSub listener initialized successfully');
   } catch (err) {
     console.error('Bot EventSub setup failed:', err?.message || err);
@@ -370,25 +368,25 @@ function setupEventSub() {
 }
 
 // Setup separate EventSub listener for broadcaster account (for follows, raids, etc.)
-function setupBroadcasterEventSub() {
+async function setupBroadcasterEventSub() {
   if (broadcasterEventSub) return;
-  
-  // Guard: broadcaster auth required
-  if (!broadcasterAuthProvider || !broadcasterApiClient) {
+
+  // Guard: broadcaster API client required
+  if (!broadcasterApiClient) {
     console.log('[EventSub-Broadcaster] Broadcaster token not available. Skipping broadcaster EventSub setup.');
     return;
   }
-  
+
   if (process.env.DISABLE_EVENTSUB === '1') {
     console.log('[EventSub-Broadcaster] EventSub disabled via DISABLE_EVENTSUB=1');
     return;
   }
-  
+
   if (!broadcasterId || !/^\d+$/.test(String(broadcasterId))) {
     console.warn('[EventSub-Broadcaster] broadcasterId invalid or non-numeric', broadcasterId);
     return;
   }
-  
+
   // Check broadcaster token scopes
   const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
   const hasFollowersScope = hasScope(broadcasterScopes, 'moderator:read:followers');
@@ -397,7 +395,7 @@ function setupBroadcasterEventSub() {
   const hasBitsScope = hasScope(broadcasterScopes, 'bits:read');
 
   if (!hasFollowersScope && !hasRedemptionsScope && !hasSubscriptionsScope && !hasBitsScope) {
-    console.warn('[EventSub-Broadcaster] ⚠️  Broadcaster token missing required scopes:');
+    console.warn('[EventSub-Broadcaster] Broadcaster token missing required scopes:');
     console.warn('[EventSub-Broadcaster]   - moderator:read:followers (for follow events)');
     console.warn('[EventSub-Broadcaster]   - channel:read:redemptions (for redemption events)');
     console.warn('[EventSub-Broadcaster]   - channel:read:subscriptions (for subscription events)');
@@ -405,14 +403,17 @@ function setupBroadcasterEventSub() {
     console.warn('[EventSub-Broadcaster] Visit http://localhost:3000 to regenerate broadcaster token with proper scopes.');
     return;
   }
-  
+
   try {
-    broadcasterEventSub = new EventSubWsListener({ apiClient: broadcasterApiClient });
-    broadcasterEventSub.start();
+    broadcasterEventSub = new TwitchEventSubWS({
+      clientId: config.clientId,
+      accessToken: process.env.TWITCH_BROADCASTER_ACCESS_TOKEN
+    });
+    await broadcasterEventSub.start();
 
     const subId = String(broadcasterId);
     console.log('[EventSub-Broadcaster] Subscribing with broadcasterId:', subId);
-    
+
     // Follows (requires broadcaster auth with moderator:read:followers scope)
     if (hasFollowersScope) {
       try {
@@ -426,7 +427,7 @@ function setupBroadcasterEventSub() {
           logEventSubEvent('follow', { user: name });
           sendAlert('follow', { user: name });
         });
-        console.log('[EventSub-Broadcaster] ✓ Follow subscription active');
+        console.log('[EventSub-Broadcaster] Follow subscription active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Follow subscription failed:', err.message);
       }
@@ -445,7 +446,7 @@ function setupBroadcasterEventSub() {
         logEventSubEvent('raid', { user: from, viewers: Number(viewers) });
         sendAlert('raid', { user: from, viewers: Number(viewers) });
       });
-      console.log('[EventSub-Broadcaster] ✓ Raid subscription active');
+      console.log('[EventSub-Broadcaster] Raid subscription active');
     } catch (err) {
       console.warn('[EventSub-Broadcaster] Raid subscription failed:', err.message);
     }
@@ -463,13 +464,13 @@ function setupBroadcasterEventSub() {
             user, reward, input
           }).catch(() => {});
           // Basic mapping: echo to chat
-          config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' — ' + input : ''}`));
+          config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
 
           // Log event and send alert to OBS overlay
           logEventSubEvent('redemption', { user, reward, message: input });
           sendAlert('redemption', { user, reward, message: input });
         });
-        console.log('[EventSub-Broadcaster] ✓ Channel Points redemption subscription active');
+        console.log('[EventSub-Broadcaster] Channel Points redemption subscription active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Redemption subscription failed:', err.message);
       }
@@ -490,7 +491,7 @@ function setupBroadcasterEventSub() {
           console.log('[EventSub-Broadcaster] Subscription:', user, tierName, isGift ? '(gifted)' : '');
 
           if (!isGift) {
-            config.channels.forEach(ch => sendChatMessage(ch, `Thank you ${user} for the ${tierName} sub! 🎉`));
+            config.channels.forEach(ch => sendChatMessage(ch, `Thank you ${user} for the ${tierName} sub!`));
           }
 
           // Log event and send alert to OBS overlay
@@ -499,7 +500,7 @@ function setupBroadcasterEventSub() {
             sendAlert('subscription', { user, tier: tierName });
           }
         });
-        console.log('[EventSub-Broadcaster] ✓ Subscription event active');
+        console.log('[EventSub-Broadcaster] Subscription event active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Subscription event failed:', err.message);
       }
@@ -517,14 +518,14 @@ function setupBroadcasterEventSub() {
 
           config.channels.forEach(ch => {
             const msgPart = message ? ` and says: "${message}"` : '';
-            sendChatMessage(ch, `Thank you ${user} for ${months} months at ${tierName}!${msgPart} 🎉`);
+            sendChatMessage(ch, `Thank you ${user} for ${months} months at ${tierName}!${msgPart}`);
           });
 
           // Log event and send alert to OBS overlay
           logEventSubEvent('subscription', { user, tier: tierName, months, message });
           sendAlert('subscription', { user, tier: tierName, message: `${months} months${message ? ' - ' + message : ''}` });
         });
-        console.log('[EventSub-Broadcaster] ✓ Subscription message event active');
+        console.log('[EventSub-Broadcaster] Subscription message event active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Subscription message event failed:', err.message);
       }
@@ -543,7 +544,7 @@ function setupBroadcasterEventSub() {
 
           const gifterName = isAnonymous ? 'An anonymous gifter' : gifter;
           config.channels.forEach(ch => {
-            sendChatMessage(ch, `${gifterName} gifted ${amount} ${tierName} sub${amount > 1 ? 's' : ''}! (${total} total) 🎁`);
+            sendChatMessage(ch, `${gifterName} gifted ${amount} ${tierName} sub${amount > 1 ? 's' : ''}! (${total} total)`);
           });
 
           // Log event and send alert to OBS overlay
@@ -554,7 +555,7 @@ function setupBroadcasterEventSub() {
             message: `Gifted ${amount} sub${amount > 1 ? 's' : ''}!`
           });
         });
-        console.log('[EventSub-Broadcaster] ✓ Gift subscription event active');
+        console.log('[EventSub-Broadcaster] Gift subscription event active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Gift subscription event failed:', err.message);
       }
@@ -576,14 +577,14 @@ function setupBroadcasterEventSub() {
           const cheererName = isAnonymous ? 'Anonymous' : user;
           config.channels.forEach(ch => {
             const msgPart = message ? ` "${message}"` : '';
-            sendChatMessage(ch, `${cheererName} cheered ${bits} bits!${msgPart} 💎`);
+            sendChatMessage(ch, `${cheererName} cheered ${bits} bits!${msgPart}`);
           });
 
           // Log event and send alert to OBS overlay
           logEventSubEvent('bits', { user: cheererName, amount: bits, message, isAnonymous });
           sendAlert('bits', { user: cheererName, amount: bits, message });
         });
-        console.log('[EventSub-Broadcaster] ✓ Bits/Cheer event active');
+        console.log('[EventSub-Broadcaster] Bits/Cheer event active');
       } catch (err) {
         console.warn('[EventSub-Broadcaster] Bits/Cheer event failed:', err.message);
       }
@@ -591,7 +592,7 @@ function setupBroadcasterEventSub() {
       console.warn('[EventSub-Broadcaster] Skipping bits/cheer events: missing bits:read scope');
     }
 
-    console.log('✓ Broadcaster EventSub listener initialized successfully');
+    console.log('Broadcaster EventSub listener initialized successfully');
   } catch (err) {
     console.error('Broadcaster EventSub setup failed:', err?.message || err);
   }
@@ -821,35 +822,28 @@ async function validateAndRefreshTokens() {
   console.log('');
 }
 
-// Recreate auth provider and clients with updated tokens
+// Recreate API clients with updated tokens
 function recreateAuthProvider() {
-  // Create new auth provider with updated token
-  global.authProvider = new StaticAuthProvider(
-    config.clientId,
-    config.accessToken,
-    config.scopes
-  );
-  
-  // Recreate API and Chat clients
-  global.apiClient = new ApiClient({ authProvider: global.authProvider });
-  global.chatClient = new ChatClient({ 
-    authProvider: global.authProvider, 
-    channels: config.channels 
-  });
-  
-  // Recreate broadcaster auth provider if broadcaster token exists
+  // Update API client token
+  global.apiClient.setAccessToken(config.accessToken);
+
+  // Update chat client token (will reconnect if needed)
+  global.chatClient.updateToken(config.accessToken);
+
+  // Update broadcaster API client if broadcaster token exists
   if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
-    const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || 'moderator:read:followers channel:read:redemptions').split(' ').filter(s => s);
-    broadcasterAuthProvider = new StaticAuthProvider(
-      config.clientId,
-      process.env.TWITCH_BROADCASTER_ACCESS_TOKEN,
-      broadcasterScopes
-    );
-    broadcasterApiClient = new ApiClient({ authProvider: broadcasterAuthProvider });
-    console.log('✓ Broadcaster auth provider recreated with new tokens');
+    if (broadcasterApiClient) {
+      broadcasterApiClient.setAccessToken(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN);
+    } else {
+      broadcasterApiClient = new TwitchHelixAPI({
+        clientId: config.clientId,
+        accessToken: process.env.TWITCH_BROADCASTER_ACCESS_TOKEN
+      });
+    }
+    console.log('Broadcaster API client recreated with new tokens');
   }
-  
-  console.log('✓ Auth provider recreated with new tokens');
+
+  console.log('API clients recreated with new tokens');
 }
 
 
@@ -985,13 +979,13 @@ async function refreshToken(accessToken, refreshToken, accountType) {
 async function init() {
   try {
     console.log(`Initializing... (broadcaster: ${config.broadcasterName})`);
-    
+
     // Parallelize API calls for faster initialization
     const [tokenInfo, user] = await Promise.all([
       apiClient.getTokenInfo(),
-      apiClient.users.getUserByName(config.broadcasterName)
+      apiClient.getUserByName(config.broadcasterName)
     ]);
-    
+
     tokenUserId = tokenInfo?.userId || null;
     if (!tokenUserId) {
       throw new Error('OAuth token missing userId; ensure the token is tied to a user account.');
@@ -1000,26 +994,26 @@ async function init() {
     if (!user) {
       throw new Error(`Broadcaster "${config.broadcasterName}" not found. Check your .env TWITCH_BROADCASTER_NAME`);
     }
-    
-    const tokenUser = await apiClient.users.getUserById(tokenUserId);
-    
+
+    const tokenUser = await apiClient.getUserById(tokenUserId);
+
     broadcasterId = String(user.id);
     broadcasterUserId = String(user.id);
     if (!/^\d+$/.test(broadcasterId)) {
       throw new Error(`Resolved broadcasterId is non-numeric: ${broadcasterId}`);
     }
-    console.log(`✓ Got broadcaster ID: ${broadcasterId}`);
-    console.log(`✓ Token user ID: ${tokenUserId} (${tokenUser?.name || 'unknown'})`);
-    console.log(`⚠ Ensure ${tokenUser?.name || tokenUserId} is a moderator in the channel!`);
-    
+    console.log(`Got broadcaster ID: ${broadcasterId}`);
+    console.log(`Token user ID: ${tokenUserId} (${tokenUser?.name || tokenUser?.login || 'unknown'})`);
+    console.log(`Ensure ${tokenUser?.name || tokenUser?.login || tokenUserId} is a moderator in the channel!`);
+
     // Load built-in command configuration
     await loadBuiltinCommands();
-    
+
     // Update dashboard
     updateDashboard();
     initComplete = true;
-    setupEventSub();
-    setupBroadcasterEventSub();
+    await setupEventSub();
+    await setupBroadcasterEventSub();
     startAnnouncements();
   } catch (error) {
     console.error('Failed to initialize bot:', error.message);
@@ -1077,11 +1071,11 @@ async function createClip() {
 // Get follow age
 async function getFollowAge(username) {
   try {
-    const user = await apiClient.users.getUserByName(username);
+    const user = await apiClient.getUserByName(username);
     if (!user) return { success: false, error: 'User not found' };
 
     // getChannelFollowers returns a paginated result with a 'data' property
-    const followsResult = await apiClient.channels.getChannelFollowers(broadcasterId, user.id);
+    const followsResult = await apiClient.getChannelFollowers(broadcasterId, user.id);
     const follows = followsResult?.data || [];
 
     if (!follows || follows.length === 0) {
@@ -1119,7 +1113,7 @@ async function getFollowAge(username) {
 // Send shoutout
 async function sendShoutout(targetUsername) {
   try {
-    const user = await apiClient.users.getUserByName(targetUsername);
+    const user = await apiClient.getUserByName(targetUsername);
     if (!user) return { success: false, error: 'User not found' };
 
     if (!tokenUserId) {
@@ -1127,36 +1121,29 @@ async function sendShoutout(targetUsername) {
     }
 
     // Get the user's channel information to find last played game
-    const channelInfo = await apiClient.channels.getChannelInfoById(user.id);
+    const channelInfo = await apiClient.getChannelInfo(user.id);
     const gameName = channelInfo?.gameName || 'something awesome';
 
     // Check if the target user is live
-    const streamInfo = await apiClient.streams.getStreamByUserId(user.id);
+    const streamInfo = await apiClient.getStreamByUserId(user.id);
     const isLive = streamInfo !== null;
 
     if (isLive) {
       // Send the shoutout via API if they're live
-      const response = await fetch(`https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${user.id}&moderator_id=${tokenUserId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Client-Id': config.clientId
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
+      const shoutoutResult = await apiClient.sendShoutout(broadcasterId, user.id, tokenUserId);
+      if (!shoutoutResult.success) {
+        console.warn('Shoutout API failed:', shoutoutResult.error);
+        // Continue anyway - we'll still send the chat message
       }
     }
-    
+
     return {
       success: true,
-      message: `📢 Shoutout to ${user.displayName}! Check out their channel: https://twitch.tv/${user.name} - They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
+      message: `Shoutout to ${user.displayName}! Check out their channel: https://twitch.tv/${user.name || user.login} - They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
       username: user.displayName,
       gameName: gameName,
       isLive: isLive,
-      channelUrl: `https://twitch.tv/${user.name}`
+      channelUrl: `https://twitch.tv/${user.name || user.login}`
     };
   } catch (error) {
     console.error('Failed to send shoutout:', error.message);
@@ -1254,17 +1241,12 @@ async function timeoutUser(channel, username, durationSeconds) {
     if (!tokenUserId || !broadcasterId) return;
     if (!config.scopes.includes('moderator:manage:banned_users')) return;
 
-    // Use Twitch API to timeout the user
-    await axios.post(
-      `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${broadcasterId}&moderator_id=${tokenUserId}`,
-      {
-        user_id: (await apiClient.users.getUserByName(username))?.id || 0,
-        duration: durationSeconds
-      },
-      {
-        headers: getApiHeaders()
-      }
-    );
+    // Get user ID first
+    const user = await apiClient.getUserByName(username);
+    if (!user) return;
+
+    // Use Helix API to timeout the user
+    await apiClient.timeoutUser(broadcasterId, tokenUserId, user.id, durationSeconds);
   } catch (error) {
     console.error(`Failed to timeout ${username}:`, error.message);
   }
