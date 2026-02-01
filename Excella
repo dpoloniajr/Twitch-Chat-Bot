@@ -638,7 +638,7 @@ async function updateDashboard() {
       commands: [
         { name: '!clip', description: 'Create a clip of the stream' },
         { name: '!followage [username]', description: 'Check how long someone has been following' },
-        { name: '!shoutout [username]', description: 'Shout out another streamer (mods only)' },
+        { name: '!shoutout [username] / !so [username]', description: 'Shout out another streamer (mods only)' },
         { name: '!poll', description: 'Manage channel polls' },
         { name: '!prediction', description: 'Manage channel predictions' },
         { name: '!title "new title"', description: 'Update stream title (mods/broadcaster)' },
@@ -1152,10 +1152,11 @@ async function sendShoutout(targetUsername) {
     
     return {
       success: true,
-      message: `📢 Shoutout to ${user.displayName}! They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
+      message: `📢 Shoutout to ${user.displayName}! Check out their channel: https://twitch.tv/${user.name} - They're playing ${gameName}${isLive ? ' - go follow them!' : ''}`,
       username: user.displayName,
       gameName: gameName,
-      isLive: isLive
+      isLive: isLive,
+      channelUrl: `https://twitch.tv/${user.name}`
     };
   } catch (error) {
     console.error('Failed to send shoutout:', error.message);
@@ -1623,7 +1624,7 @@ async function handleGame(channel, username, gameQuery) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !shoutout [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
