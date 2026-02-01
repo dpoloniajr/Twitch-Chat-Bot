@@ -36,9 +36,47 @@ const alertConfigFile = path.join(logsDir, 'alert-config.json');
 const envPath = path.join(__dirname, '..', '.env');
 
 // Supported media types
-const SUPPORTED_IMAGE_TYPES = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+const SUPPORTED_IMAGE_TYPES = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const SUPPORTED_VIDEO_TYPES = ['.mp4', '.webm', '.mov'];
 const SUPPORTED_AUDIO_TYPES = ['.mp3', '.ogg', '.wav', '.m4a'];
+
+// MIME type signatures (magic numbers) for validation
+const MIME_SIGNATURES = {
+  '.png': [0x89, 0x50, 0x4e, 0x47],
+  '.jpg': [0xff, 0xd8, 0xff],
+  '.jpeg': [0xff, 0xd8, 0xff],
+  '.gif': [0x47, 0x49, 0x46],
+  '.webp': [0x52, 0x49, 0x46, 0x46], // RIFF for WebP
+  '.mp4': [0x66, 0x74, 0x79, 0x70], // ftyp
+  '.webm': [0x1a, 0x45, 0xdf, 0xa3],
+  '.mov': [0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70],
+  '.mp3': [0xff, 0xfb], // MPEG Audio Frame Header
+  '.ogg': [0x4f, 0x67, 0x67, 0x53],
+  '.wav': [0x52, 0x49, 0x46, 0x46],
+  '.m4a': [0xff, 0xfb]
+};
+
+// Rate limiting for uploads (IP-based, in-memory)
+const uploadRateLimits = new Map();
+const UPLOAD_LIMIT_WINDOW = 60000; // 1 minute
+const UPLOAD_LIMIT_COUNT = 10; // max 10 uploads per minute
+
+function checkUploadRateLimit(ip) {
+  const now = Date.now();
+  if (!uploadRateLimits.has(ip)) {
+    uploadRateLimits.set(ip, []);
+  }
+
+  const timestamps = uploadRateLimits.get(ip).filter(t => now - t < UPLOAD_LIMIT_WINDOW);
+  uploadRateLimits.set(ip, timestamps);
+
+  if (timestamps.length >= UPLOAD_LIMIT_COUNT) {
+    return false;
+  }
+
+  timestamps.push(now);
+  return true;
+}
 
 // Default alert configuration template
 const DEFAULT_ALERT_CONFIG = {
@@ -1114,6 +1152,40 @@ app.post('/api/alerts/config/reset', async (req, res) => {
 // MEDIA UPLOAD API
 // ============================================
 
+// Validate file against MIME type signatures (magic numbers)
+function validateMimeType(buffer, ext) {
+  const signature = MIME_SIGNATURES[ext];
+  if (!signature) {
+    return false; // Unknown extension
+  }
+
+  // For signatures that are position-specific (e.g., WebP and WAV use RIFF)
+  // we need more sophisticated validation
+  if (ext === '.webp' || ext === '.wav') {
+    if (buffer.length < 12) return false;
+    // Check RIFF header
+    if (buffer[0] !== 0x52 || buffer[1] !== 0x49 || buffer[2] !== 0x46 || buffer[3] !== 0x46) {
+      return false;
+    }
+    // For WebP, check for 'WEBP' at position 8
+    if (ext === '.webp') {
+      return buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    }
+    // For WAV, check for 'WAVE' at position 8
+    if (ext === '.wav') {
+      return buffer[8] === 0x57 && buffer[9] === 0x41 && buffer[10] === 0x56 && buffer[11] === 0x45;
+    }
+  }
+
+  // Check basic signature match
+  for (let i = 0; i < signature.length; i++) {
+    if (buffer[i] !== signature[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Helper function to validate and save uploaded media
 async function saveUploadedMedia(base64Data, filename, mediaType) {
   const ext = path.extname(filename).toLowerCase();
@@ -1141,12 +1213,6 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
     throw new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
   }
 
-  // Generate unique filename
-  const uniqueId = crypto.randomBytes(8).toString('hex');
-  const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const uniqueFilename = `${uniqueId}_${safeName}`;
-  const filePath = path.join(targetDir, uniqueFilename);
-
   // Remove base64 prefix if present
   const base64Content = base64Data.replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(base64Content, 'base64');
@@ -1155,6 +1221,17 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
   if (buffer.length > 10 * 1024 * 1024) {
     throw new Error('File size exceeds 10MB limit');
   }
+
+  // Validate MIME type using magic numbers to prevent content-type spoofing
+  if (!validateMimeType(buffer, ext)) {
+    throw new Error(`File content does not match ${ext} format. Detected content-type spoofing attempt.`);
+  }
+
+  // Generate unique filename
+  const uniqueId = crypto.randomBytes(8).toString('hex');
+  const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const uniqueFilename = `${uniqueId}_${safeName}`;
+  const filePath = path.join(targetDir, uniqueFilename);
 
   await fs.writeFile(filePath, buffer);
 
@@ -1169,6 +1246,12 @@ async function saveUploadedMedia(base64Data, filename, mediaType) {
 // Upload image
 app.post('/api/uploads/image', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
@@ -1184,6 +1267,12 @@ app.post('/api/uploads/image', async (req, res) => {
 // Upload video
 app.post('/api/uploads/video', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
@@ -1199,6 +1288,12 @@ app.post('/api/uploads/video', async (req, res) => {
 // Upload sound
 app.post('/api/uploads/sound', async (req, res) => {
   try {
+    // Rate limiting to prevent abuse
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkUploadRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Upload rate limit exceeded. Max 10 uploads per minute.' });
+    }
+
     const { data, filename } = req.body;
     if (!data || !filename) {
       return res.status(400).json({ error: 'data and filename are required' });
