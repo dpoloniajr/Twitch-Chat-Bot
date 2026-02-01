@@ -993,42 +993,6 @@ function toggleCustomSoundInput(alertType, soundValue) {
   }
 }
 
-// Show alert type config section
-function showAlertTypeConfig(alertType, event) {
-  // Hide all config sections
-  document.querySelectorAll('.alert-type-config').forEach(el => {
-    el.classList.remove('active');
-  });
-
-  // Remove active from all tabs
-  document.querySelectorAll('.alert-tab').forEach(el => {
-    el.classList.remove('active');
-  });
-
-  // Show selected section
-  const configEl = document.getElementById(`${alertType}-config`);
-  if (configEl) configEl.classList.add('active');
-
-  // Mark tab as active
-  if (event && event.currentTarget) {
-    event.currentTarget.classList.add('active');
-  }
-}
-
-// Toggle section collapse
-function toggleSection(sectionId) {
-  const section = document.getElementById(sectionId);
-  const header = section.previousElementSibling;
-
-  if (section.classList.contains('collapsed')) {
-    section.classList.remove('collapsed');
-    header.classList.remove('collapsed');
-  } else {
-    section.classList.add('collapsed');
-    header.classList.add('collapsed');
-  }
-}
-
 // Test specific alert type
 async function testAlertType(alertType) {
   const testData = {
