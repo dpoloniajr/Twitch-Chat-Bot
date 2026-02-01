@@ -449,7 +449,7 @@
         // Set icon and labels
         alertIcon.textContent = alertIcons[alert.alertType] || '🔔';
         alertTypeLabel.textContent = alertLabels[alert.alertType] || 'Alert';
-        alertUsername.textContent = OverlayUtils.escapeHtml(alert.user || 'Unknown');
+        alertUsername.textContent = alert.user || 'Unknown';
 
         // Set message
         let message = cfg.messageTemplate || '';
@@ -501,7 +501,7 @@
 
         // Show user message if present
         if (alert.message) {
-          alertUserMessage.textContent = '"' + OverlayUtils.escapeHtml(alert.message) + '"';
+          alertUserMessage.textContent = '"' + alert.message + '"';
           alertUserMessage.style.display = 'block';
         }
 
