@@ -499,8 +499,8 @@
           alertDetails.textContent = alert.reward;
         }
 
-        // Show user message if present
-        if (alert.message) {
+        // Show user message if present and not disabled by config
+        if (alert.message && cfg.showMessage !== false) {
           alertUserMessage.textContent = '"' + alert.message + '"';
           alertUserMessage.style.display = 'block';
         }
