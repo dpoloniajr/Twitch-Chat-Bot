@@ -432,13 +432,17 @@
 
         // Set message
         let message = cfg.messageTemplate || '';
-        // Replace placeholders
-        message = message
-          .replace('{user}', alert.user || '')
-          .replace('{amount}', alert.amount || '')
-          .replace('{viewers}', alert.viewers || '')
-          .replace('{reward}', alert.reward || '')
-          .replace('{tier}', OverlayUtils.parseTier(alert.tier) || '');
+        // Replace placeholders (global regex for multiple occurrences)
+        message = message.replace(/\{(\w+)\}/g, (match, key) => {
+          const values = {
+            'user': alert.user || '',
+            'amount': alert.amount || '',
+            'viewers': alert.viewers || '',
+            'reward': alert.reward || '',
+            'tier': OverlayUtils.parseTier(alert.tier) || ''
+          };
+          return values[key] !== undefined ? values[key] : match;
+        });
         alertMessage.textContent = message;
 
         // Type-specific content
