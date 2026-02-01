@@ -956,33 +956,6 @@ function populateAlertConfigUI() {
   });
 }
 
-// Update global setting
-async function updateGlobalSetting(setting, value) {
-  try {
-    const res = await fetch('/api/alerts/config/global', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [setting]: value })
-    });
-    if (res.ok) {
-      const result = await res.json();
-      if (alertConfig) alertConfig.global = result.global;
-      console.log(`[AlertConfig] Updated global.${setting}:`, value);
-
-      // Update display elements
-      if (setting === 'defaultVolume') {
-        document.getElementById('globalVolumeDisplay').textContent = value;
-      } else if (setting === 'ttsRate') {
-        document.getElementById('globalTtsRateDisplay').textContent = value;
-      } else if (setting === 'ttsPitch') {
-        document.getElementById('globalTtsPitchDisplay').textContent = value;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to update global setting:', error);
-  }
-}
-
 // Update alert type setting
 async function updateAlertSetting(alertType, setting, value) {
   try {
@@ -1017,22 +990,6 @@ function toggleCustomSoundInput(alertType, soundValue) {
   const groupEl = document.getElementById(`${alertType}-customSound-group`);
   if (groupEl) {
     groupEl.style.display = soundValue === 'custom' ? 'block' : 'none';
-  }
-}
-
-// Update variation
-async function updateVariation(alertType, variationKey, setting, value) {
-  try {
-    const res = await fetch(`/api/alerts/config/${alertType}/variation/${variationKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [setting]: value })
-    });
-    if (res.ok) {
-      console.log(`[AlertConfig] Updated ${alertType}.variations.${variationKey}.${setting}:`, value);
-    }
-  } catch (error) {
-    console.error('Failed to update variation:', error);
   }
 }
 
