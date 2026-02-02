@@ -30,3 +30,32 @@ export {
   getCommandRegistry,
   resetCommandRegistry,
 } from './commands/registry';
+
+export {
+  ModerationManager,
+} from './commands/moderation';
+
+// Export services
+export {
+  LoyaltyManager,
+  getLoyaltyManager,
+  resetLoyaltyManager,
+} from './services/loyalty';
+
+export {
+  QuotesManager,
+  getQuotesManager,
+  resetQuotesManager,
+} from './services/quotes';
+
+export {
+  CountersManager,
+  getCountersManager,
+  resetCountersManager,
+} from './services/counters';
+
+export {
+  StreamUtilsManager,
+  getStreamUtilsManager,
+  resetStreamUtilsManager,
+} from './services/stream-utils';
