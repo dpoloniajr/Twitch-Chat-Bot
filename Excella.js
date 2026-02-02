@@ -4,6 +4,7 @@ const TwitchIRCClient = require('./lib/twitch-irc-client');
 const TwitchEventSubWS = require('./lib/twitch-eventsub-ws');
 const axios = require('axios');
 const fs = require('fs');
+const { withCrossProcessLock } = require('./lib/file-lock');
 require('dotenv').config();
 
 // ==================== ACCOUNT MANAGER SUPPORT ====================
@@ -102,9 +103,6 @@ let customCommands = [];
 let builtinCommands = [];
 let eventSub = null;
 let broadcasterEventSub = null;
-
-// File write lock to prevent race conditions when updating .env
-let envWriteLock = Promise.resolve();
 
 // Token validation caching (avoid repeated HTTP calls)
 let cachedTokenValidation = {
@@ -952,8 +950,7 @@ async function refreshToken(accessToken, refreshToken, accountType) {
     const newRefreshToken = response.data.refresh_token;
 
     // Update .env file with new tokens using a file write lock to prevent race conditions
-    await envWriteLock;
-    envWriteLock = (async () => {
+    await withCrossProcessLock('.env', async () => {
       try {
         let envContent = fs.readFileSync('.env', 'utf8');
 
@@ -983,8 +980,7 @@ async function refreshToken(accessToken, refreshToken, accountType) {
         console.error(`Failed to update .env file for ${accountType} token:`, err.message);
         throw err;
       }
-    })();
-    await envWriteLock;
+    });
 
     // Also update process.env for broadcaster tokens
     if (accountType === 'broadcaster') {

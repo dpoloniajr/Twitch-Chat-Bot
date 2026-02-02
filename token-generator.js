@@ -2,6 +2,9 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { withCrossProcessLock } = require('./lib/file-lock');
+const { asyncHandler, validateRequest, ValidationError } = require('./lib/api-utils');
+const { errorHandler } = require('./dashboard/lib/middleware');
 require('dotenv').config();
 
 const AccountManager = require('./account-manager');
@@ -147,48 +150,42 @@ const DEFAULT_SCOPES = [
 // ==================== API ENDPOINTS ====================
 
 // Token validation endpoint
-app.get('/api/validate-token', async (req, res) => {
+app.get('/api/validate-token', asyncHandler(async (req, res) => {
   const { token } = req.query;
   
   if (!token) {
-    return res.json({ valid: false, error: 'No token provided' });
+    throw new ValidationError('No token provided');
   }
 
-  try {
-    // Validate token with Twitch
-    const tokenInfoResponse = await axios.get('https://id.twitch.tv/oauth2/validate', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+  // Validate token with Twitch
+  const tokenInfoResponse = await axios.get('https://id.twitch.tv/oauth2/validate', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
 
-    const tokenInfo = tokenInfoResponse.data;
-    
-    // Get user info
-    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Client-ID': CLIENT_ID
-      }
-    });
+  const tokenInfo = tokenInfoResponse.data;
+  
+  // Get user info
+  const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Client-ID': CLIENT_ID
+    }
+  });
 
-    const user = userResponse.data.data[0];
+  const user = userResponse.data.data[0];
 
-    res.json({
-      valid: true,
-      username: user.display_name,
-      userId: user.id,
-      scopes: tokenInfo.scopes || [],
-      expiresIn: tokenInfo.expires_in,
-      clientId: tokenInfo.client_id
-    });
-  } catch (error) {
-    res.json({
-      valid: false,
-      error: error.response?.data?.message || 'Invalid or expired token'
-    });
-  }
-});
+  res.json({
+    success: true,
+    valid: true,
+    username: user.display_name,
+    userId: user.id,
+    scopes: tokenInfo.scopes || [],
+    expiresIn: tokenInfo.expires_in,
+    clientId: tokenInfo.client_id
+  });
+}));
 
 // Get current tokens from .env
 app.get('/api/current-tokens', (req, res) => {
@@ -303,116 +300,88 @@ app.get('/api/scope-presets', (req, res) => {
 // ==================== ACCOUNT MANAGEMENT API ====================
 
 // List all accounts
-app.get('/api/accounts', (req, res) => {
-  try {
-    const accounts = accountManager.listAccounts();
-    res.json({ success: true, accounts });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+app.get('/api/accounts', asyncHandler(async (req, res) => {
+  const accounts = accountManager.listAccounts();
+  res.json({ success: true, accounts });
+}));
 
 // Get single account
-app.get('/api/accounts/:name', (req, res) => {
-  try {
-    const account = accountManager.getAccount(req.params.name);
-    if (!account) {
-      return res.status(404).json({ success: false, error: 'Account not found' });
-    }
-    // Return account info without clientSecret
-    const publicInfo = {
-      name: account.name,
-      clientId: account.clientId,
-      broadcasterName: account.broadcasterName,
-      channels: account.channels,
-      accessToken: null,
-      refreshToken: null,
-      tokenScopes: account.tokenScopes,
-      broadcasterAccessToken: null,
-      broadcasterRefreshToken: null,
-      broadcasterScopes: account.broadcasterScopes,
-      createdAt: account.createdAt,
-      updatedAt: account.updatedAt,
-      hasAccessToken: !!account.accessToken,
-      hasBroadcasterToken: !!account.broadcasterAccessToken,
-      tokenStatus: accountManager.getTokenStatus(account.tokenExpiresAt),
-      broadcasterTokenStatus: accountManager.getTokenStatus(account.broadcasterTokenExpiresAt)
-    };
-    res.json({ success: true, account: publicInfo });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+app.get('/api/accounts/:name', asyncHandler(async (req, res) => {
+  const account = accountManager.getAccount(req.params.name);
+  if (!account) {
+    throw new ValidationError('Account not found', 404);
   }
-});
+  // Return account info without clientSecret
+  const publicInfo = {
+    name: account.name,
+    clientId: account.clientId,
+    broadcasterName: account.broadcasterName,
+    channels: account.channels,
+    accessToken: null,
+    refreshToken: null,
+    tokenScopes: account.tokenScopes,
+    broadcasterAccessToken: null,
+    broadcasterRefreshToken: null,
+    broadcasterScopes: account.broadcasterScopes,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+    hasAccessToken: !!account.accessToken,
+    hasBroadcasterToken: !!account.broadcasterAccessToken,
+    tokenStatus: accountManager.getTokenStatus(account.tokenExpiresAt),
+    broadcasterTokenStatus: accountManager.getTokenStatus(account.broadcasterTokenExpiresAt)
+  };
+  res.json({ success: true, account: publicInfo });
+}));
+
+const accountSchema = {
+  accountName: { required: true, type: 'string' },
+  clientId: { required: true, type: 'string' },
+  clientSecret: { required: true, type: 'string' },
+  broadcasterName: { required: true, type: 'string' }
+};
 
 // Create new account
-app.post('/api/accounts', (req, res) => {
-  try {
-    const { accountName, clientId, clientSecret, broadcasterName, channels = [] } = req.body;
+app.post('/api/accounts', validateRequest(accountSchema), asyncHandler(async (req, res) => {
+  const { accountName, clientId, clientSecret, broadcasterName, channels = [] } = req.body;
 
-    if (!accountName || !clientId || !clientSecret || !broadcasterName) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: accountName, clientId, clientSecret, broadcasterName'
-      });
-    }
+  const account = accountManager.createAccount(
+    accountName,
+    clientId,
+    clientSecret,
+    broadcasterName,
+    channels
+  );
 
-    const account = accountManager.createAccount(
-      accountName,
-      clientId,
-      clientSecret,
-      broadcasterName,
-      channels
-    );
-
-    res.json({ success: true, message: `Account "${accountName}" created`, account });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
+  res.json({ success: true, message: `Account "${accountName}" created`, account });
+}));
 
 // Update account settings
-app.patch('/api/accounts/:name', (req, res) => {
-  try {
-    const { broadcasterName, channels } = req.body;
-    const updates = {};
-    if (broadcasterName) updates.broadcasterName = broadcasterName;
-    if (channels) updates.channels = channels;
+app.patch('/api/accounts/:name', asyncHandler(async (req, res) => {
+  const { broadcasterName, channels } = req.body;
+  const updates = {};
+  if (broadcasterName) updates.broadcasterName = broadcasterName;
+  if (channels) updates.channels = channels;
 
-    const account = accountManager.updateAccountSettings(req.params.name, updates);
-    const publicInfo = accountManager.listAccounts().find(a => a.name === req.params.name);
+  const account = accountManager.updateAccountSettings(req.params.name, updates);
+  const publicInfo = accountManager.listAccounts().find(a => a.name === req.params.name);
 
-    res.json({ success: true, message: 'Account updated', account: publicInfo });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
+  res.json({ success: true, message: 'Account updated', account: publicInfo });
+}));
 
 // Rename account
-app.post('/api/accounts/:name/rename', (req, res) => {
-  try {
-    const { newName } = req.body;
-    if (!newName) {
-      return res.status(400).json({ success: false, error: 'newName is required' });
-    }
+app.post('/api/accounts/:name/rename', validateRequest({ newName: { required: true, type: 'string' } }), asyncHandler(async (req, res) => {
+  const { newName } = req.body;
+  const account = accountManager.renameAccount(req.params.name, newName);
+  const publicInfo = accountManager.listAccounts().find(a => a.name === newName);
 
-    const account = accountManager.renameAccount(req.params.name, newName);
-    const publicInfo = accountManager.listAccounts().find(a => a.name === newName);
-
-    res.json({ success: true, message: `Account renamed to "${newName}"`, account: publicInfo });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
+  res.json({ success: true, message: `Account renamed to "${newName}"`, account: publicInfo });
+}));
 
 // Delete account
-app.delete('/api/accounts/:name', (req, res) => {
-  try {
-    accountManager.deleteAccount(req.params.name);
-    res.json({ success: true, message: `Account "${req.params.name}" deleted` });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
+app.delete('/api/accounts/:name', asyncHandler(async (req, res) => {
+  accountManager.deleteAccount(req.params.name);
+  res.json({ success: true, message: `Account "${req.params.name}" deleted` });
+}));
 
 // Export account as .env
 app.get('/api/accounts/:name/export', (req, res) => {
@@ -2095,57 +2064,59 @@ app.get('/callback', async (req, res) => {
     }
 
     // Fallback: Save to .env file
-    let envContent;
-    try {
-      envContent = fs.readFileSync('.env', 'utf8');
-      console.log('Read .env file successfully');
-    } catch (readError) {
-      console.error('Error reading .env file:', readError.message);
-      return res.send(`
-        <h1>Error reading .env file</h1>
-        <p>${readError.message}</p>
-      `);
-    }
+    await withCrossProcessLock('.env', async () => {
+      let envContent;
+      try {
+        envContent = fs.readFileSync('.env', 'utf8');
+        console.log('Read .env file successfully');
+      } catch (readError) {
+        console.error('Error reading .env file:', readError.message);
+        return res.send(`
+          <h1>Error reading .env file</h1>
+          <p>${readError.message}</p>
+        `);
+      }
 
-    // Update .env with new tokens
-    const scopeString = scopeArray.join(' ');
-    
-    let updatedEnv;
-    if (accountType === 'broadcaster') {
-      console.log('Updating broadcaster tokens');
-      updatedEnv = envContent
-        .replace(/TWITCH_BROADCASTER_ACCESS_TOKEN=.*/, `TWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`)
-        .replace(/TWITCH_BROADCASTER_REFRESH_TOKEN=.*/, `TWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`)
-        .replace(/TWITCH_BROADCASTER_SCOPES=.*/, `TWITCH_BROADCASTER_SCOPES=${scopeString}`);
+      // Update .env with new tokens
+      const scopeString = scopeArray.join(' ');
       
-      if (!envContent.includes('TWITCH_BROADCASTER_ACCESS_TOKEN=')) {
-        updatedEnv += `\nTWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`;
+      let updatedEnv;
+      if (accountType === 'broadcaster') {
+        console.log('Updating broadcaster tokens');
+        updatedEnv = envContent
+          .replace(/TWITCH_BROADCASTER_ACCESS_TOKEN=.*/, `TWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`)
+          .replace(/TWITCH_BROADCASTER_REFRESH_TOKEN=.*/, `TWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`)
+          .replace(/TWITCH_BROADCASTER_SCOPES=.*/, `TWITCH_BROADCASTER_SCOPES=${scopeString}`);
+        
+        if (!envContent.includes('TWITCH_BROADCASTER_ACCESS_TOKEN=')) {
+          updatedEnv += `\nTWITCH_BROADCASTER_ACCESS_TOKEN=${access_token}`;
+        }
+        if (!envContent.includes('TWITCH_BROADCASTER_REFRESH_TOKEN=')) {
+          updatedEnv += `\nTWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`;
+        }
+        if (!envContent.includes('TWITCH_BROADCASTER_SCOPES=')) {
+          updatedEnv += `\nTWITCH_BROADCASTER_SCOPES=${scopeString}`;
+        }
+      } else {
+        console.log('Updating bot tokens');
+        updatedEnv = envContent
+          .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
+          .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
+          .replace(/TWITCH_SCOPES=.*/, `TWITCH_SCOPES=${scopeString}`);
       }
-      if (!envContent.includes('TWITCH_BROADCASTER_REFRESH_TOKEN=')) {
-        updatedEnv += `\nTWITCH_BROADCASTER_REFRESH_TOKEN=${refresh_token}`;
-      }
-      if (!envContent.includes('TWITCH_BROADCASTER_SCOPES=')) {
-        updatedEnv += `\nTWITCH_BROADCASTER_SCOPES=${scopeString}`;
-      }
-    } else {
-      console.log('Updating bot tokens');
-      updatedEnv = envContent
-        .replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${access_token}`)
-        .replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${refresh_token}`)
-        .replace(/TWITCH_SCOPES=.*/, `TWITCH_SCOPES=${scopeString}`);
-    }
 
-    try {
-      fs.writeFileSync('.env', updatedEnv);
-      console.log('Tokens saved successfully');
-    } catch (writeError) {
-      console.error('Error writing to .env file:', writeError.message);
-      return res.send(`
-        <h1>Error saving tokens</h1>
-        <p>${writeError.message}</p>
-        <p>Please manually add these to your .env file</p>
-      `);
-    }
+      try {
+        fs.writeFileSync('.env', updatedEnv);
+        console.log('Tokens saved successfully');
+      } catch (writeError) {
+        console.error('Error writing to .env file:', writeError.message);
+        return res.send(`
+          <h1>Error saving tokens</h1>
+          <p>${writeError.message}</p>
+          <p>Please manually add these to your .env file</p>
+        `);
+      }
+    });
 
     res.send(`
       <!DOCTYPE html>
@@ -2206,6 +2177,19 @@ app.get('/callback', async (req, res) => {
       <a href="/">Try again</a>
     `);
   }
+});
+
+// Global error handler (API routes only)
+app.use((err, req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return errorHandler(err, req, res, next);
+  }
+  // For non-API routes (HTML), provide a simple HTML error page
+  res.status(err.statusCode || 500).send(`
+    <h1>Something went wrong</h1>
+    <p>${err.message}</p>
+    <a href="/">Back to Home</a>
+  `);
 });
 
 // Start server

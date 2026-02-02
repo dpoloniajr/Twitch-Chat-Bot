@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { withCrossProcessLock, withCrossProcessLockSync } = require('./lib/file-lock');
 
 const ACCOUNTS_FILE = 'accounts.encrypted.json';
 const ENCRYPTION_KEY_FILE = '.encryption-key';
@@ -82,40 +83,44 @@ class AccountManager {
       return;
     }
 
-    try {
-      const fileData = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
-      this.accounts = {};
+    return withCrossProcessLockSync(ACCOUNTS_FILE, () => {
+      try {
+        const fileData = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
+        this.accounts = {};
 
-      for (const [accountName, encryptedData] of Object.entries(fileData)) {
-        const decrypted = this.decrypt(encryptedData);
-        if (decrypted) {
-          this.accounts[accountName] = decrypted;
+        for (const [accountName, encryptedData] of Object.entries(fileData)) {
+          const decrypted = this.decrypt(encryptedData);
+          if (decrypted) {
+            this.accounts[accountName] = decrypted;
+          }
         }
-      }
 
-      console.log(`✓ Loaded ${Object.keys(this.accounts).length} account(s)`);
-    } catch (err) {
-      console.error('Failed to load accounts:', err.message);
-      this.accounts = {};
-    }
+        console.log(`✓ Loaded ${Object.keys(this.accounts).length} account(s)`);
+      } catch (err) {
+        console.error('Failed to load accounts:', err.message);
+        this.accounts = {};
+      }
+    });
   }
 
   /**
    * Save accounts to encrypted storage
    */
   saveAccounts() {
-    try {
-      const fileData = {};
+    return withCrossProcessLockSync(ACCOUNTS_FILE, () => {
+      try {
+        const fileData = {};
 
-      for (const [accountName, accountData] of Object.entries(this.accounts)) {
-        fileData[accountName] = this.encrypt(accountData);
+        for (const [accountName, accountData] of Object.entries(this.accounts)) {
+          fileData[accountName] = this.encrypt(accountData);
+        }
+
+        fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(fileData, null, 2), { mode: 0o600 });
+      } catch (err) {
+        console.error('Failed to save accounts:', err.message);
+        throw err;
       }
-
-      fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(fileData, null, 2), { mode: 0o600 });
-    } catch (err) {
-      console.error('Failed to save accounts:', err.message);
-      throw err;
-    }
+    });
   }
 
   /**

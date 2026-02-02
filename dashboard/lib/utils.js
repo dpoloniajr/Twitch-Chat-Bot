@@ -2,35 +2,13 @@ const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
 const { MIME_SIGNATURES, UPLOAD_LIMIT_WINDOW, UPLOAD_LIMIT_COUNT } = require('./constants');
+const { withCrossProcessLock } = require('../../lib/file-lock');
 
-class ValidationError extends Error {
-  constructor(message, statusCode = 400) {
-    super(message);
-    this.name = 'ValidationError';
-    this.statusCode = statusCode;
-  }
-}
+const { ValidationError, asyncHandler, validateRequest } = require('../../lib/api-utils');
 
-// Simple in-memory lock/queue to prevent race conditions within the same process
-const fileLocks = new Map();
-
+// Wraps the cross-process lock to provide the same interface
 async function withFileLock(filePath, action) {
-  if (!fileLocks.has(filePath)) {
-    fileLocks.set(filePath, Promise.resolve());
-  }
-
-  const previousLock = fileLocks.get(filePath);
-  const newLock = (async () => {
-    await previousLock;
-    try {
-      return await action();
-    } finally {
-      // No-op, just ensuring we proceed to next action
-    }
-  })();
-
-  fileLocks.set(filePath, newLock.catch(() => {})); // Prevent chain break on error
-  return newLock;
+  return withCrossProcessLock(filePath, action);
 }
 
 async function upsertEnvValue(envPath, key, value) {
@@ -115,5 +93,7 @@ module.exports = {
   withFileLock,
   upsertEnvValue,
   validateMimeType,
-  checkUploadRateLimit
+  checkUploadRateLimit,
+  validateRequest,
+  asyncHandler
 };

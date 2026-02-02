@@ -86,6 +86,10 @@ app.use('/obs', require('./routes/obs')(paths));
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// Global error handler
+const { errorHandler } = require('./lib/middleware');
+app.use(errorHandler);
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Dashboard client connected');
