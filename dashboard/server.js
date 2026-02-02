@@ -62,6 +62,20 @@ async function initLogs() {
     await initFile(paths.announcementsFile);
     await initFile(paths.redemptionsFile);
     await initFile(paths.eventSubEventsFile);
+    await initFile(paths.builtinCommandsFile, [
+      { name: '!clip', cooldownSeconds: 60 },
+      { name: '!followage', cooldownSeconds: 0 },
+      { name: '!shoutout', cooldownSeconds: 0 },
+      { name: '!so', cooldownSeconds: 0 },
+      { name: '!poll', cooldownSeconds: 0 },
+      { name: '!prediction', cooldownSeconds: 0 },
+      { name: '!title', cooldownSeconds: 0 },
+      { name: '!game', cooldownSeconds: 0 },
+      { name: '!commands', cooldownSeconds: 0 },
+      { name: '!addfilter', cooldownSeconds: 0 },
+      { name: '!removefilter', cooldownSeconds: 0 },
+      { name: '!filters', cooldownSeconds: 0 }
+    ]);
     await initFile(paths.obsConfigFile, {
       overlays: {
         alerts: { enabled: true, volume: 0.8, duration: 5 },
