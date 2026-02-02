@@ -10,10 +10,10 @@
   "name": "twitch-chat-bot",
   "version": "1.0.0",
   "description": "Twitch chat bot with web dashboard",
-  "main": "Excella",
+  "main": "Excella.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "bot": "node Excella",
+    "bot": "node Excella.js",
     "dashboard": "node dashboard/server.js",
     "dev": "concurrently \"npm run bot\" \"npm run dashboard\""
   },
