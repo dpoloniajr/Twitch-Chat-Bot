@@ -59,3 +59,24 @@ export {
   getStreamUtilsManager,
   resetStreamUtilsManager,
 } from './services/stream-utils';
+
+export {
+  BackupManager,
+  getBackupManager,
+  resetBackupManager,
+} from './services/backup';
+
+export {
+  AnalyticsManager,
+  getAnalyticsManager,
+  resetAnalyticsManager,
+} from './services/analytics';
+
+// Export integrations
+export {
+  DiscordWebhook,
+  DISCORD_COLORS,
+  initDiscordWebhook,
+  getDiscordWebhook,
+  resetDiscordWebhook,
+} from './integrations/discord';
