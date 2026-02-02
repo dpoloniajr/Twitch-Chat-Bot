@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Bot Token Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Twitch Bot Token Generator</h1>
+            <p>Advanced token management with dual-account support and scope validation</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab(event, 'wizard')">🧙 Setup Wizard</button>
+            <button class="tab" onclick="switchTab(event, 'manual')">⚙️ Manual Setup</button>
+            <button class="tab" onclick="switchTab(event, 'validate')">✅ Token Validator</button>
+            <button class="tab" onclick="switchTab(event, 'accounts')">👤 Account Manager</button>
+            <button class="tab" onclick="switchTab(event, 'backup')">💾 Backup & Recovery</button>
+        </div>
+
+        <!-- WIZARD TAB -->
+        <div id="wizard-tab" class="tab-content active">
+            <div class="wizard-steps">
+                <div class="wizard-step active" id="step1">
+                    <div class="wizard-step-circle">1</div>
+                    <div class="wizard-step-label">Choose Features</div>
+                </div>
+                <div class="wizard-step" id="step2">
+                    <div class="wizard-step-circle">2</div>
+                    <div class="wizard-step-label">Review Scopes</div>
+                </div>
+                <div class="wizard-step" id="step3">
+                    <div class="wizard-step-circle">3</div>
+                    <div class="wizard-step-label">Authorize</div>
+                </div>
+            </div>
+
+            <!-- Step 1: Features -->
+            <div class="wizard-content active" id="wizard-step-1">
+                <div class="section">
+                    <h3>Which features does your bot need?</h3>
+                    <p>Select the features and we'll automatically configure the required scopes.</p>
+                    <div class="feature-grid" id="wizard-features">
+                        <!-- Features populated by JS -->
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="wizardNext(1)">Next: Review Scopes →</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Review Scopes -->
+            <div class="wizard-content" id="wizard-step-2">
+                <div class="section">
+                    <h3>Review Required Scopes</h3>
+                    <p>Based on your selected features, here are the required scopes:</p>
+                    <div id="wizard-scope-summary" style="margin-top: 20px;"></div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="wizardPrev(2)">← Back</button>
+                    <button class="btn btn-primary" onclick="wizardNext(2)">Next: Authorize →</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Authorize -->
+            <div class="wizard-content" id="wizard-step-3">
+                <div class="section">
+                    <h3>Authorize Your Accounts</h3>
+                    <p>Click the buttons below to authorize each account. You'll need to log in as the respective account:</p>
+                    <div class="auth-buttons" id="wizard-auth-buttons"></div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="wizardPrev(3)">← Back</button>
+                    <button class="btn btn-success" onclick="wizardComplete()">Complete Setup ✓</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MANUAL TAB -->
+        <div id="manual-tab" class="tab-content">
+            <div class="section">
+                <h3>Quick Presets</h3>
+                <p>Select a preset to quickly configure common scope combinations:</p>
+                <div class="scope-presets" id="scope-presets"></div>
+            </div>
+
+            <div class="account-selector">
+                <label>Which account are you setting up?</label>
+                <select id="accountType" onchange="updateAccountContext()">
+                    <option value="bot">🤖 Bot Account - Chat commands & actions</option>
+                    <option value="broadcaster">📺 Broadcaster Account - EventSub subscriptions</option>
+                </select>
+                <p id="account-context" style="margin-top: 10px; font-size: 14px;"></p>
+            </div>
+
+            <div class="section">
+                <h3>Select Scopes</h3>
+                <p>Choose which permissions your bot needs. <span class="selected-count" id="scope-counter">0 selected</span></p>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="selectAll()">✓ Select All</button>
+                    <button class="btn btn-secondary" onclick="clearAll()">✗ Clear All</button>
+                </div>
+                <div id="scope-categories" style="margin-top: 20px;"></div>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px;">
+                <button class="btn btn-primary" onclick="generateTokens()" style="font-size: 18px; padding: 15px 40px;">
+                    Generate Tokens 🚀
+                </button>
+            </div>
+        </div>
+
+        <!-- VALIDATOR TAB -->
+        <div id="validate-tab" class="tab-content">
+            <div class="section">
+                <h3>Token Status</h3>
+                <p>Check the status and validity of your current tokens:</p>
+                <button class="btn btn-primary" onclick="validateTokens()" style="margin: 20px 0;">
+                    🔍 Check Token Status
+                </button>
+                <div class="token-status" id="token-validation">
+                    <div class="token-card loading">
+                        <h4>Bot Account <span class="status-badge loading">checking...</span></h4>
+                        <p>Click "Check Token Status" to validate</p>
+                    </div>
+                    <div class="token-card loading">
+                        <h4>Broadcaster Account <span class="status-badge loading">checking...</span></h4>
+                        <p>Click "Check Token Status" to validate</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Scope Comparison</h3>
+                <p>Compare your current scopes against requirements:</p>
+                <div id="scope-comparison" style="margin-top: 20px;">
+                    <p style="color: #999;">Run token validation above to see details</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACCOUNT MANAGER TAB -->
+        <div id="accounts-tab" class="tab-content">
+            <div class="section">
+                <h3>📋 My Accounts</h3>
+                <p>View and manage your saved Twitch bot accounts</p>
+                
+                <button class="btn btn-primary" onclick="loadAccounts()" style="margin-bottom: 20px;">
+                    🔄 Refresh Accounts
+                </button>
+
+                <div id="accounts-list">
+                    <p style="color: #999; text-align: center; padding: 20px;">Loading accounts...</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>➕ Create New Account</h3>
+                <p>Register a Twitch application with bot and broadcaster tokens</p>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Account Name</label>
+                        <input type="text" id="new-account-name" placeholder="e.g., mybot">
+                    </div>
+                    <div class="form-group">
+                        <label>Broadcaster Name</label>
+                        <input type="text" id="new-broadcaster-name" placeholder="e.g., broadcaster_name">
+                    </div>
+                    <div class="form-group">
+                        <label>Client ID</label>
+                        <input type="text" id="new-client-id" placeholder="From Twitch Console">
+                    </div>
+                    <div class="form-group">
+                        <label>Client Secret</label>
+                        <input type="password" id="new-client-secret" placeholder="From Twitch Console">
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label>Channels (comma-separated)</label>
+                        <input type="text" id="new-channels" placeholder="e.g., channel1,channel2">
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="createNewAccount()" style="margin-top: 15px; width: 100%;">
+                    ✓ Create Account
+                </button>
+            </div>
+
+            <div class="section">
+                <h3>📥 Import from .env File</h3>
+                <p>Convert your existing .env credentials to Account Manager</p>
+                
+                <div class="form-group">
+                    <label>Account Name:</label>
+                    <input type="text" id="import-account-name" placeholder="e.g., my_bot">
+                </div>
+
+                <div class="form-group">
+                    <label>Paste entire .env file:</label>
+                    <textarea id="import-env-content" placeholder="TWITCH_CLIENT_ID=..."></textarea>
+                </div>
+
+                <button class="btn btn-primary" onclick="importFromEnv()" style="width: 100%;">
+                    ✓ Import Account
+                </button>
+                <div id="import-result" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+
+        <!-- BACKUP TAB -->
+        <div id="backup-tab" class="tab-content">
+            <div class="section">
+                <h3>💾 .env Backup & Recovery</h3>
+                <p>Manage backups of your configuration file.</p>
+                
+                <div class="btn-group" style="justify-content: flex-start; margin-bottom: 20px;">
+                    <button class="btn btn-success" onclick="createBackup()">✨ Create New Backup</button>
+                    <button class="btn btn-primary" onclick="loadBackups()">🔄 Refresh List</button>
+                </div>
+
+                <div id="backups-list">
+                    <!-- Backups populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
