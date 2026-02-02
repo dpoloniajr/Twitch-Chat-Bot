@@ -65,7 +65,7 @@ function renderFeatures() {
 
 async function loadPresets() {
     try {
-        const response = await fetch('/api/scope-presets');
+        const response = await fetch('/api/scopes/presets');
         const presets = await response.json();
         const container = document.getElementById('scope-presets');
         container.innerHTML = Object.entries(presets).map(([key, preset]) => `
@@ -82,7 +82,7 @@ async function loadPresets() {
 
 async function loadScopeCategories() {
     try {
-        const response = await fetch('/api/scope-categories');
+        const response = await fetch('/api/scopes/categories');
         const categories = await response.json();
         const container = document.getElementById('scope-categories');
         
@@ -161,7 +161,9 @@ function updateWizardScopeSummary() {
     const botScopes = [];
     const broadcasterScopes = [];
     
-    if (selectedFeatures.chat) { botScopes.push('chat:read', 'chat:edit'); }
+    if (selectedFeatures.chat) { 
+        botScopes.push('chat:read', 'chat:edit', 'channel:bot', 'user:bot', 'user:read:chat', 'user:write:chat'); 
+    }
     if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
     if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
     if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read'); }
@@ -201,17 +203,17 @@ function updateWizardScopeSummary() {
 
     const html = `
         <div style="display: grid; grid-template-columns: 1fr ${broadcasterScopes.length > 0 ? '1fr' : ''}; gap: 20px;">
-            <div>
+            <div id="wizard-bot-scopes-container">
                 <h4>Bot Account (${botScopes.length} scopes)</h4>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-                    ${botScopes.map(s => `<span style="background: #9146ff; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px;">${s}</span>`).join('')}
+                    ${botScopes.map(s => `<span class="scope-badge">${s}</span>`).join('')}
                 </div>
             </div>
             ${broadcasterScopes.length > 0 ? `
-                <div>
+                <div id="wizard-broadcaster-scopes-container">
                     <h4>Broadcaster Account (${broadcasterScopes.length} scopes)</h4>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-                        ${broadcasterScopes.map(s => `<span style="background: #2196f3; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px;">${s}</span>`).join('')}
+                        ${broadcasterScopes.map(s => `<span class="scope-badge">${s}</span>`).join('')}
                     </div>
                 </div>
             ` : ''}
@@ -221,8 +223,8 @@ function updateWizardScopeSummary() {
 }
 
 async function updateWizardAuthButtons() {
-    const botScopes = Array.from(document.querySelectorAll('#wizard-scope-summary div:first-child span')).map(s => s.innerText);
-    const broadcasterScopes = Array.from(document.querySelectorAll('#wizard-scope-summary div:last-child span')).map(s => s.innerText);
+    const botScopes = Array.from(document.querySelectorAll('#wizard-bot-scopes-container .scope-badge')).map(s => s.innerText);
+    const broadcasterScopes = Array.from(document.querySelectorAll('#wizard-broadcaster-scopes-container .scope-badge')).map(s => s.innerText);
     
     const container = document.getElementById('wizard-auth-buttons');
     
@@ -253,13 +255,13 @@ async function updateWizardAuthButtons() {
 
 async function authorizeWizard(type, scopes) {
     try {
-        const response = await fetch('/generate-auth-url', {
+        const response = await fetch('/api/generate-auth-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scopes, accountType: type })
         });
         const data = await response.json();
-        if (data.authUrl) window.location.href = data.authUrl;
+        if (data.authUrl) window.open(data.authUrl, '_blank');
     } catch (error) {
         alert('Failed to generate auth URL: ' + error.message);
     }
@@ -273,7 +275,7 @@ function wizardComplete() {
 
 async function applyPreset(presetKey) {
     try {
-        const response = await fetch('/api/scope-presets');
+        const response = await fetch('/api/scopes/presets');
         const presets = await response.json();
         const preset = presets[presetKey];
         
@@ -340,13 +342,13 @@ async function generateTokens() {
     if (scopes.length === 0) return alert('Please select at least one scope');
     
     try {
-        const response = await fetch('/generate-auth-url', {
+        const response = await fetch('/api/generate-auth-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scopes, accountType: type })
         });
         const data = await response.json();
-        if (data.authUrl) window.location.href = data.authUrl;
+        if (data.authUrl) window.open(data.authUrl, '_blank');
     } catch (error) {
         alert('Error: ' + error.message);
     }
@@ -506,7 +508,7 @@ async function authorizeAccount(name, type) {
         let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions', 'channel:read:subscriptions', 'bits:read'];
         
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${acc.clientId}&redirect_uri=${encodeURIComponent(location.origin + '/callback')}&response_type=code&scope=${scopes.join('+')}&state=${name}_${type}`;
-        window.location.href = authUrl;
+        window.open(authUrl, '_blank');
     } catch (error) {
         alert('Error: ' + error.message);
     }

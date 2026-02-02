@@ -21,7 +21,7 @@ async function getTwitchCredentials() {
 }
 
 // Generate auth URL
-router.post('/generate-auth-url', async (req, res) => {
+router.post('/api/generate-auth-url', async (req, res) => {
     const { scopes, accountType } = req.body;
     const { clientId } = await getTwitchCredentials();
 
@@ -46,7 +46,7 @@ router.post('/generate-auth-url', async (req, res) => {
 });
 
 // Validate token
-router.get('/validate-token', async (req, res) => {
+router.get('/api/validate-token', async (req, res) => {
     const { token } = req.query;
     const { clientId } = await getTwitchCredentials();
 
