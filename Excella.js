@@ -188,7 +188,7 @@ function validateScopes(requiredScopes) {
 function logCommandExecution(username, command, args, result) {
   apiClient_axios.post(`${dashboardBaseUrl}/api/logs`, {
     timestamp: new Date().toISOString(),
-    username,
+    user: username,
     command,
     args: args.join(' '),
     result
@@ -210,7 +210,7 @@ function sendAlert(alertType, alertData) {
 // Log EventSub event to dashboard
 function logEventSubEvent(eventType, eventData) {
   apiClient_axios.post(`${dashboardBaseUrl}/api/eventsub-events`, {
-    event: eventType,
+    type: eventType,
     ...eventData
   }).catch(err => {
     console.error('[EventSub] Failed to log event:', err.message);
