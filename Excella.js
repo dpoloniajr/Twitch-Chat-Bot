@@ -4,6 +4,7 @@ const TwitchIRCClient = require('./lib/twitch-irc-client');
 const TwitchEventSubWS = require('./lib/twitch-eventsub-ws');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 const { withCrossProcessLock } = require('./lib/file-lock');
 require('dotenv').config();
 
@@ -656,7 +657,7 @@ async function updateDashboard() {
 let customCommandsCache = null;
 let customCommandsCacheTime = 0;
 let customCommandsLoadPending = false;
-const CUSTOM_COMMANDS_CACHE_TTL = 60000; // 60 second cache TTL
+let CUSTOM_COMMANDS_CACHE_TTL = Number(process.env.COMMAND_REFRESH_INTERVAL || 60) * 1000;
 let customCommandsDebounceTimer = null;
 
 // Load custom commands from dashboard with caching and debouncing
@@ -1833,6 +1834,22 @@ chatClient.onMessage(async (channel, user, message, msg) => {
   }
 });
 
+// Restart watcher
+const restartFlagPath = path.join(__dirname, 'dashboard', 'logs', 'restart.flag');
+
+function watchForRestart() {
+  if (fs.existsSync(restartFlagPath)) {
+    console.log('🔄 Restart flag detected. Restarting bot...');
+    try {
+      fs.unlinkSync(restartFlagPath);
+    } catch (e) {
+      console.error('Failed to remove restart flag:', e.message);
+    }
+    process.exit(0);
+  }
+}
+setInterval(watchForRestart, 5000);
+
 // Start the bot
 async function start() {
   console.log('Starting Twitch bot...');
@@ -1848,7 +1865,20 @@ async function start() {
   }
 
   await loadCustomCommands();
-  setInterval(loadCustomCommands, 60000); // Load custom commands every 60s (with 60s cache TTL)
+  
+  // Periodic refresh logic
+  const refreshCommands = async () => {
+    try {
+      // Re-read interval from env (in case it was updated via dashboard)
+      CUSTOM_COMMANDS_CACHE_TTL = Number(process.env.COMMAND_REFRESH_INTERVAL || 60) * 1000;
+      await loadCustomCommands();
+    } catch (err) {
+      console.error('Failed to refresh custom commands:', err.message);
+    } finally {
+      setTimeout(refreshCommands, CUSTOM_COMMANDS_CACHE_TTL);
+    }
+  };
+  setTimeout(refreshCommands, CUSTOM_COMMANDS_CACHE_TTL);
 
   await chatClient.connect();
 

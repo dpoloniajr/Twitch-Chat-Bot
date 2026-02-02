@@ -22,6 +22,7 @@
         <li><a href="#custom" onclick="showPage('custom', event)" class="nav-link">Custom Commands</a></li>
         <li><a href="#logs" onclick="showPage('logs', event)" class="nav-link">Logs</a></li>
         <li><a href="#stats" onclick="showPage('stats', event)" class="nav-link">Stats</a></li>
+        <li><a href="#settings" onclick="showPage('settings', event)" class="nav-link">Settings</a></li>
         <li><a href="#alert-config" onclick="showPage('alert-config', event)" class="nav-link">Alert Config</a></li>
         <li><a href="#obs-overlays" onclick="showPage('obs-overlays', event)" class="nav-link">OBS Overlays</a></li>
       </ul>
@@ -198,27 +199,50 @@
     </div>
   </div>
 
-  <!-- Settings Page (hidden) -->
-  <div id="settings" class="page" style="display:none;">
+  <!-- Settings Page -->
+  <div id="settings" class="page">
     <div class="container">
       <h2>Bot Settings</h2>
       
-      <div class="form-group">
-        <label>Broadcaster Name</label>
-        <input type="text" id="broadcasterName" disabled>
+      <div class="settings-section">
+        <h3>General Settings</h3>
+        <div class="form-group">
+          <label>Command Refresh Interval (seconds)</label>
+          <div style="display:flex; gap:10px;">
+            <input type="number" id="commandRefreshInterval" min="5" value="60" style="flex:1;">
+            <button onclick="saveBotSettings()" class="btn btn-primary">Save Settings</button>
+          </div>
+          <small class="info-text">How often the bot refreshes custom commands from the dashboard.</small>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Channels (comma-separated)</label>
-        <textarea id="channels" disabled></textarea>
+      <div class="settings-section" style="margin-top:30px;">
+        <h3>Bot Control</h3>
+        <div class="danger-zone">
+          <p>Restart the bot process. This will reconnect the bot to Twitch.</p>
+          <button onclick="restartBot()" class="btn btn-danger">Restart Bot</button>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label>Scopes</label>
-        <textarea id="scopes" disabled></textarea>
-      </div>
+      <div class="settings-section" style="margin-top:30px;">
+        <h3>Bot Information</h3>
+        <div class="form-group">
+          <label>Broadcaster Name</label>
+          <input type="text" id="broadcasterName" disabled>
+        </div>
 
-      <p class="info-text">⚠️ To modify settings, edit your .env file and restart the bot.</p>
+        <div class="form-group">
+          <label>Channels (comma-separated)</label>
+          <textarea id="channels" disabled></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Scopes</label>
+          <textarea id="scopes" disabled></textarea>
+        </div>
+
+        <p class="info-text">⚠️ To modify core account settings, edit your .env file and restart the bot.</p>
+      </div>
     </div>
   </div>
 

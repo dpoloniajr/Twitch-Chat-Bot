@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs').promises;
+const path = require('path');
 const { withFileLock, validateRequest, asyncHandler } = require('../lib/utils');
 const state = require('../lib/state');
 
@@ -238,6 +239,33 @@ module.exports = function(paths, envPath) {
     await upsertEnvValue(envPath, 'ANNOUNCEMENTS', (announcements || []).join('|'));
     state.broadcastState({ type: 'announcements', data: announcements });
     res.json({ success: true });
+  }));
+
+  // Get settings
+  router.get('/settings', (req, res) => {
+    res.json({
+      commandRefreshInterval: Number(process.env.COMMAND_REFRESH_INTERVAL || 60)
+    });
+  });
+
+  // Save settings
+  router.post('/settings', validateRequest({
+    commandRefreshInterval: { required: true, type: 'number', min: 5 }
+  }), asyncHandler(async (req, res) => {
+    const { commandRefreshInterval } = req.body;
+    const { upsertEnvValue } = require('../lib/utils');
+    
+    await upsertEnvValue(envPath, 'COMMAND_REFRESH_INTERVAL', commandRefreshInterval.toString());
+    process.env.COMMAND_REFRESH_INTERVAL = commandRefreshInterval.toString();
+    
+    res.json({ success: true });
+  }));
+
+  // Restart bot
+  router.post('/bot/restart', asyncHandler(async (req, res) => {
+    const restartFlagPath = path.join(path.dirname(commandLogsFile), 'restart.flag');
+    await fs.writeFile(restartFlagPath, Date.now().toString());
+    res.json({ success: true, message: 'Restart signal sent' });
   }));
 
   // Test alert endpoint for OBS overlay testing (compatibility with Excella.js)

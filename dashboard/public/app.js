@@ -115,6 +115,11 @@ function showPage(pageId, eventObj) {
   if (eventObj && eventObj.target) {
     eventObj.target.classList.add('active');
   }
+
+  // Load page-specific data
+  if (pageId === 'settings') {
+    loadBotSettings();
+  }
 }
 
 // Command tester
@@ -1237,6 +1242,65 @@ function updateTestPanelFields() {
   document.getElementById('testBitsGroup').style.display = alertType === 'bits' ? 'block' : 'none';
   document.getElementById('testViewersGroup').style.display = alertType === 'raid' ? 'block' : 'none';
   document.getElementById('testRewardGroup').style.display = alertType === 'redemption' ? 'block' : 'none';
+}
+
+// Bot Settings
+async function loadBotSettings() {
+  try {
+    const response = await fetch('/api/settings');
+    const settings = await response.json();
+    document.getElementById('commandRefreshInterval').value = settings.commandRefreshInterval;
+  } catch (error) {
+    console.error('Failed to load bot settings:', error);
+  }
+}
+
+async function saveBotSettings() {
+  const commandRefreshInterval = parseInt(document.getElementById('commandRefreshInterval').value);
+  
+  if (isNaN(commandRefreshInterval) || commandRefreshInterval < 5) {
+    alert('Refresh interval must be at least 5 seconds');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commandRefreshInterval })
+    });
+
+    if (response.ok) {
+      alert('Settings saved successfully');
+    } else {
+      const error = await response.json();
+      alert(`Failed to save settings: ${error.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Failed to save bot settings:', error);
+    alert('Failed to save settings');
+  }
+}
+
+async function restartBot() {
+  if (!confirm('Are you sure you want to restart the bot? It will take a few seconds to reconnect.')) {
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/bot/restart', {
+      method: 'POST'
+    });
+
+    if (response.ok) {
+      alert('Restart signal sent to bot. The bot will exit and should be restarted by your process manager.');
+    } else {
+      alert('Failed to send restart signal');
+    }
+  } catch (error) {
+    console.error('Failed to restart bot:', error);
+    alert('Failed to restart bot');
+  }
 }
 
 // Add event listener for test panel alert type change
