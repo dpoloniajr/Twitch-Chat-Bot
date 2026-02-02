@@ -63,18 +63,18 @@ async function initLogs() {
     await initFile(paths.redemptionsFile);
     await initFile(paths.eventSubEventsFile);
     await initFile(paths.builtinCommandsFile, [
-      { name: '!clip', cooldownSeconds: 60 },
-      { name: '!followage', cooldownSeconds: 0 },
-      { name: '!shoutout', cooldownSeconds: 0 },
-      { name: '!so', cooldownSeconds: 0 },
-      { name: '!poll', cooldownSeconds: 0 },
-      { name: '!prediction', cooldownSeconds: 0 },
-      { name: '!title', cooldownSeconds: 0 },
-      { name: '!game', cooldownSeconds: 0 },
-      { name: '!commands', cooldownSeconds: 0 },
-      { name: '!addfilter', cooldownSeconds: 0 },
-      { name: '!removefilter', cooldownSeconds: 0 },
-      { name: '!filters', cooldownSeconds: 0 }
+      { name: '!clip', cooldownSeconds: 60, description: 'Create a clip of the current stream', permission: 'Everyone' },
+      { name: '!followage', cooldownSeconds: 0, description: 'Check how long you have been following the channel', permission: 'Everyone' },
+      { name: '!shoutout', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
+      { name: '!so', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
+      { name: '!poll', cooldownSeconds: 0, description: 'Start or manage a poll', permission: 'Moderator' },
+      { name: '!prediction', cooldownSeconds: 0, description: 'Start or manage a prediction', permission: 'Moderator' },
+      { name: '!title', cooldownSeconds: 0, description: 'Update the stream title', permission: 'Moderator' },
+      { name: '!game', cooldownSeconds: 0, description: 'Update the stream category', permission: 'Moderator' },
+      { name: '!commands', cooldownSeconds: 0, description: 'List available commands', permission: 'Everyone' },
+      { name: '!addfilter', cooldownSeconds: 0, description: 'Add a word to the chat filter', permission: 'Moderator' },
+      { name: '!removefilter', cooldownSeconds: 0, description: 'Remove a word from the chat filter', permission: 'Moderator' },
+      { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' }
     ]);
     await initFile(paths.obsConfigFile, {
       overlays: {

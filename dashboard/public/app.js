@@ -231,7 +231,8 @@ function addChatMessage(chat) {
 }
 
 function escapeHtml(str) {
-  return str
+  if (str === null || str === undefined) return '';
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -278,17 +279,17 @@ function renderCustomCommands() {
   if (!listEl || !botState.customCommands) return;
 
   listEl.innerHTML = botState.customCommands
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .map(cmd => `
       <tr>
         <td>${escapeHtml(cmd.name)}</td>
         <td>${escapeHtml(cmd.response || '')}</td>
-        <td>${escapeHtml(cmd.level)}</td>
+        <td>${escapeHtml(cmd.level || 'everyone')}</td>
         <td>${cmd.fetchEnabled ? 'Yes' : 'No'}</td>
         <td>${cmd.cooldownSeconds || 0}s</td>
         <td>
-          <button class="btn btn-secondary" onclick="prefillCommand('${cmd.name.replace(/'/g, "\\'")}')">Edit</button>
-          <button class="btn btn-danger" onclick="deleteCommand('${cmd.name.replace(/'/g, "\\'")}')">Delete</button>
+          <button class="btn btn-secondary" onclick="prefillCommand('${(cmd.name || '').replace(/'/g, "\\'")}')">Edit</button>
+          <button class="btn btn-danger" onclick="deleteCommand('${(cmd.name || '').replace(/'/g, "\\'")}')">Delete</button>
         </td>
       </tr>
     `).join('');
@@ -352,25 +353,28 @@ async function loadBuiltinCommands() {
 
 function renderBuiltinCommands(commands) {
   const tbody = document.getElementById('builtinCommandsList');
-  if (!tbody) return;
+  if (!tbody || !commands) return;
 
-  tbody.innerHTML = commands.map(cmd => `
-    <tr>
-      <td><strong>${escapeHtml(cmd.name)}</strong></td>
-      <td>${escapeHtml(cmd.description)}</td>
-      <td>${escapeHtml(cmd.permission)}</td>
-      <td>
-        <input type="number"
-               id="cooldown-${cmd.name.replace('!', '')}"
-               value="${cmd.cooldownSeconds || 0}"
-               min="0"
-               style="width: 80px; padding: 5px;">
-      </td>
-      <td>
-        <button class="btn btn-primary" onclick="updateBuiltinCommandCooldown('${cmd.name}')">Update</button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = commands.map(cmd => {
+    const safeName = (cmd.name || '').replace('!', '');
+    return `
+      <tr>
+        <td><strong>${escapeHtml(cmd.name)}</strong></td>
+        <td>${escapeHtml(cmd.description || 'Built-in command')}</td>
+        <td>${escapeHtml(cmd.permission || (cmd.perm === 'mod' ? 'Moderator' : 'Everyone'))}</td>
+        <td>
+          <input type="number"
+                 id="cooldown-${safeName}"
+                 value="${cmd.cooldownSeconds || 0}"
+                 min="0"
+                 style="width: 80px; padding: 5px;">
+        </td>
+        <td>
+          <button class="btn btn-primary" onclick="updateBuiltinCommandCooldown('${cmd.name}')">Update</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function updateBuiltinCommandCooldown(commandName) {
