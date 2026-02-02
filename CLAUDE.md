@@ -49,7 +49,7 @@ node token-generator.js  # Start OAuth token generator (port 3000)
 
 ### Core Components
 
-1. **Excella (Main Bot)** - IRC-based chat bot using @twurple libraries
+1. **Excella (Main Bot)** - IRC-based chat bot using tmi.js and direct Helix API
 2. **Token Generator** - OAuth 2.0 server with scope management UI
 3. **Account Manager** - AES-256-CBC encrypted credential storage
 4. **Dashboard Server** - Express API with WebSocket for real-time updates
@@ -225,10 +225,10 @@ Connect to `ws://localhost:3001` for real-time updates:
 ## Dependencies
 
 Core libraries:
-- **@twurple/auth, /chat, /api, /eventsub-ws** - Twitch API client
+- **tmi.js** - Twitch IRC chat client
+- **axios** - HTTP client for direct Helix API calls
+- **ws** - WebSocket support for EventSub and Dashboard
 - **express** - Web framework
-- **ws** - WebSocket support
-- **axios** - HTTP client
 - **dotenv** - Environment variables
 - **concurrently** - Multi-process runner
 
