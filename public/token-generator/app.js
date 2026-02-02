@@ -227,42 +227,63 @@ async function updateWizardAuthButtons() {
     const broadcasterScopes = Array.from(document.querySelectorAll('#wizard-broadcaster-scopes-container .scope-badge')).map(s => s.innerText);
     
     const container = document.getElementById('wizard-auth-buttons');
+    container.innerHTML = ''; // Clear existing
     
-    let html = `
-        <button class="auth-button" onclick="authorizeWizard('bot', ${JSON.stringify(botScopes)})">
+    // Create Bot Auth Button
+    const botBtn = document.createElement('button');
+    botBtn.className = 'auth-button';
+    botBtn.innerHTML = `
+        <div class="auth-button-text">
+            <h4>🤖 Bot Account</h4>
+            <p>Authorize the account that will handle chat actions</p>
+        </div>
+        <div class="auth-button-arrow">→</div>
+    `;
+    botBtn.addEventListener('click', () => authorizeWizard('bot', botScopes));
+    container.appendChild(botBtn);
+    
+    // Create Broadcaster Auth Button if needed
+    if (broadcasterScopes.length > 0) {
+        const broadcasterBtn = document.createElement('button');
+        broadcasterBtn.className = 'auth-button';
+        broadcasterBtn.innerHTML = `
             <div class="auth-button-text">
-                <h4>🤖 Bot Account</h4>
-                <p>Authorize the account that will handle chat actions</p>
+                <h4>📺 Broadcaster Account</h4>
+                <p>Authorize the primary streaming account (for EventSub)</p>
             </div>
             <div class="auth-button-arrow">→</div>
-        </button>
-    `;
-    
-    if (broadcasterScopes.length > 0) {
-        html += `
-            <button class="auth-button" onclick="authorizeWizard('broadcaster', ${JSON.stringify(broadcasterScopes)})">
-                <div class="auth-button-text">
-                    <h4>📺 Broadcaster Account</h4>
-                    <p>Authorize the primary streaming account (for EventSub)</p>
-                </div>
-                <div class="auth-button-arrow">→</div>
-            </button>
         `;
+        broadcasterBtn.addEventListener('click', () => authorizeWizard('broadcaster', broadcasterScopes));
+        container.appendChild(broadcasterBtn);
     }
-    
-    container.innerHTML = html;
 }
 
 async function authorizeWizard(type, scopes) {
+    if (!scopes || scopes.length === 0) {
+        alert(`No scopes selected for ${type} account. Please go back and select features.`);
+        return;
+    }
+    
     try {
         const response = await fetch('/api/generate-auth-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scopes, accountType: type })
         });
+        
         const data = await response.json();
-        if (data.authUrl) window.open(data.authUrl, '_blank');
+        
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        if (data.authUrl) {
+            window.open(data.authUrl, '_blank');
+        } else {
+            throw new Error('No authorization URL received from server');
+        }
     } catch (error) {
+        console.error('Auth error:', error);
         alert('Failed to generate auth URL: ' + error.message);
     }
 }
@@ -347,9 +368,20 @@ async function generateTokens() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scopes, accountType: type })
         });
+        
         const data = await response.json();
-        if (data.authUrl) window.open(data.authUrl, '_blank');
+        
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        if (data.authUrl) {
+            window.open(data.authUrl, '_blank');
+        } else {
+            throw new Error('No authorization URL received from server');
+        }
     } catch (error) {
+        console.error('Auth error:', error);
         alert('Error: ' + error.message);
     }
 }
