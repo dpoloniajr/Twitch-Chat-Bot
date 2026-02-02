@@ -1820,8 +1820,12 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     // Log chat to dashboard
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
 
-    // Check if message starts with a command
-    if (raw.startsWith('!')) {
+    // Check if message starts with a command or matches a custom command
+    const firstWord = raw.split(/\s+/)[0].toLowerCase();
+    const isBuiltin = firstWord.startsWith('!');
+    const isCustom = customCommands.some(c => c.name.toLowerCase() === firstWord);
+
+    if (isBuiltin || isCustom) {
       await handleChatCommand(channel, user, message, msg);
     }
   } catch (error) {
