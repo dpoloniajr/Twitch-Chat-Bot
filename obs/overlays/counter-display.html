@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Counter Display - OBS Overlay</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    :root {
+      --counter-bg: rgba(0, 0, 0, 0.7);
+      --counter-text: #ffffff;
+      --counter-label: #aaaaaa;
+      --counter-accent: #9146ff;
+      --counter-positive: #00ff00;
+      --counter-negative: #ff4444;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: transparent;
+    }
+
+    .counter-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 300px;
+    }
+
+    .counter-item {
+      background: var(--counter-bg);
+      border-radius: 10px;
+      padding: 15px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 4px solid var(--counter-accent);
+      transition: all 0.3s ease;
+    }
+
+    .counter-item.highlight {
+      transform: scale(1.05);
+      border-left-color: var(--counter-positive);
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+    }
+
+    .counter-item.highlight.decrease {
+      border-left-color: var(--counter-negative);
+      box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
+    }
+
+    .counter-label {
+      font-size: 16px;
+      color: var(--counter-label);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .counter-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: var(--counter-text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .counter-change {
+      position: absolute;
+      right: 70px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .counter-item.highlight .counter-change {
+      opacity: 1;
+    }
+
+    .counter-change.positive {
+      color: var(--counter-positive);
+    }
+
+    .counter-change.negative {
+      color: var(--counter-negative);
+    }
+
+    /* Score display variant */
+    .score-container {
+      background: var(--counter-bg);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .score-title {
+      font-size: 14px;
+      color: var(--counter-label);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .score-display {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .score-wins, .score-losses {
+      font-size: 36px;
+      font-weight: bold;
+    }
+
+    .score-wins {
+      color: var(--counter-positive);
+    }
+
+    .score-losses {
+      color: var(--counter-negative);
+    }
+
+    .score-separator {
+      font-size: 24px;
+      color: var(--counter-label);
+    }
+
+    .score-winrate {
+      font-size: 14px;
+      color: var(--counter-label);
+      margin-top: 5px;
+    }
+
+    /* Hidden state */
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Single counter display -->
+  <div id="single-counter" class="counter-container hidden">
+    <div class="counter-item" id="main-counter">
+      <span class="counter-label" id="counter-label">Deaths</span>
+      <span class="counter-value" id="counter-value">0</span>
+    </div>
+  </div>
+
+  <!-- Multi-counter display -->
+  <div id="multi-counter" class="counter-container hidden">
+    <!-- Counters will be dynamically added here -->
+  </div>
+
+  <!-- Score (win/loss) display -->
+  <div id="score-display" class="score-container hidden">
+    <div class="score-title">Record</div>
+    <div class="score-display">
+      <span class="score-wins" id="wins-value">0</span>
+      <span class="score-separator">-</span>
+      <span class="score-losses" id="losses-value">0</span>
+    </div>
+    <div class="score-winrate" id="winrate-value">0% Win Rate</div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // Configuration from URL parameters
+      const config = {
+        mode: OverlayUtils.getQueryParam('mode') || 'single', // single, multi, score
+        counter: OverlayUtils.getQueryParam('counter') || 'deaths',
+        counters: (OverlayUtils.getQueryParam('counters') || 'deaths,wins,losses').split(','),
+        pollInterval: parseInt(OverlayUtils.getQueryParam('poll') || '5000', 10),
+        apiUrl: OverlayUtils.getQueryParam('api') || '/api/counters'
+      };
+
+      // State
+      let previousValues = {};
+
+      // Elements
+      const singleContainer = document.getElementById('single-counter');
+      const multiContainer = document.getElementById('multi-counter');
+      const scoreContainer = document.getElementById('score-display');
+      const counterLabel = document.getElementById('counter-label');
+      const counterValue = document.getElementById('counter-value');
+      const winsValue = document.getElementById('wins-value');
+      const lossesValue = document.getElementById('losses-value');
+      const winrateValue = document.getElementById('winrate-value');
+
+      /**
+       * Initialize display mode
+       */
+      function initMode() {
+        switch (config.mode) {
+          case 'single':
+            singleContainer.classList.remove('hidden');
+            counterLabel.textContent = formatLabel(config.counter);
+            break;
+          case 'multi':
+            multiContainer.classList.remove('hidden');
+            initMultiCounters();
+            break;
+          case 'score':
+            scoreContainer.classList.remove('hidden');
+            break;
+        }
+      }
+
+      /**
+       * Format counter label
+       */
+      function formatLabel(name) {
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      }
+
+      /**
+       * Initialize multi-counter elements
+       */
+      function initMultiCounters() {
+        config.counters.forEach(name => {
+          const div = document.createElement('div');
+          div.className = 'counter-item';
+          div.id = `counter-${name}`;
+          div.innerHTML = `
+            <span class="counter-label">${formatLabel(name)}</span>
+            <span class="counter-value" id="value-${name}">0</span>
+          `;
+          multiContainer.appendChild(div);
+        });
+      }
+
+      /**
+       * Fetch counter data from API
+       */
+      async function fetchCounters() {
+        try {
+          const response = await fetch(config.apiUrl);
+          const data = await response.json();
+          updateDisplay(data.counters || data);
+        } catch (err) {
+          console.error('[Counter] Failed to fetch:', err);
+        }
+      }
+
+      /**
+       * Update display with new values
+       */
+      function updateDisplay(counters) {
+        switch (config.mode) {
+          case 'single':
+            updateSingleCounter(counters[config.counter] || 0);
+            break;
+          case 'multi':
+            updateMultiCounters(counters);
+            break;
+          case 'score':
+            updateScore(counters);
+            break;
+        }
+      }
+
+      /**
+       * Update single counter
+       */
+      function updateSingleCounter(value) {
+        const prevValue = previousValues[config.counter] || 0;
+        const element = document.getElementById('main-counter');
+
+        counterValue.textContent = OverlayUtils.formatNumber(value);
+
+        if (value !== prevValue) {
+          highlightChange(element, value > prevValue);
+        }
+
+        previousValues[config.counter] = value;
+      }
+
+      /**
+       * Update multi counters
+       */
+      function updateMultiCounters(counters) {
+        config.counters.forEach(name => {
+          const value = counters[name] || 0;
+          const prevValue = previousValues[name] || 0;
+          const valueElement = document.getElementById(`value-${name}`);
+          const itemElement = document.getElementById(`counter-${name}`);
+
+          if (valueElement) {
+            valueElement.textContent = OverlayUtils.formatNumber(value);
+
+            if (value !== prevValue) {
+              highlightChange(itemElement, value > prevValue);
+            }
+          }
+
+          previousValues[name] = value;
+        });
+      }
+
+      /**
+       * Update score display
+       */
+      function updateScore(counters) {
+        const wins = counters.wins || 0;
+        const losses = counters.losses || 0;
+        const total = wins + losses;
+        const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
+
+        winsValue.textContent = OverlayUtils.formatNumber(wins);
+        lossesValue.textContent = OverlayUtils.formatNumber(losses);
+        winrateValue.textContent = `${winRate}% Win Rate`;
+      }
+
+      /**
+       * Highlight counter change
+       */
+      function highlightChange(element, isIncrease) {
+        element.classList.add('highlight');
+        if (!isIncrease) {
+          element.classList.add('decrease');
+        }
+
+        setTimeout(() => {
+          element.classList.remove('highlight', 'decrease');
+        }, 2000);
+      }
+
+      // Initialize
+      initMode();
+      fetchCounters();
+
+      // Poll for updates
+      setInterval(fetchCounters, config.pollInterval);
+
+      // Also listen for WebSocket updates
+      const client = new OverlayClient();
+      client.on('counter-update', (data) => {
+        updateDisplay(data.counters || data);
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -3,3 +3,4 @@
  */
 
 export * from './discord';
+export * from './eventsub-handlers';
