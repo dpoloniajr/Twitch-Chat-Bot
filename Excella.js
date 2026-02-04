@@ -150,16 +150,19 @@ const FILTER_CACHE_TTL = 5000; // 5 second cache TTL
 
 const messageHistory = new Map(); // Track user messages for spam detection
 
+// Helper to check if env var is a common falsy value
+function isFalsyEnvValue(envVar) {
+  return ['false', '0', 'no', 'off'].includes(
+    String(envVar || '').toLowerCase()
+  );
+}
+
 // First-time chatter welcome (uses IRC tag first-msg)
 const firstChatterConfig = {
   // Enabled by default; allow several common falsy values to disable
-  welcomeEnabled: !['false', '0', 'no', 'off'].includes(
-    String(process.env.FIRST_CHATTER_WELCOME_ENABLED || '').toLowerCase()
-  ),
+  welcomeEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_WELCOME_ENABLED),
   welcomeMessage: (process.env.FIRST_CHATTER_MESSAGE || 'Welcome to the chat, {user}!').trim(),
-  alertEnabled: !['false', '0', 'no', 'off'].includes(
-    String(process.env.FIRST_CHATTER_ALERT_ENABLED || '').toLowerCase()
-  )
+  alertEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_ALERT_ENABLED)
 };
 
 // ==================== HELPER FUNCTIONS ====================
