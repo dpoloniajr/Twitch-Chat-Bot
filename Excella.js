@@ -152,9 +152,14 @@ const messageHistory = new Map(); // Track user messages for spam detection
 
 // First-time chatter welcome (uses IRC tag first-msg)
 const firstChatterConfig = {
-  welcomeEnabled: process.env.FIRST_CHATTER_WELCOME_ENABLED !== 'false',
+  // Enabled by default; allow several common falsy values to disable
+  welcomeEnabled: !['false', '0', 'no', 'off'].includes(
+    String(process.env.FIRST_CHATTER_WELCOME_ENABLED || '').toLowerCase()
+  ),
   welcomeMessage: (process.env.FIRST_CHATTER_MESSAGE || 'Welcome to the chat, {user}!').trim(),
-  alertEnabled: process.env.FIRST_CHATTER_ALERT_ENABLED !== 'false'
+  alertEnabled: !['false', '0', 'no', 'off'].includes(
+    String(process.env.FIRST_CHATTER_ALERT_ENABLED || '').toLowerCase()
+  )
 };
 
 // ==================== HELPER FUNCTIONS ====================

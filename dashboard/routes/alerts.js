@@ -11,12 +11,20 @@ module.exports = function(alertConfigFile) {
     try {
       const data = await fs.readFile(alertConfigFile, 'utf8');
       const config = JSON.parse(data);
+      let hasNewTypes = false;
       if (config.alertTypes && DEFAULT_ALERT_CONFIG.alertTypes) {
         for (const key of Object.keys(DEFAULT_ALERT_CONFIG.alertTypes)) {
           if (!config.alertTypes[key]) {
             config.alertTypes[key] = DEFAULT_ALERT_CONFIG.alertTypes[key];
+            hasNewTypes = true;
           }
         }
+      }
+      // Persist merged types to file to keep configuration up-to-date
+      if (hasNewTypes) {
+        await withFileLock(alertConfigFile, async () => {
+          await fs.writeFile(alertConfigFile, JSON.stringify(config, null, 2));
+        });
       }
       res.json(config);
     } catch (error) {
