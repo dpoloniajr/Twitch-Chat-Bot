@@ -65,6 +65,9 @@ async function initLogs() {
     await initFile(paths.builtinCommandsFile, [
       { name: '!clip', cooldownSeconds: 60, description: 'Create a clip of the current stream', permission: 'Everyone' },
       { name: '!followage', cooldownSeconds: 0, description: 'Check how long you have been following the channel', permission: 'Everyone' },
+      { name: '!8ball', cooldownSeconds: 5, description: 'Ask the magic 8ball a yes/no question', permission: 'Everyone' },
+      { name: '!dice', cooldownSeconds: 5, description: 'Roll a die (default 6 sides, e.g. !dice 20)', permission: 'Everyone' },
+      { name: '!coinflip', cooldownSeconds: 5, description: 'Flip a coin — heads or tails', permission: 'Everyone' },
       { name: '!shoutout', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!so', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!poll', cooldownSeconds: 0, description: 'Start or manage a poll', permission: 'Moderator' },

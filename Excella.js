@@ -638,6 +638,9 @@ async function updateDashboard() {
       commands: [
         { name: '!clip', description: 'Create a clip of the stream' },
         { name: '!followage [username]', description: 'Check how long someone has been following' },
+        { name: '!8ball <question>', description: 'Ask the magic 8ball a yes/no question' },
+        { name: '!dice [sides]', description: 'Roll a die (default 6, e.g. !dice 20 for d20)' },
+        { name: '!coinflip', description: 'Flip a coin — heads or tails' },
         { name: '!shoutout [username] / !so [username]', description: 'Shout out another streamer (mods only)' },
         { name: '!poll', description: 'Manage channel polls' },
         { name: '!prediction', description: 'Manage channel predictions' },
@@ -1627,8 +1630,45 @@ async function handleGame(channel, username, gameQuery) {
   }
 }
 
+// Fun commands: 8ball, dice, coinflip
+const EIGHTBALL_ANSWERS = [
+  'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes — definitely.', 'You may rely on it.',
+  'As I see it, yes.', 'Most likely.', 'Outlook good.', 'Yes.', 'Signs point to yes.',
+  'Reply hazy, try again.', 'Ask again later.', 'Better not tell you now.', 'Cannot predict now.', 'Concentrate and ask again.',
+  "Don't count on it.", 'My reply is no.', 'My sources say no.', 'Outlook not so good.', 'Very doubtful.'
+];
+
+async function handle8ball(channel, username, args) {
+  const question = args.join(' ').trim();
+  const answer = EIGHTBALL_ANSWERS[Math.floor(Math.random() * EIGHTBALL_ANSWERS.length)];
+  if (question) {
+    sendChatMessage(channel, `@${username} ${answer}`);
+  } else {
+    sendChatMessage(channel, `@${username} Ask a question! Usage: !8ball <question>`);
+  }
+}
+
+async function handleDice(channel, username, args) {
+  let sides = 6;
+  if (args[0]) {
+    const n = parseInt(args[0], 10);
+    if (Number.isNaN(n) || n < 2 || n > 1000) {
+      sendChatMessage(channel, `@${username} Please choose a number of sides between 2 and 1000 (e.g. !dice 20).`);
+      return;
+    }
+    sides = n;
+  }
+  const roll = Math.floor(Math.random() * sides) + 1;
+  sendChatMessage(channel, `@${username} rolled a ${sides}-sided die and got ${roll}.`);
+}
+
+async function handleCoinflip(channel, username) {
+  const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+  sendChatMessage(channel, `@${username} flipped a coin and got ${result}.`);
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -1666,6 +1706,39 @@ const commandRegistry = new Map([
     }
     await handleFollowage(channel, username, args[0]);
     if (cooldownSeconds > 0) setCooldown('followage');
+  }}],
+  ['!8ball', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!8ball');
+    if (isOnCooldown('8ball', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('8ball') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !8ball is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handle8ball(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('8ball');
+  }}],
+  ['!dice', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!dice');
+    if (isOnCooldown('dice', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('dice') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !dice is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleDice(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('dice');
+  }}],
+  ['!coinflip', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!coinflip');
+    if (isOnCooldown('coinflip', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('coinflip') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !coinflip is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCoinflip(channel, username);
+    if (cooldownSeconds > 0) setCooldown('coinflip');
   }}],
   ['!shoutout', { perm: 'mod', handler: async ({ channel, username, args }) => {
     const cooldownSeconds = getCommandCooldown('!shoutout');
