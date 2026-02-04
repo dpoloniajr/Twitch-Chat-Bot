@@ -6,11 +6,19 @@ const { DEFAULT_ALERT_CONFIG, ANIMATIONS, TTS_VOICES } = require('../lib/constan
 const state = require('../lib/state');
 
 module.exports = function(alertConfigFile) {
-  // Get full alert configuration
+  // Get full alert configuration (merge in any new default alert types so overlays get first_chatter etc.)
   router.get('/config', asyncHandler(async (req, res) => {
     try {
       const data = await fs.readFile(alertConfigFile, 'utf8');
-      res.json(JSON.parse(data));
+      const config = JSON.parse(data);
+      if (config.alertTypes && DEFAULT_ALERT_CONFIG.alertTypes) {
+        for (const key of Object.keys(DEFAULT_ALERT_CONFIG.alertTypes)) {
+          if (!config.alertTypes[key]) {
+            config.alertTypes[key] = DEFAULT_ALERT_CONFIG.alertTypes[key];
+          }
+        }
+      }
+      res.json(config);
     } catch (error) {
       res.json(DEFAULT_ALERT_CONFIG);
     }

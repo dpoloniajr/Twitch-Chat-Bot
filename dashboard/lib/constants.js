@@ -161,6 +161,27 @@ const DEFAULT_ALERT_CONFIG = {
       fontSize: 28,
       messageTemplate: 'Redemption!',
       customRewards: {}
+    },
+    first_chatter: {
+      enabled: true,
+      duration: 4,
+      volume: 0.8,
+      enterAnimation: 'bounceIn',
+      exitAnimation: 'fadeOutUp',
+      layout: 'standard',
+      showMessage: true,
+      ttsEnabled: false,
+      ttsTemplate: '{user} is here for the first time!',
+      sound: 'default',
+      customSound: null,
+      image: null,
+      video: null,
+      textColor: '#00d4aa',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#00d4aa',
+      fontFamily: 'Segoe UI',
+      fontSize: 28,
+      messageTemplate: 'First time in chat!'
     }
   }
 };
