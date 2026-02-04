@@ -150,6 +150,21 @@ const FILTER_CACHE_TTL = 5000; // 5 second cache TTL
 
 const messageHistory = new Map(); // Track user messages for spam detection
 
+// Helper to check if env var is a common falsy value
+function isFalsyEnvValue(envVar) {
+  return ['false', '0', 'no', 'off'].includes(
+    String(envVar || '').toLowerCase()
+  );
+}
+
+// First-time chatter welcome (uses IRC tag first-msg)
+const firstChatterConfig = {
+  // Enabled by default; allow several common falsy values to disable
+  welcomeEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_WELCOME_ENABLED),
+  welcomeMessage: (process.env.FIRST_CHATTER_MESSAGE || 'Welcome to the chat, {user}!').trim(),
+  alertEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_ALERT_ENABLED)
+};
+
 // ==================== HELPER FUNCTIONS ====================
 
 // Check if user has moderator or broadcaster permissions
@@ -1893,6 +1908,19 @@ chatClient.onMessage(async (channel, user, message, msg) => {
 
     // Log chat to dashboard
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
+
+    // First-time chatter welcome (Twitch IRC tag first-msg; isFirst is on msg, not msg.userInfo)
+    const isFirstChatter = msg.isFirst === true;
+    if (isFirstChatter && (firstChatterConfig.welcomeEnabled || firstChatterConfig.alertEnabled)) {
+      const displayName = msg.userInfo?.displayName || username;
+      if (firstChatterConfig.welcomeEnabled && firstChatterConfig.welcomeMessage) {
+        const welcomeText = firstChatterConfig.welcomeMessage.replace(/\{user\}/gi, displayName);
+        sendChatMessage(channel, welcomeText);
+      }
+      if (firstChatterConfig.alertEnabled) {
+        sendAlert('first_chatter', { user: displayName });
+      }
+    }
 
     // Check if message starts with a command or matches a custom command
     const firstWord = raw.split(/\s+/)[0].toLowerCase();

@@ -882,7 +882,7 @@ function populateAlertConfigUI() {
   document.getElementById('globalTtsPitchDisplay').textContent = global.ttsPitch ?? 1;
 
   // Per-alert-type settings
-  const alertTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  const alertTypes = ['follow', 'subscription', 'bits', 'raid', 'redemption', 'first_chatter'];
   alertTypes.forEach(type => {
     const config = types[type];
     if (!config) return;
@@ -1183,7 +1183,7 @@ async function sendTestAlert() {
 
 // Test all alert types in sequence
 async function testAllAlertTypes() {
-  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption'];
+  const types = ['follow', 'subscription', 'bits', 'raid', 'redemption', 'first_chatter'];
   for (const type of types) {
     await testAlertType(type);
     await new Promise(resolve => setTimeout(resolve, 2000));
