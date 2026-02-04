@@ -29,6 +29,7 @@ module.exports = function(alertConfigFile) {
       });
       res.json(config);
     } catch (error) {
+      console.error('Error loading or merging alert config:', error);
       res.json(DEFAULT_ALERT_CONFIG);
     }
   }));
