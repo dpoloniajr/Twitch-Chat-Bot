@@ -190,7 +190,7 @@ module.exports = function(logsDir) {
   router.post('/:name/increment', async (req, res, next) => {
     try {
       const { name } = req.params;
-      const { amount = 1, modifiedBy = 'dashboard', reason } = req.body;
+      const { amount = 1, reason } = req.body;
       const normalizedName = name.toLowerCase().trim().replace(/\s+/g, '_');
 
       const data = await readData();
@@ -214,7 +214,7 @@ module.exports = function(logsDir) {
   router.post('/:name/decrement', async (req, res, next) => {
     try {
       const { name } = req.params;
-      const { amount = 1, modifiedBy = 'dashboard', reason } = req.body;
+      const { amount = 1, reason } = req.body;
       const normalizedName = name.toLowerCase().trim().replace(/\s+/g, '_');
 
       const data = await readData();
@@ -238,7 +238,6 @@ module.exports = function(logsDir) {
   router.post('/:name/reset', async (req, res, next) => {
     try {
       const { name } = req.params;
-      const { modifiedBy = 'dashboard' } = req.body;
 
       req.body.value = 0;
       req.body.reason = 'Reset';

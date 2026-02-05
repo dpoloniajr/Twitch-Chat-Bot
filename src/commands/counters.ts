@@ -22,7 +22,7 @@ export function createCountersCommands(
   commands.set('!deaths', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args, msg } = ctx;
+      const { username, args, msg } = ctx;
       const isMod = msg.userInfo.isMod || msg.userInfo.isBroadcaster;
 
       const modifier = args[0];
@@ -52,9 +52,8 @@ export function createCountersCommands(
         }
       }
 
-      // Just display the count
-      const count = manager.getValue('deaths') || 0;
-      // Response would go here
+      // Just display the count (would be sent via chat client)
+      void manager.getValue('deaths');
     },
   });
 
@@ -62,7 +61,7 @@ export function createCountersCommands(
   commands.set('!wins', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args, msg } = ctx;
+      const { username, args, msg } = ctx;
       const isMod = msg.userInfo.isMod || msg.userInfo.isBroadcaster;
 
       const modifier = args[0];
@@ -86,7 +85,7 @@ export function createCountersCommands(
         }
       }
 
-      const count = manager.getValue('wins') || 0;
+      void manager.getValue('wins');
     },
   });
 
@@ -94,7 +93,7 @@ export function createCountersCommands(
   commands.set('!losses', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args, msg } = ctx;
+      const { username, args, msg } = ctx;
       const isMod = msg.userInfo.isMod || msg.userInfo.isBroadcaster;
 
       const modifier = args[0];
@@ -118,19 +117,19 @@ export function createCountersCommands(
         }
       }
 
-      const count = manager.getValue('losses') || 0;
+      void manager.getValue('losses');
     },
   });
 
   // !score - Show combined win/loss record
   commands.set('!score', {
     perm: 'everyone',
-    handler: async (ctx: CommandContext): Promise<void> => {
+    handler: async (): Promise<void> => {
       const wins = manager.getValue('wins') || 0;
       const losses = manager.getValue('losses') || 0;
       const total = wins + losses;
-      const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
-      // Message: Record: ${wins}W - ${losses}L (${winRate}% win rate)
+      // Calculate win rate for response (would be sent via chat client)
+      void (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
     },
   });
 
@@ -138,12 +137,12 @@ export function createCountersCommands(
   commands.set('!counter', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args, msg } = ctx;
+      const { username, args, msg } = ctx;
       const isMod = msg.userInfo.isMod || msg.userInfo.isBroadcaster;
 
       if (args.length === 0) {
-        // List all counters
-        const counters = manager.getAllCounters();
+        // List all counters (would be sent via chat client)
+        void manager.getAllCounters();
         return;
       }
 
@@ -173,8 +172,8 @@ export function createCountersCommands(
         }
       }
 
-      // Just display the count
-      const count = manager.getValue(counterName) || 0;
+      // Just display the count (would be sent via chat client)
+      void manager.getValue(counterName);
     },
   });
 
@@ -182,7 +181,7 @@ export function createCountersCommands(
   commands.set('!newcounter', {
     perm: 'mod',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
 
       if (args.length === 0) {
         return;
@@ -206,15 +205,15 @@ export function createCountersCommands(
   commands.set('!counterhistory', {
     perm: 'mod',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { args } = ctx;
 
       if (args.length === 0) {
         return;
       }
 
       const counterName = args[0].toLowerCase();
-      const history = manager.getHistory(counterName, 5);
-      // Response would go here
+      // Get history (would be sent via chat client)
+      void manager.getHistory(counterName, 5);
     },
   });
 

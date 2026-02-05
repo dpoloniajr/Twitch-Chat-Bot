@@ -13,7 +13,14 @@ jest.mock('../../src/services/loyalty', () => ({
 }));
 
 describe('Loyalty Commands', () => {
-  let mockManager: jest.Mocked<LoyaltyManager>;
+  let mockManager: {
+    getUserData: jest.Mock;
+    getUserRank: jest.Mock;
+    awardPoints: jest.Mock;
+    setPoints: jest.Mock;
+    getLeaderboard: jest.Mock;
+    transferPoints: jest.Mock;
+  };
   let commands: Map<string, any>;
 
   const createMockContext = (
@@ -23,7 +30,9 @@ describe('Loyalty Commands', () => {
     isBroadcaster = false
   ): CommandContext => ({
     channel: '#testchannel',
-    user,
+    username: user,
+    displayName: user,
+    raw: `!command ${args.join(' ')}`,
     args,
     msg: {
       userInfo: {
@@ -31,7 +40,6 @@ describe('Loyalty Commands', () => {
         isBroadcaster,
         userName: user,
         displayName: user,
-        isBroadcaster,
         isSubscriber: false,
         isVip: false,
       },
@@ -40,162 +48,188 @@ describe('Loyalty Commands', () => {
 
   beforeEach(() => {
     mockManager = {
-      getUser: jest.fn(),
-      addPoints: jest.fn(),
-      removePoints: jest.fn(),
+      getUserData: jest.fn(),
+      getUserRank: jest.fn(),
+      awardPoints: jest.fn(),
       setPoints: jest.fn(),
-      getLevelInfo: jest.fn(),
-      getLeaderboardRank: jest.fn(),
       getLeaderboard: jest.fn(),
+      transferPoints: jest.fn(),
     } as any;
 
-    commands = createLoyaltyCommands(mockManager);
+    commands = createLoyaltyCommands(mockManager as unknown as LoyaltyManager);
   });
 
   describe('!points command', () => {
-    it('should show user points', async () => {
-      mockManager.getUser.mockReturnValue({ points: 500, username: 'testuser' });
-      mockManager.getLevelInfo.mockReturnValue({ level: 3, name: 'Regular' });
-      mockManager.getLeaderboardRank.mockReturnValue(5);
+    it('should call getUserData and getUserRank', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 500, username: 'testuser' } as any);
+      mockManager.getUserRank.mockReturnValue(5);
 
       const context = createMockContext('testuser');
       const handler = commands.get('!points');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('500 points');
-      expect(result.message).toContain('Level 3');
-      expect(result.message).toContain('Rank #5');
+      expect(mockManager.getUserData).toHaveBeenCalledWith('testuser');
+      expect(mockManager.getUserRank).toHaveBeenCalledWith('testuser');
     });
 
-    it('should show 0 points for new user', async () => {
-      mockManager.getUser.mockReturnValue(null);
-
-      const context = createMockContext('newuser');
-      const handler = commands.get('!points');
-      const result = await handler.handler(context);
-
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('0 points');
-    });
-
-    it('should show other user points', async () => {
-      mockManager.getUser.mockReturnValue({ points: 1000, username: 'otheruser' });
+    it('should look up other user when username provided', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 1000, username: 'otheruser' } as any);
+      mockManager.getUserRank.mockReturnValue(3);
 
       const context = createMockContext('testuser', ['otheruser']);
       const handler = commands.get('!points');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('otheruser has');
-      expect(result.message).toContain('1000 points');
+      expect(mockManager.getUserData).toHaveBeenCalledWith('otheruser');
+      expect(mockManager.getUserRank).toHaveBeenCalledWith('otheruser');
+    });
+
+    it('should strip @ from username', async () => {
+      mockManager.getUserData.mockReturnValue(null);
+      mockManager.getUserRank.mockReturnValue(null);
+
+      const context = createMockContext('testuser', ['@otheruser']);
+      const handler = commands.get('!points');
+      await handler.handler(context);
+
+      expect(mockManager.getUserData).toHaveBeenCalledWith('otheruser');
     });
   });
 
   describe('!leaderboard command', () => {
-    it('should show top users', async () => {
-      mockManager.getLeaderboard.mockReturnValue([
-        { username: 'user1', points: 1000 },
-        { username: 'user2', points: 800 },
-        { username: 'user3', points: 600 },
-      ]);
-
-      const context = createMockContext('testuser');
-      const handler = commands.get('!leaderboard');
-      const result = await handler.handler(context);
-
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('user1: 1000');
-      expect(result.message).toContain('user2: 800');
-    });
-
-    it('should handle empty leaderboard', async () => {
+    it('should get leaderboard with default limit', async () => {
       mockManager.getLeaderboard.mockReturnValue([]);
 
       const context = createMockContext('testuser');
       const handler = commands.get('!leaderboard');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('no one has earned points');
+      expect(mockManager.getLeaderboard).toHaveBeenCalledWith(5);
+    });
+
+    it('should respect custom limit up to 10', async () => {
+      mockManager.getLeaderboard.mockReturnValue([]);
+
+      const context = createMockContext('testuser', ['8']);
+      const handler = commands.get('!leaderboard');
+      await handler.handler(context);
+
+      expect(mockManager.getLeaderboard).toHaveBeenCalledWith(8);
+    });
+
+    it('should cap limit at 10', async () => {
+      mockManager.getLeaderboard.mockReturnValue([]);
+
+      const context = createMockContext('testuser', ['50']);
+      const handler = commands.get('!leaderboard');
+      await handler.handler(context);
+
+      expect(mockManager.getLeaderboard).toHaveBeenCalledWith(10);
     });
   });
 
   describe('!gamble command', () => {
-    it('should require amount argument', async () => {
+    it('should do nothing without amount argument', async () => {
       const context = createMockContext('testuser');
       const handler = commands.get('!gamble');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(false);
-      expect(result.message).toContain('usage');
+      expect(mockManager.getUserData).not.toHaveBeenCalled();
     });
 
-    it('should reject insufficient points', async () => {
-      mockManager.getUser.mockReturnValue({ points: 50, username: 'testuser' });
+    it('should do nothing with invalid amount', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 100 } as any);
+
+      const context = createMockContext('testuser', ['invalid']);
+      const handler = commands.get('!gamble');
+      await handler.handler(context);
+
+      expect(mockManager.awardPoints).not.toHaveBeenCalled();
+      expect(mockManager.setPoints).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing with insufficient points', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 50 } as any);
 
       const context = createMockContext('testuser', ['100']);
       const handler = commands.get('!gamble');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(false);
-      expect(result.message).toContain("don't have enough");
+      expect(mockManager.awardPoints).not.toHaveBeenCalled();
+      expect(mockManager.setPoints).not.toHaveBeenCalled();
     });
 
-    it('should handle gambling (win or lose)', async () => {
-      mockManager.getUser.mockReturnValue({ points: 100, username: 'testuser' });
+    it('should gamble with valid amount', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 100 } as any);
 
       const context = createMockContext('testuser', ['50']);
       const handler = commands.get('!gamble');
-      const result = await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(result.message).toMatch(/won|lost/);
+      // Run multiple times to ensure both win and loss paths work
+      for (let i = 0; i < 10; i++) {
+        await handler.handler(context);
+      }
+
+      // Either awardPoints or setPoints should have been called
+      const totalCalls = (mockManager.awardPoints as jest.Mock).mock.calls.length +
+                        (mockManager.setPoints as jest.Mock).mock.calls.length;
+      expect(totalCalls).toBeGreaterThan(0);
     });
 
     it('should support "all" keyword', async () => {
-      mockManager.getUser.mockReturnValue({ points: 100, username: 'testuser' });
+      mockManager.getUserData.mockReturnValue({ points: 100 } as any);
 
       const context = createMockContext('testuser', ['all']);
       const handler = commands.get('!gamble');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      // Should gamble all 100 points
-      expect(mockManager.addPoints).toHaveBeenCalledWith('testuser', 100, 'gamble_win')
-        || expect(mockManager.removePoints).toHaveBeenCalledWith('testuser', 100, 'gamble_loss');
+      // Should have tried to gamble all 100 points
+      const awardCalls = (mockManager.awardPoints as jest.Mock).mock.calls;
+      const setCalls = (mockManager.setPoints as jest.Mock).mock.calls;
+
+      if (awardCalls.length > 0) {
+        expect(awardCalls[0][1]).toBe(100); // Award 100 points on win
+      } else if (setCalls.length > 0) {
+        expect(setCalls[0][1]).toBe(0); // Set to 0 on loss (100 - 100 = 0)
+      }
     });
   });
 
   describe('!give command', () => {
-    it('should require target and amount', async () => {
+    it('should do nothing without target and amount', async () => {
       const context = createMockContext('testuser');
       const handler = commands.get('!give');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(false);
-      expect(result.message).toContain('usage');
+      expect(mockManager.transferPoints).not.toHaveBeenCalled();
     });
 
-    it('should prevent self-giving', async () => {
+    it('should do nothing when giving to self', async () => {
       const context = createMockContext('testuser', ['testuser', '100']);
       const handler = commands.get('!give');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(false);
-      expect(result.message).toContain("can't give points to yourself");
+      expect(mockManager.transferPoints).not.toHaveBeenCalled();
     });
 
-    it('should transfer points', async () => {
-      mockManager.getUser.mockReturnValue({ points: 500, username: 'testuser' });
+    it('should transfer points to another user', async () => {
+      mockManager.transferPoints.mockReturnValue({ success: true } as any);
+
+      const context = createMockContext('testuser', ['otheruser', '100']);
+      const handler = commands.get('!give');
+      await handler.handler(context);
+
+      expect(mockManager.transferPoints).toHaveBeenCalledWith('testuser', 'otheruser', 100);
+    });
+
+    it('should strip @ from target username', async () => {
+      mockManager.transferPoints.mockReturnValue({ success: true } as any);
 
       const context = createMockContext('testuser', ['@otheruser', '100']);
       const handler = commands.get('!give');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(mockManager.removePoints).toHaveBeenCalledWith('testuser', 100, 'gift_sent');
-      expect(mockManager.addPoints).toHaveBeenCalledWith('otheruser', 100, 'gift_received');
+      expect(mockManager.transferPoints).toHaveBeenCalledWith('testuser', 'otheruser', 100);
     });
   });
 
@@ -206,14 +240,59 @@ describe('Loyalty Commands', () => {
     });
 
     it('should add points to user', async () => {
-      mockManager.getUser.mockReturnValue({ points: 200, username: 'targetuser' });
-
       const context = createMockContext('moduser', ['targetuser', '100'], true);
       const handler = commands.get('!addpoints');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(mockManager.addPoints).toHaveBeenCalledWith('targetuser', 100, 'mod_add');
+      expect(mockManager.awardPoints).toHaveBeenCalledWith(
+        'targetuser',
+        100,
+        'Added by moduser',
+        'bonus'
+      );
+    });
+
+    it('should do nothing without target or amount', async () => {
+      const context = createMockContext('moduser', [], true);
+      const handler = commands.get('!addpoints');
+      await handler.handler(context);
+
+      expect(mockManager.awardPoints).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('!removepoints command (mod only)', () => {
+    it('should have mod permission', () => {
+      const handler = commands.get('!removepoints');
+      expect(handler.perm).toBe('mod');
+    });
+
+    it('should remove points from user', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 500 } as any);
+
+      const context = createMockContext('moduser', ['targetuser', '100'], true);
+      const handler = commands.get('!removepoints');
+      await handler.handler(context);
+
+      expect(mockManager.setPoints).toHaveBeenCalledWith(
+        'targetuser',
+        400,
+        'Removed by moduser'
+      );
+    });
+
+    it('should not set points below 0', async () => {
+      mockManager.getUserData.mockReturnValue({ points: 50 } as any);
+
+      const context = createMockContext('moduser', ['targetuser', '100'], true);
+      const handler = commands.get('!removepoints');
+      await handler.handler(context);
+
+      expect(mockManager.setPoints).toHaveBeenCalledWith(
+        'targetuser',
+        0,
+        'Removed by moduser'
+      );
     });
   });
 
@@ -226,10 +305,33 @@ describe('Loyalty Commands', () => {
     it('should set user points', async () => {
       const context = createMockContext('moduser', ['targetuser', '500'], true);
       const handler = commands.get('!setpoints');
-      const result = await handler.handler(context);
+      await handler.handler(context);
 
-      expect(result.success).toBe(true);
-      expect(mockManager.setPoints).toHaveBeenCalledWith('targetuser', 500, 'mod_set');
+      expect(mockManager.setPoints).toHaveBeenCalledWith(
+        'targetuser',
+        500,
+        'Set by moduser'
+      );
+    });
+
+    it('should allow setting to 0', async () => {
+      const context = createMockContext('moduser', ['targetuser', '0'], true);
+      const handler = commands.get('!setpoints');
+      await handler.handler(context);
+
+      expect(mockManager.setPoints).toHaveBeenCalledWith(
+        'targetuser',
+        0,
+        'Set by moduser'
+      );
+    });
+
+    it('should reject negative values', async () => {
+      const context = createMockContext('moduser', ['targetuser', '-100'], true);
+      const handler = commands.get('!setpoints');
+      await handler.handler(context);
+
+      expect(mockManager.setPoints).not.toHaveBeenCalled();
     });
   });
 
@@ -239,13 +341,13 @@ describe('Loyalty Commands', () => {
         register: jest.fn(),
       };
 
-      registerLoyaltyCommands(mockRegistry, mockManager);
+      registerLoyaltyCommands(mockRegistry, mockManager as unknown as LoyaltyManager);
 
       expect(mockRegistry.register).toHaveBeenCalledTimes(7);
 
       // Check that aliases are registered
       const pointsCall = mockRegistry.register.mock.calls.find(
-        (call) => call[0] === '!points'
+        (call: any[]) => call[0] === '!points'
       );
       expect(pointsCall[2]).toContain('!balance');
       expect(pointsCall[2]).toContain('!pts');

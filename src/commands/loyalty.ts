@@ -22,12 +22,12 @@ export function createLoyaltyCommands(
   commands.set('!points', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const targetUser = args[0]?.replace('@', '') || username;
 
-      const userData = manager.getUserData(targetUser);
-      const rank = manager.getUserRank(targetUser);
-      // Response would include points, level, rank
+      // Get user data and rank (would be sent via chat client)
+      void manager.getUserData(targetUser);
+      void manager.getUserRank(targetUser);
     },
   });
 
@@ -35,11 +35,11 @@ export function createLoyaltyCommands(
   commands.set('!leaderboard', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { args } = ctx;
       const limit = Math.min(parseInt(args[0] || '5', 10), 10);
 
-      const leaders = manager.getLeaderboard(limit);
-      // Response would show top users
+      // Get leaderboard (would be sent via chat client)
+      void manager.getLeaderboard(limit);
     },
   });
 
@@ -47,7 +47,7 @@ export function createLoyaltyCommands(
   commands.set('!gamble', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const amountArg = args[0];
 
       if (!amountArg) {
@@ -87,7 +87,7 @@ export function createLoyaltyCommands(
   commands.set('!give', {
     perm: 'everyone',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const targetUser = args[0]?.replace('@', '');
       const amountArg = args[1];
 
@@ -115,7 +115,7 @@ export function createLoyaltyCommands(
   commands.set('!addpoints', {
     perm: 'mod',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const targetUser = args[0]?.replace('@', '');
       const amountArg = args[1];
 
@@ -137,7 +137,7 @@ export function createLoyaltyCommands(
   commands.set('!removepoints', {
     perm: 'mod',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const targetUser = args[0]?.replace('@', '');
       const amountArg = args[1];
 
@@ -163,7 +163,7 @@ export function createLoyaltyCommands(
   commands.set('!setpoints', {
     perm: 'mod',
     handler: async (ctx: CommandContext): Promise<void> => {
-      const { channel, username, args } = ctx;
+      const { username, args } = ctx;
       const targetUser = args[0]?.replace('@', '');
       const amountArg = args[1];
 

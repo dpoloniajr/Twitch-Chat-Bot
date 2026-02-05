@@ -329,7 +329,12 @@ describe('DiscordWebhook', () => {
 
   describe('notification methods', () => {
     let webhook: DiscordWebhook;
-    let mockRequest: ReturnType<typeof jest.fn>;
+    let mockRequest: {
+      on: jest.Mock;
+      setTimeout: jest.Mock;
+      write: jest.Mock;
+      end: jest.Mock;
+    };
 
     beforeEach(() => {
       const mockResponse = {

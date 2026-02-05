@@ -392,11 +392,11 @@ describe('BackupManager', () => {
 
     it('should list backup files', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readdirSync.mockReturnValue([
+      (mockFs.readdirSync as jest.Mock).mockReturnValue([
         'backup-2024-01-01.json',
         'backup-2024-01-02.json',
         'not-a-backup.txt',
-      ] as unknown as fs.Dirent[]);
+      ]);
 
       mockFs.statSync.mockReturnValue({
         size: 1024,
@@ -418,7 +418,7 @@ describe('BackupManager', () => {
 
     it('should handle parse errors when reading backup metadata', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readdirSync.mockReturnValue(['backup.json'] as unknown as fs.Dirent[]);
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(['backup.json']);
       mockFs.statSync.mockReturnValue({
         size: 1024,
         mtime: new Date('2024-01-01'),
