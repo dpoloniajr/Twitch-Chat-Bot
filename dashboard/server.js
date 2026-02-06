@@ -100,6 +100,12 @@ app.use('/api/alerts', require('./routes/alerts')(paths.alertConfigFile));
 app.use('/api/uploads', require('./routes/uploads')(uploadsDir));
 app.use('/obs', require('./routes/obs')(paths));
 
+// Phase 2/3 Feature Routes
+app.use('/api/loyalty', require('./routes/loyalty')(logsDir));
+app.use('/api/quotes', require('./routes/quotes')(logsDir));
+app.use('/api/counters', require('./routes/counters')(logsDir));
+app.use('/api/backup', require('./routes/backup')(logsDir));
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
