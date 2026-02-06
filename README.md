@@ -58,6 +58,9 @@ A feature-rich, modular Twitch chat bot built with Node.js featuring a dual-toke
 - **Chat Filter Configuration** - Configure moderation settings
 - **EventSub Event Log** - View recent stream events
 - **Redemption Log** - Track channel point redemptions
+- **Loyalty System** - Track user points, levels, and watch time
+- **Quotes Database** - Add, manage, and display random quotes
+- **Counters** - Create and manage custom counters (deaths, wins, etc.)
 
 ### OBS Integration
 - **Alert Overlays** - Customizable alerts for follows, subs, bits, raids, redemptions
@@ -302,6 +305,10 @@ Chat client connected!
 |---------|-------------|----------------|----------|
 | `!clip` | Create a clip of the current stream | `clips:edit` | 60s |
 | `!followage [user]` | Check follow duration | `moderator:read:followers` | - |
+| `!balance [user]` | Check loyalty points | - | 5s |
+| `!leaderboard` | Show top 5 users by loyalty points | - | 10s |
+| `!quote` | Display a random quote | - | 5s |
+| `!counter <name>` | Check a counter value | - | 5s |
 | `!commands` / `!help` | List available commands | - | - |
 
 ### Moderator Commands
@@ -383,6 +390,49 @@ Update the stream category/game.
 Usage: !game Valorant
 Usage: !game "Just Chatting"
 ```
+
+#### !balance
+Check loyalty points for yourself or another user.
+```
+Usage: !balance                (checks your own)
+Usage: !balance @username       (checks another user)
+Response: @username user123 has 5000 points (Rank: #3)
+```
+- Shows points and rank
+- 5-second cooldown
+- Requires loyalty system to be configured in dashboard
+
+#### !leaderboard
+Display the top 5 users by loyalty points.
+```
+Usage: !leaderboard
+Response: Top Loyalists: 1. user123 (50000pts) | 2. user456 (45000pts) | 3. user789 (40000pts) | 4. user101 (35000pts) | 5. user202 (30000pts)
+```
+- Shows top 5 users
+- 10-second cooldown
+- Displays rank, username, and point total
+
+#### !quote
+Display a random quote from the quote database.
+```
+Usage: !quote
+Response: "The only way to do great work is to love what you do." — Steve Jobs (Technology)
+```
+- Shows quote text, author, and game context (if available)
+- 5-second cooldown
+- Requires quotes to be added via dashboard
+
+#### !counter
+Check the current value of a specific counter.
+```
+Usage: !counter deaths
+Usage: !counter wins
+Response: deaths: 42
+```
+- Shows counter name and current value
+- 5-second cooldown
+- Counters are managed via the dashboard
+- Default counters: `deaths`, `wins`, `losses`
 
 ## Chat Filtering
 
@@ -830,6 +880,37 @@ Base URL: `http://localhost:3001`
 | POST | `/api/filters` | Update filter settings |
 | POST | `/api/filters/words` | Add word to blacklist |
 | DELETE | `/api/filters/words/:word` | Remove word from blacklist |
+
+#### Loyalty System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/loyalty` | Get all loyalty data |
+| GET | `/api/loyalty/config` | Get loyalty configuration |
+| PUT | `/api/loyalty/config` | Update loyalty configuration |
+| GET | `/api/loyalty/leaderboard` | Get top users by points |
+| GET | `/api/loyalty/user/:username` | Get user's loyalty data |
+| PUT | `/api/loyalty/user/:username/points` | Set user points (admin) |
+
+#### Quotes System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/quotes` | Get all quotes (paginated) |
+| GET | `/api/quotes/random` | Get a random quote |
+| POST | `/api/quotes` | Add a new quote |
+| PUT | `/api/quotes/:id` | Update a quote |
+| DELETE | `/api/quotes/:id` | Delete a quote |
+
+#### Counters System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/counters` | Get all counters |
+| GET | `/api/counters/:name` | Get a specific counter |
+| POST | `/api/counters` | Create a new counter |
+| PUT | `/api/counters/:name` | Update counter value |
+| DELETE | `/api/counters/:name` | Delete a counter |
 
 #### OBS Configuration
 

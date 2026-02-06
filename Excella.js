@@ -1645,6 +1645,79 @@ async function handleGame(channel, username, gameQuery) {
   }
 }
 
+async function handleBalance(channel, username, args) {
+  const targetUser = args[0] || username;
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/user/${targetUser}`, { timeout: 3000 });
+    const userData = response.data;
+    const currencyName = userData.currencyNamePlural || 'points';
+    sendChatMessage(channel, `@${username} ${targetUser} has ${userData.points || 0} ${currencyName}${userData.rank ? ` (Rank: #${userData.rank})` : ''}`);
+    logCommandExecution(username, '!balance', args, 'success');
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `@${username} User "${targetUser}" has no loyalty data yet.`);
+    } else {
+      sendChatMessage(channel, `@${username} Error: Could not fetch balance.`);
+    }
+    logCommandExecution(username, '!balance', args, 'failed');
+  }
+}
+
+async function handleLeaderboard(channel, username) {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/leaderboard?limit=10`, { timeout: 3000 });
+    const leaderboard = response.data;
+    if (leaderboard.length === 0) {
+      sendChatMessage(channel, `No loyalty data available yet.`);
+      return;
+    }
+    const topFive = leaderboard.slice(0, 5);
+    const message = 'Top Loyalists: ' + topFive.map(u => `${u.rank}. ${u.username} (${u.points}pts)`).join(' | ');
+    sendChatMessage(channel, message);
+    logCommandExecution(username, '!leaderboard', [], 'success');
+  } catch (error) {
+    sendChatMessage(channel, `Error: Could not fetch leaderboard.`);
+    logCommandExecution(username, '!leaderboard', [], 'failed');
+  }
+}
+
+async function handleQuote(channel, username) {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/quotes/random`, { timeout: 3000 });
+    const quote = response.data;
+    sendChatMessage(channel, `"${quote.text}" — ${quote.addedBy || 'Unknown'}${quote.game ? ` (${quote.game})` : ''}`);
+    logCommandExecution(username, '!quote', [], 'success');
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `No quotes available yet.`);
+    } else {
+      sendChatMessage(channel, `Error: Could not fetch quote.`);
+    }
+    logCommandExecution(username, '!quote', [], 'failed');
+  }
+}
+
+async function handleCounter(channel, username, args) {
+  if (!args[0]) {
+    sendChatMessage(channel, `@${username} Usage: !counter [name]`);
+    return;
+  }
+  const counterName = args[0];
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/counters/${counterName}`, { timeout: 3000 });
+    const counter = response.data;
+    sendChatMessage(channel, `${counter.name}: ${counter.value}`);
+    logCommandExecution(username, '!counter', args, 'success');
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `@${username} Counter "${counterName}" not found.`);
+    } else {
+      sendChatMessage(channel, `@${username} Error: Could not fetch counter.`);
+    }
+    logCommandExecution(username, '!counter', args, 'failed');
+  }
+}
+
 // Fun commands: 8ball, dice, coinflip
 const EIGHTBALL_ANSWERS = [
   'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes — definitely.', 'You may rely on it.',
@@ -1683,7 +1756,7 @@ async function handleCoinflip(channel, username) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter [name] | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -1847,6 +1920,50 @@ const commandRegistry = new Map([
   }}],
   ['!filters', { perm: 'mod', handler: async ({ channel }) => {
     sendChatMessage(channel, `Filters: ${JSON.stringify(getFilterStatus())}`);
+  }}],
+  ['!balance', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!balance');
+    if (isOnCooldown('balance', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('balance') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !balance is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleBalance(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('balance');
+  }}],
+  ['!leaderboard', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!leaderboard');
+    if (isOnCooldown('leaderboard', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('leaderboard') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !leaderboard is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleLeaderboard(channel, username);
+    if (cooldownSeconds > 0) setCooldown('leaderboard');
+  }}],
+  ['!quote', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!quote');
+    if (isOnCooldown('quote', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('quote') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !quote is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleQuote(channel, username);
+    if (cooldownSeconds > 0) setCooldown('quote');
+  }}],
+  ['!counter', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!counter');
+    if (isOnCooldown('counter', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('counter') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !counter is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCounter(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('counter');
   }}]
 ]);
 
