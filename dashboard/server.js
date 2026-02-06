@@ -39,6 +39,37 @@ const paths = {
   alertConfigFile: path.join(logsDir, 'alert-config.json')
 };
 
+// Migrate built-in commands: add new commands to existing installations
+async function migrateBuiltinCommands() {
+  try {
+    const content = await fs.readFile(paths.builtinCommandsFile, 'utf-8');
+    const commands = JSON.parse(content);
+
+    // List of new commands to add if missing
+    const newCommands = [
+      { name: '!balance', cooldownSeconds: 5, description: 'Check your loyalty points (optional: check another user)', permission: 'Everyone' },
+      { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
+      { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
+      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' }
+    ];
+
+    let updated = false;
+    for (const newCmd of newCommands) {
+      if (!commands.find(c => c.name === newCmd.name)) {
+        commands.push(newCmd);
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      await fs.writeFile(paths.builtinCommandsFile, JSON.stringify(commands, null, 2));
+      console.log('✓ Migrated built-in commands: added new commands for existing users');
+    }
+  } catch (error) {
+    console.warn('Could not migrate built-in commands:', error.message);
+  }
+}
+
 // Initialize logs directory and files
 async function initLogs() {
   try {
@@ -92,6 +123,9 @@ async function initLogs() {
       }
     });
     await initFile(paths.alertConfigFile, DEFAULT_ALERT_CONFIG);
+
+    // Run migration for existing installations
+    await migrateBuiltinCommands();
   } catch (error) {
     console.error('Failed to initialize logs:', error.message);
   }

@@ -305,10 +305,10 @@ Chat client connected!
 |---------|-------------|----------------|----------|
 | `!clip` | Create a clip of the current stream | `clips:edit` | 60s |
 | `!followage [user]` | Check follow duration | `moderator:read:followers` | - |
-| `!balance [user]` | Check loyalty points | - | 5s |
+| `!balance [user]` | Check loyalty points (optional: check another user) | - | 5s |
 | `!leaderboard` | Show top 5 users by loyalty points | - | 10s |
 | `!quote` | Display a random quote | - | 5s |
-| `!counter <name>` | Check a counter value | - | 5s |
+| `!counter <name>` | Check a specific counter value | - | 5s |
 | `!commands` / `!help` | List available commands | - | - |
 
 ### Moderator Commands
@@ -418,7 +418,7 @@ Display a random quote from the quote database.
 Usage: !quote
 Response: "The only way to do great work is to love what you do." — Steve Jobs (Technology)
 ```
-- Shows quote text, author, and game context (if available)
+- Shows quote text, the user who added it, and game context (if available)
 - 5-second cooldown
 - Requires quotes to be added via dashboard
 

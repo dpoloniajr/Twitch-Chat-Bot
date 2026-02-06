@@ -1645,14 +1645,42 @@ async function handleGame(channel, username, gameQuery) {
   }
 }
 
-async function handleBalance(channel, username, args) {
-  const targetUser = args[0] || username;
+// Cache for loyalty config (TTL: 5 minutes)
+let loyaltyConfigCache = null;
+let loyaltyConfigCacheTime = 0;
+const LOYALTY_CONFIG_CACHE_TTL = 5 * 60 * 1000;
+
+async function getLoyaltyConfig() {
+  const now = Date.now();
+  if (loyaltyConfigCache && (now - loyaltyConfigCacheTime) < LOYALTY_CONFIG_CACHE_TTL) {
+    return loyaltyConfigCache;
+  }
   try {
-    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/user/${targetUser}`, { timeout: 3000 });
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/config`, { timeout: 3000 });
+    loyaltyConfigCache = response.data;
+    loyaltyConfigCacheTime = now;
+    return loyaltyConfigCache;
+  } catch {
+    return { currencyNamePlural: 'points' };
+  }
+}
+
+async function handleBalance(channel, username, args) {
+  // Sanitize input: strip @ symbols, trim whitespace
+  let targetUser = (args[0] || username).replace(/^@+/, '').trim();
+  if (!targetUser) {
+    sendChatMessage(channel, `@${username} Invalid username.`);
+    return false; // Don't apply cooldown on invalid input
+  }
+  try {
+    const encodedUser = encodeURIComponent(targetUser.toLowerCase());
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/user/${encodedUser}`, { timeout: 3000 });
     const userData = response.data;
-    const currencyName = userData.currencyNamePlural || 'points';
+    const config = await getLoyaltyConfig();
+    const currencyName = config.currencyNamePlural || 'points';
     sendChatMessage(channel, `@${username} ${targetUser} has ${userData.points || 0} ${currencyName}${userData.rank ? ` (Rank: #${userData.rank})` : ''}`);
     logCommandExecution(username, '!balance', args, 'success');
+    return true;
   } catch (error) {
     if (error.response?.status === 404) {
       sendChatMessage(channel, `@${username} User "${targetUser}" has no loyalty data yet.`);
@@ -1660,19 +1688,19 @@ async function handleBalance(channel, username, args) {
       sendChatMessage(channel, `@${username} Error: Could not fetch balance.`);
     }
     logCommandExecution(username, '!balance', args, 'failed');
+    return true; // Apply cooldown on API errors
   }
 }
 
 async function handleLeaderboard(channel, username) {
   try {
-    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/leaderboard?limit=10`, { timeout: 3000 });
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/leaderboard?limit=5`, { timeout: 3000 });
     const leaderboard = response.data;
     if (leaderboard.length === 0) {
       sendChatMessage(channel, `No loyalty data available yet.`);
       return;
     }
-    const topFive = leaderboard.slice(0, 5);
-    const message = 'Top Loyalists: ' + topFive.map(u => `${u.rank}. ${u.username} (${u.points}pts)`).join(' | ');
+    const message = 'Top Loyalists: ' + leaderboard.map(u => `${u.rank}. ${u.username} (${u.points}pts)`).join(' | ');
     sendChatMessage(channel, message);
     logCommandExecution(username, '!leaderboard', [], 'success');
   } catch (error) {
@@ -1699,15 +1727,22 @@ async function handleQuote(channel, username) {
 
 async function handleCounter(channel, username, args) {
   if (!args[0]) {
-    sendChatMessage(channel, `@${username} Usage: !counter [name]`);
-    return;
+    sendChatMessage(channel, `@${username} Usage: !counter <name>`);
+    return false; // Don't apply cooldown on invalid input
   }
-  const counterName = args[0];
+  // Sanitize input: trim whitespace and URL encode
+  const counterName = args[0].trim();
+  if (!counterName) {
+    sendChatMessage(channel, `@${username} Invalid counter name.`);
+    return false; // Don't apply cooldown on invalid input
+  }
   try {
-    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/counters/${counterName}`, { timeout: 3000 });
+    const encodedName = encodeURIComponent(counterName);
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/counters/${encodedName}`, { timeout: 3000 });
     const counter = response.data;
     sendChatMessage(channel, `${counter.name}: ${counter.value}`);
     logCommandExecution(username, '!counter', args, 'success');
+    return true;
   } catch (error) {
     if (error.response?.status === 404) {
       sendChatMessage(channel, `@${username} Counter "${counterName}" not found.`);
@@ -1715,6 +1750,7 @@ async function handleCounter(channel, username, args) {
       sendChatMessage(channel, `@${username} Error: Could not fetch counter.`);
     }
     logCommandExecution(username, '!counter', args, 'failed');
+    return true; // Apply cooldown on API errors
   }
 }
 
@@ -1929,8 +1965,8 @@ const commandRegistry = new Map([
       sendChatMessage(channel, `@${username} !balance is on cooldown. Try again in ${remainingSec}s.`);
       return;
     }
-    await handleBalance(channel, username, args);
-    if (cooldownSeconds > 0) setCooldown('balance');
+    const shouldCooldown = await handleBalance(channel, username, args);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('balance');
   }}],
   ['!leaderboard', { perm: 'everyone', handler: async ({ channel, username }) => {
     const cooldownSeconds = getCommandCooldown('!leaderboard');
@@ -1962,8 +1998,8 @@ const commandRegistry = new Map([
       sendChatMessage(channel, `@${username} !counter is on cooldown. Try again in ${remainingSec}s.`);
       return;
     }
-    await handleCounter(channel, username, args);
-    if (cooldownSeconds > 0) setCooldown('counter');
+    const shouldCooldown = await handleCounter(channel, username, args);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('counter');
   }}]
 ]);
 
