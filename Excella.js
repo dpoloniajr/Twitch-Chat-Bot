@@ -201,13 +201,13 @@ function validateScopes(requiredScopes) {
 }
 
 // Log command execution to dashboard
-function logCommandExecution(username, command, args, result) {
+function logCommandExecution(username, command, args, success) {
   apiClient_axios.post(`${dashboardBaseUrl}/api/logs`, {
     timestamp: new Date().toISOString(),
     user: username,
     command,
-    args: args.join(' '),
-    result
+    args: Array.isArray(args) ? args.join(' ') : '',
+    success: success === true // Convert to boolean
   }).catch((err) => {
     console.error('[Logging] Failed to post command log:', err.message);
   });
@@ -1679,7 +1679,7 @@ async function handleBalance(channel, username, args) {
     const config = await getLoyaltyConfig();
     const currencyName = config.currencyNamePlural || 'points';
     sendChatMessage(channel, `@${username} ${targetUser} has ${userData.points || 0} ${currencyName}${userData.rank ? ` (Rank: #${userData.rank})` : ''}`);
-    logCommandExecution(username, '!balance', args, 'success');
+    logCommandExecution(username, '!balance', args, true);
     return true;
   } catch (error) {
     if (error.response?.status === 404) {
@@ -1687,7 +1687,7 @@ async function handleBalance(channel, username, args) {
     } else {
       sendChatMessage(channel, `@${username} Error: Could not fetch balance.`);
     }
-    logCommandExecution(username, '!balance', args, 'failed');
+    logCommandExecution(username, '!balance', args, false);
     return true; // Apply cooldown on API errors
   }
 }
@@ -1698,14 +1698,15 @@ async function handleLeaderboard(channel, username) {
     const leaderboard = response.data;
     if (leaderboard.length === 0) {
       sendChatMessage(channel, `No loyalty data available yet.`);
+      logCommandExecution(username, '!leaderboard', [], false); // Log empty results as unsuccessful
       return;
     }
     const message = 'Top Loyalists: ' + leaderboard.map(u => `${u.rank}. ${u.username} (${u.points}pts)`).join(' | ');
     sendChatMessage(channel, message);
-    logCommandExecution(username, '!leaderboard', [], 'success');
+    logCommandExecution(username, '!leaderboard', [], true);
   } catch (error) {
     sendChatMessage(channel, `Error: Could not fetch leaderboard.`);
-    logCommandExecution(username, '!leaderboard', [], 'failed');
+    logCommandExecution(username, '!leaderboard', [], false);
   }
 }
 
@@ -1714,14 +1715,14 @@ async function handleQuote(channel, username) {
     const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/quotes/random`, { timeout: 3000 });
     const quote = response.data;
     sendChatMessage(channel, `"${quote.text}" — ${quote.addedBy || 'Unknown'}${quote.game ? ` (${quote.game})` : ''}`);
-    logCommandExecution(username, '!quote', [], 'success');
+    logCommandExecution(username, '!quote', [], true);
   } catch (error) {
     if (error.response?.status === 404) {
       sendChatMessage(channel, `No quotes available yet.`);
     } else {
       sendChatMessage(channel, `Error: Could not fetch quote.`);
     }
-    logCommandExecution(username, '!quote', [], 'failed');
+    logCommandExecution(username, '!quote', [], false);
   }
 }
 
@@ -1741,7 +1742,7 @@ async function handleCounter(channel, username, args) {
     const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/counters/${encodedName}`, { timeout: 3000 });
     const counter = response.data;
     sendChatMessage(channel, `${counter.name}: ${counter.value}`);
-    logCommandExecution(username, '!counter', args, 'success');
+    logCommandExecution(username, '!counter', args, true);
     return true;
   } catch (error) {
     if (error.response?.status === 404) {
@@ -1749,7 +1750,7 @@ async function handleCounter(channel, username, args) {
     } else {
       sendChatMessage(channel, `@${username} Error: Could not fetch counter.`);
     }
-    logCommandExecution(username, '!counter', args, 'failed');
+    logCommandExecution(username, '!counter', args, false);
     return true; // Apply cooldown on API errors
   }
 }
