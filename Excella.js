@@ -1731,8 +1731,8 @@ async function handleCounter(channel, username, args) {
     sendChatMessage(channel, `@${username} Usage: !counter <name>`);
     return false; // Don't apply cooldown on invalid input
   }
-  // Sanitize input: trim whitespace and URL encode
-  const counterName = args[0].trim();
+  // Sanitize input: join all args (supports multi-word names), trim, and URL encode
+  const counterName = args.join(' ').trim();
   if (!counterName) {
     sendChatMessage(channel, `@${username} Invalid counter name.`);
     return false; // Don't apply cooldown on invalid input
@@ -1793,7 +1793,7 @@ async function handleCoinflip(channel, username) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter [name] | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {

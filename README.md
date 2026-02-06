@@ -416,9 +416,9 @@ Response: Top Loyalists: 1. user123 (50000pts) | 2. user456 (45000pts) | 3. user
 Display a random quote from the quote database.
 ```
 Usage: !quote
-Response: "The only way to do great work is to love what you do." — Steve Jobs (Technology)
+Response: "The only way to do great work is to love what you do." — StreamMaster (Technology)
 ```
-- Shows quote text, the user who added it, and game context (if available)
+- Shows quote text, the user who added it (addedBy), and game context (if available)
 - 5-second cooldown
 - Requires quotes to be added via dashboard
 
