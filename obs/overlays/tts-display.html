@@ -211,10 +211,15 @@
       updateDebug('status', 'Reconnecting...');
     });
 
-    // Handle TTS events
-    client.on('tts', async (data) => {
-      console.log('TTS event received:', data);
-      updateDebug('last-tts', `${data.user}: "${data.message.substring(0, 30)}..."`);
+    // Handle alert events (TTS is sent as an alert type)
+    client.on('alert', async (alertData) => {
+      // Only process TTS alerts
+      if (alertData.alertType !== 'tts') {
+        return;
+      }
+
+      console.log('TTS alert received:', alertData);
+      updateDebug('last-tts', `${alertData.user}: "${alertData.message.substring(0, 30)}..."`);
 
       // Cancel any pending hide
       if (hideTimeout) {
@@ -229,7 +234,7 @@
       }
 
       // Display new TTS
-      displayTTS(data);
+      displayTTS(alertData);
     });
 
     // Display TTS message
@@ -253,7 +258,12 @@
         ttsProgress.style.width = '100%';
       }, 50);
 
-      // Speak the text
+      // Start auto-hide timer immediately (progress bar syncs with this)
+      hideTimeout = setTimeout(() => {
+        hideTTS();
+      }, duration);
+
+      // Speak the text (independent of display timer)
       updateDebug('status', 'Speaking...');
       ttsContainer.classList.add('speaking');
 
@@ -270,11 +280,6 @@
 
       ttsContainer.classList.remove('speaking');
       updateDebug('status', 'Displayed');
-
-      // Auto-hide after duration
-      hideTimeout = setTimeout(() => {
-        hideTTS();
-      }, duration);
     }
 
     // Hide TTS message

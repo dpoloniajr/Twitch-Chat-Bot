@@ -81,7 +81,7 @@ const commandRegistry = new Map([
 ]);
 ```
 
-**Location:** `Excella` lines 1651-1759
+**Location:** `Excella.js` - Variable: `commandRegistry`
 
 ### Scope Validation Pattern
 
@@ -187,7 +187,7 @@ CHAT_FILTER_TIMEOUT_SEC=60
 
 ## Chat Filtering System
 
-**Location:** `Excella` lines 142-287
+**Location:** `Excella.js` - Functions: `checkChatFilters()`, `checkChatFiltersWithoutSideEffects()`
 
 Filter types:
 1. **Blacklist Words** - Case-insensitive matching
@@ -200,7 +200,7 @@ Moderators and broadcaster are exempt from all filters.
 
 ## TTS (Text-to-Speech) System
 
-**Location:** `Excella.js` lines 1794-1882 (handler), `/obs/overlays/tts-display.html` (overlay)
+**Location:** `Excella.js` - Function: `handleTTS()`, Config: `TTS_CONFIG`, `/obs/overlays/tts-display.html` (overlay)
 
 ### Features
 - **Browser-based TTS** using Web Speech API

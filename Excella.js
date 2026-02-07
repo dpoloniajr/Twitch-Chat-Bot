@@ -295,6 +295,48 @@ function checkChatFilters(message, username) {
   return violations;
 }
 
+// Check chat filters without side effects (for TTS validation)
+// This version doesn't update messageHistory to avoid affecting spam detection
+function checkChatFiltersWithoutSideEffects(message) {
+  const text = message.toLowerCase().trim();
+  const violations = [];
+
+  // Check blacklist words
+  if (chatFilters.blacklistWords.size > 0) {
+    const words = text.split(/\s+/);
+    for (const word of words) {
+      const cleaned = word.replace(/[^\w]/g, '');
+      if (chatFilters.blacklistWords.has(cleaned)) {
+        violations.push('blacklist_word');
+        break;
+      }
+    }
+  }
+
+  // Check for URLs
+  if (chatFilters.filterUrls && /https?:\/\/|www\./i.test(message)) {
+    violations.push('url');
+  }
+
+  // Check all caps (if more than 50% caps and at least 5 chars)
+  if (chatFilters.filterAllCaps && message.length >= 5) {
+    const capsCount = (message.match(/[A-Z]/g) || []).length;
+    if (capsCount / message.length >= 0.5) {
+      violations.push('all_caps');
+    }
+  }
+
+  // Check repeated characters (3+ same char in a row)
+  if (chatFilters.filterRepeatChars && /(.)\1{2,}/.test(message)) {
+    violations.push('repeat_chars');
+  }
+
+  // Note: Spam detection is intentionally skipped in this version
+  // as it requires message history tracking which would be a side effect
+
+  return violations;
+}
+
 // Announcement scheduler config
 const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
@@ -478,16 +520,15 @@ async function setupBroadcasterEventSub() {
             user, reward, input
           }).catch(() => {});
 
-          // Check if this is a TTS redemption
-          const isTTSRedemption = reward.toLowerCase().includes('tts') ||
-                                  reward.toLowerCase().includes('text to speech') ||
-                                  reward.toLowerCase().includes('text-to-speech');
+          // Check if this is a TTS redemption (using configured reward title)
+          const rewardLower = reward.toLowerCase();
+          const isTTSRedemption = rewardLower.includes(TTS_CONFIG.CHANNEL_POINTS_REWARD_TITLE.toLowerCase());
 
           if (isTTSRedemption && input) {
             // Process as TTS (bypasses per-user cooldown but respects global cooldown)
             const channel = config.channels[0]; // Use first channel
             const args = input.split(' ');
-            await handleTTS(channel, user, args, true);
+            await handleTTS(channel, user, args, null, true);
           } else {
             // Basic mapping: echo to chat for non-TTS redemptions
             config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
@@ -1815,7 +1856,7 @@ const TTS_CONFIG = {
   CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Default reward title to look for
 };
 
-async function handleTTS(channel, username, args, isRedemption = false) {
+async function handleTTS(channel, username, args, msg, isRedemption = false) {
   const text = args.join(' ').trim();
 
   // Validate text length
@@ -1831,12 +1872,18 @@ async function handleTTS(channel, username, args, isRedemption = false) {
     return false; // Don't apply cooldown
   }
 
-  // Apply content filtering
-  const violations = checkChatFilters(text, username);
-  if (violations.length > 0) {
-    sendChatMessage(channel, `@${username} TTS message blocked: contains filtered content (${violations.join(', ')}).`);
-    logCommandExecution(username, '!tts', args, false);
-    return false; // Don't apply cooldown
+  // Apply content filtering (exempt mods and broadcaster, skip side effects)
+  const isMod = msg?.userInfo?.isMod || false;
+  const isBroadcaster = msg?.userInfo?.isBroadcaster || false;
+
+  if (!isMod && !isBroadcaster) {
+    // Check filters without updating message history (avoid spam detection side effects)
+    const violations = checkChatFiltersWithoutSideEffects(text);
+    if (violations.length > 0) {
+      sendChatMessage(channel, `@${username} TTS message blocked: contains filtered content (${violations.join(', ')}).`);
+      logCommandExecution(username, '!tts', args, false);
+      return false; // Don't apply cooldown
+    }
   }
 
   // Check global cooldown
@@ -2103,8 +2150,8 @@ const commandRegistry = new Map([
     const shouldCooldown = await handleCounter(channel, username, args);
     if (shouldCooldown && cooldownSeconds > 0) setCooldown('counter');
   }}],
-  ['!tts', { perm: 'everyone', handler: async ({ channel, username, args }) => {
-    await handleTTS(channel, username, args, false);
+  ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    await handleTTS(channel, username, args, msg, false);
   }}]
 ]);
 
