@@ -151,3 +151,4 @@ accounts.encrypted.json
 .zenflow
 /.zencoder
 /backups
+.claude/settings.local.json
