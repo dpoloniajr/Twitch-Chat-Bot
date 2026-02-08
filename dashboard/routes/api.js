@@ -270,13 +270,14 @@ module.exports = function(paths, envPath) {
 
   // Test alert endpoint for OBS overlay testing (compatibility with Excella.js)
   router.post('/test-alert', (req, res) => {
-    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward } = req.body;
+    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, config } = req.body;
     const alertData = { alertType, user, timestamp: new Date().toISOString() };
     if (message) alertData.message = message;
     if (alertType === 'subscription' && tier) alertData.tier = tier;
     if (alertType === 'bits' && amount) alertData.amount = Number(amount);
     if (alertType === 'raid' && viewers) alertData.viewers = Number(viewers);
     if (alertType === 'redemption' && reward) alertData.reward = reward;
+    if (config) alertData.config = config; // Preserve custom config for overlays (e.g., TTS settings)
     state.broadcastState({ type: 'alert', data: alertData });
     res.json({ success: true, alert: alertData });
   });

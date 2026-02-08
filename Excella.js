@@ -295,6 +295,48 @@ function checkChatFilters(message, username) {
   return violations;
 }
 
+// Check chat filters without side effects (for TTS validation)
+// This version doesn't update messageHistory to avoid affecting spam detection
+function checkChatFiltersWithoutSideEffects(message) {
+  const text = message.toLowerCase().trim();
+  const violations = [];
+
+  // Check blacklist words
+  if (chatFilters.blacklistWords.size > 0) {
+    const words = text.split(/\s+/);
+    for (const word of words) {
+      const cleaned = word.replace(/[^\w]/g, '');
+      if (chatFilters.blacklistWords.has(cleaned)) {
+        violations.push('blacklist_word');
+        break;
+      }
+    }
+  }
+
+  // Check for URLs
+  if (chatFilters.filterUrls && /https?:\/\/|www\./i.test(message)) {
+    violations.push('url');
+  }
+
+  // Check all caps (if more than 50% caps and at least 5 chars)
+  if (chatFilters.filterAllCaps && message.length >= 5) {
+    const capsCount = (message.match(/[A-Z]/g) || []).length;
+    if (capsCount / message.length >= 0.5) {
+      violations.push('all_caps');
+    }
+  }
+
+  // Check repeated characters (3+ same char in a row)
+  if (chatFilters.filterRepeatChars && /(.)\1{2,}/.test(message)) {
+    violations.push('repeat_chars');
+  }
+
+  // Note: Spam detection is intentionally skipped in this version
+  // as it requires message history tracking which would be a side effect
+
+  return violations;
+}
+
 // Announcement scheduler config
 const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
@@ -477,12 +519,24 @@ async function setupBroadcasterEventSub() {
           apiClient_axios.post(`${dashboardBaseUrl}/api/redemptions`, {
             user, reward, input
           }).catch(() => {});
-          // Basic mapping: echo to chat
-          config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
 
-          // Log event and send alert to OBS overlay
-          logEventSubEvent('redemption', { user, reward, message: input });
-          sendAlert('redemption', { user, reward, message: input });
+          // Check if this is a TTS redemption (using configured reward title)
+          const rewardLower = reward.toLowerCase();
+          const isTTSRedemption = rewardLower.includes(TTS_CONFIG.CHANNEL_POINTS_REWARD_TITLE.toLowerCase());
+
+          if (isTTSRedemption && input) {
+            // Process as TTS (bypasses per-user cooldown but respects global cooldown)
+            const channel = config.channels[0]; // Use first channel
+            const args = input.split(' ');
+            await handleTTS(channel, user, args, null, true);
+          } else {
+            // Basic mapping: echo to chat for non-TTS redemptions
+            config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
+
+            // Log event and send alert to OBS overlay
+            logEventSubEvent('redemption', { user, reward, message: input });
+            sendAlert('redemption', { user, reward, message: input });
+          }
         });
         console.log('[EventSub-Broadcaster] Channel Points redemption subscription active');
       } catch (err) {
@@ -612,6 +666,8 @@ async function setupBroadcasterEventSub() {
   }
 }
 const commandCooldowns = new Map();
+const ttsUserCooldowns = new Map(); // Per-user TTS cooldowns
+let lastGlobalTTSTime = 0; // Global TTS cooldown
 
 // Load built-in command configuration
 async function loadBuiltinCommands() {
@@ -1792,8 +1848,103 @@ async function handleCoinflip(channel, username) {
   sendChatMessage(channel, `@${username} flipped a coin and got ${result}.`);
 }
 
+// TTS configuration
+const TTS_CONFIG = {
+  MAX_LENGTH: 200,
+  PER_USER_COOLDOWN_SEC: 30,
+  GLOBAL_COOLDOWN_SEC: 10,
+  CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Default reward title to look for
+};
+
+async function handleTTS(channel, username, args, msg, isRedemption = false) {
+  const text = args.join(' ').trim();
+
+  // Normalize username to lowercase for consistent cooldown tracking
+  const normalizedUsername = username.toLowerCase();
+
+  // Validate text length
+  if (!text) {
+    if (!isRedemption) {
+      sendChatMessage(channel, `@${username} Usage: !tts <message> (max ${TTS_CONFIG.MAX_LENGTH} characters)`);
+    }
+    return false; // Don't apply cooldown
+  }
+
+  if (text.length > TTS_CONFIG.MAX_LENGTH) {
+    sendChatMessage(channel, `@${username} TTS message too long! Max ${TTS_CONFIG.MAX_LENGTH} characters (you used ${text.length}).`);
+    return false; // Don't apply cooldown
+  }
+
+  // Apply content filtering (exempt mods and broadcaster, skip side effects)
+  const isMod = msg?.userInfo?.isMod || false;
+  const isBroadcaster = msg?.userInfo?.isBroadcaster || false;
+
+  if (!isMod && !isBroadcaster) {
+    // Check filters without updating message history (avoid spam detection side effects)
+    const violations = checkChatFiltersWithoutSideEffects(text);
+    if (violations.length > 0) {
+      sendChatMessage(channel, `@${username} TTS message blocked: contains filtered content (${violations.join(', ')}).`);
+      logCommandExecution(username, '!tts', args, false);
+      return false; // Don't apply cooldown
+    }
+  }
+
+  // Check global cooldown
+  const now = Date.now();
+  const timeSinceLastGlobalTTS = now - lastGlobalTTSTime;
+  if (timeSinceLastGlobalTTS < TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000) {
+    const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000 - timeSinceLastGlobalTTS) / 1000));
+    if (!isRedemption) {
+      sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
+    }
+    return false; // Don't apply user cooldown
+  }
+
+  // Check per-user cooldown (unless it's a redemption)
+  if (!isRedemption) {
+    const lastUserTTS = ttsUserCooldowns.get(normalizedUsername) || 0;
+    const timeSinceLastUserTTS = now - lastUserTTS;
+    if (timeSinceLastUserTTS < TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000) {
+      const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 - timeSinceLastUserTTS) / 1000));
+      sendChatMessage(channel, `@${username} You're on TTS cooldown. Try again in ${remainingSec}s.`);
+      return false;
+    }
+  }
+
+  // Send TTS alert to OBS overlay
+  sendAlert('tts', {
+    user: username,
+    message: text,
+    timestamp: new Date().toISOString(),
+    config: {
+      ttsEnabled: true,
+      ttsTemplate: text,
+      duration: 5000 + (text.length * 50) // Base 5s + 50ms per character
+    }
+  });
+
+  // Log successful TTS
+  logCommandExecution(username, '!tts', args, true);
+
+  // Update cooldowns (use normalized username for consistency)
+  lastGlobalTTSTime = now;
+  ttsUserCooldowns.set(normalizedUsername, now);
+
+  // Cleanup old user cooldowns (every 100 TTS calls)
+  if (ttsUserCooldowns.size > 100) {
+    const cutoffTime = now - (TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 * 2);
+    for (const [user, timestamp] of ttsUserCooldowns.entries()) {
+      if (timestamp < cutoffTime) {
+        ttsUserCooldowns.delete(user);
+      }
+    }
+  }
+
+  return true; // Successfully processed
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -2001,6 +2152,9 @@ const commandRegistry = new Map([
     }
     const shouldCooldown = await handleCounter(channel, username, args);
     if (shouldCooldown && cooldownSeconds > 0) setCooldown('counter');
+  }}],
+  ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    await handleTTS(channel, username, args, msg, false);
   }}]
 ]);
 
