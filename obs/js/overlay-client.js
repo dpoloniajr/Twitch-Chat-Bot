@@ -367,13 +367,51 @@
     }
 
     /**
+     * Wait for voices to be loaded
+     * @returns {Promise} Resolves when voices are available
+     */
+    _ensureVoicesLoaded() {
+      return new Promise((resolve) => {
+        if (this.voices.length > 0) {
+          resolve();
+          return;
+        }
+
+        // Try loading voices immediately
+        this._loadVoices();
+        if (this.voices.length > 0) {
+          resolve();
+          return;
+        }
+
+        // Wait for voiceschanged event with timeout
+        const timeout = setTimeout(() => {
+          this._loadVoices(); // Try one more time
+          resolve();
+        }, 1000);
+
+        if (this.synth.onvoiceschanged !== undefined) {
+          const handler = () => {
+            clearTimeout(timeout);
+            this._loadVoices();
+            this.synth.onvoiceschanged = () => this._loadVoices(); // Restore original handler
+            resolve();
+          };
+          this.synth.onvoiceschanged = handler;
+        } else {
+          // No voiceschanged event support, rely on timeout
+        }
+      });
+    }
+
+    /**
      * Speak text
      * @param {string} text - Text to speak
      * @param {Object} options - Override options
      * @returns {Promise} Resolves when speech completes
      */
-    speak(text, options = {}) {
-      return new Promise((resolve) => {
+    async speak(text, options = {}) {
+      return new Promise(async (resolve) => {
         // Resolve any previous pending speak promise
         if (this._pendingSpeakResolver) {
           this._pendingSpeakResolver();
@@ -391,6 +429,9 @@
           resolve();
           return;
         }
+
+        // Ensure voices are loaded before proceeding
+        await this._ensureVoicesLoaded();
 
         // Cancel any ongoing speech
         this.synth.cancel();
@@ -425,11 +466,6 @@
           }
 
           try {
-            // Re-select voice if it's still null (async loading)
-            if (!this.selectedVoice && this.voices.length === 0) {
-              this._loadVoices();
-            }
-
             const utterance = new SpeechSynthesisUtterance(text);
             this.currentUtterance = utterance; // Keep reference to prevent GC
 
@@ -438,7 +474,7 @@
             utterance.pitch = options.pitch !== undefined ? options.pitch : this.pitch;
             utterance.volume = options.volume !== undefined ? options.volume : this.volume;
 
-            console.log('[TTS] Speaking');
+            console.log('[TTS] Speaking with voice:', this.selectedVoice?.name || 'default');
 
             utterance.onstart = () => {
               console.log('[TTS] Speech started');
