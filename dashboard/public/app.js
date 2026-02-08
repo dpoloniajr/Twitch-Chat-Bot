@@ -588,10 +588,87 @@ async function loadObsOverlayConfig() {
 function updateOverlayUrls() {
   const baseUrl = window.location.origin;
 
-  document.getElementById('alertsUrl').value = `${baseUrl}/obs/overlays/alerts.html`;
-  document.getElementById('recentEventsUrl').value = `${baseUrl}/obs/overlays/recent-events.html`;
-  document.getElementById('chatBoxUrl').value = `${baseUrl}/obs/overlays/chat-box.html`;
-  document.getElementById('goalBarUrl').value = `${baseUrl}/obs/overlays/goal-bar.html`;
+  // Helper to build URL with query parameters
+  function buildUrl(overlay, params) {
+    const url = new URL(`${baseUrl}/obs/overlays/${overlay}.html`);
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+        url.searchParams.set(key, params[key]);
+      }
+    });
+    return url.toString();
+  }
+
+  // Alerts overlay
+  const alertsParams = {
+    duration: document.getElementById('alertsDuration')?.value,
+    volume: document.getElementById('alertsVolume')?.value
+  };
+  document.getElementById('alertsUrl').value = buildUrl('alerts', alertsParams);
+
+  // Recent Events overlay
+  const recentEventsParams = {
+    limit: document.getElementById('recentEventsLimit')?.value,
+    showTime: document.getElementById('recentEventsShowTime')?.checked
+  };
+  document.getElementById('recentEventsUrl').value = buildUrl('recent-events', recentEventsParams);
+
+  // Chat Box overlay
+  const chatBoxParams = {
+    timeout: parseInt(document.getElementById('chatBoxMessageTimeout')?.value) * 1000, // Convert to ms
+    hideBot: document.getElementById('chatBoxHideBot')?.checked || undefined
+  };
+  document.getElementById('chatBoxUrl').value = buildUrl('chat-box', chatBoxParams);
+
+  // Goal Bar overlay
+  const goalBarParams = {
+    goal: document.getElementById('goalBarGoal')?.value,
+    type: document.getElementById('goalBarType')?.value
+  };
+  document.getElementById('goalBarUrl').value = buildUrl('goal-bar', goalBarParams);
+
+  // TTS Display overlay
+  const ttsParams = {
+    voice: document.getElementById('ttsVoice')?.value || undefined,
+    rate: document.getElementById('ttsRate')?.value,
+    pitch: document.getElementById('ttsPitch')?.value,
+    volume: document.getElementById('ttsVolume')?.value,
+    duration: parseInt(document.getElementById('ttsDuration')?.value) * 1000 // Convert to ms
+  };
+  if (document.getElementById('ttsUrl')) {
+    document.getElementById('ttsUrl').value = buildUrl('tts-display', ttsParams);
+  }
+
+  // Leaderboard overlay
+  const leaderboardParams = {
+    limit: document.getElementById('leaderboardLimit')?.value,
+    poll: parseInt(document.getElementById('leaderboardPoll')?.value) * 1000, // Convert to ms
+    title: document.getElementById('leaderboardTitle')?.value || undefined
+  };
+  if (document.getElementById('leaderboardUrl')) {
+    document.getElementById('leaderboardUrl').value = buildUrl('leaderboard', leaderboardParams);
+  }
+
+  // Counter Display overlay
+  const counterParams = {
+    mode: document.getElementById('counterMode')?.value,
+    counter: document.getElementById('counterName')?.value || undefined,
+    poll: parseInt(document.getElementById('counterPoll')?.value) * 1000 // Convert to ms
+  };
+  if (document.getElementById('counterUrl')) {
+    document.getElementById('counterUrl').value = buildUrl('counter-display', counterParams);
+  }
+
+  // Quote Display overlay
+  const quoteParams = {
+    mode: document.getElementById('quoteMode')?.value,
+    rotate: document.getElementById('quoteRotate')?.checked || undefined,
+    interval: parseInt(document.getElementById('quoteInterval')?.value) * 1000, // Convert to ms
+    duration: parseInt(document.getElementById('quoteDuration')?.value) * 1000 // Convert to ms
+  };
+  if (document.getElementById('quoteUrl')) {
+    document.getElementById('quoteUrl').value = buildUrl('quote-display', quoteParams);
+  }
 }
 
 async function updateOverlayConfig(overlay, setting, value) {
@@ -694,6 +771,20 @@ function testOverlay(overlayName) {
     alert('Test alert sent! Check your alerts overlay.');
   } else if (overlayName === 'recentEvents') {
     window.open(`${window.location.origin}/obs/overlays/recent-events.html`, '_blank');
+  } else if (overlayName === 'tts') {
+    fetch('/api/test-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alertType: 'tts',
+        user: 'TestUser',
+        message: 'This is a test TTS message. Welcome to the stream!',
+        config: {
+          duration: parseInt(document.getElementById('ttsDuration')?.value || 5) * 1000
+        }
+      })
+    }).catch(err => console.error('Failed to send test TTS:', err));
+    alert('Test TTS sent! Check your TTS display overlay.');
   }
 }
 
