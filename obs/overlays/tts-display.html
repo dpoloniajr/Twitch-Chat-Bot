@@ -222,7 +222,6 @@
 
     // Current TTS state
     let currentTTS = null;
-    let hideTimeout = null;
 
     // WebSocket connection events
     client.on('connected', () => {
@@ -246,12 +245,6 @@
 
       console.log('TTS alert received:', alertData);
       updateDebug('last-tts', `${alertData.user}: "${alertData.message.substring(0, 30)}..."`);
-
-      // Cancel any pending hide
-      if (hideTimeout) {
-        clearTimeout(hideTimeout);
-        hideTimeout = null;
-      }
 
       // Hide current TTS if showing
       if (currentTTS) {
@@ -284,57 +277,63 @@
         ttsProgress.style.width = '100%';
       }, 50);
 
-      // Start auto-hide timer immediately (progress bar syncs with this)
-      hideTimeout = setTimeout(() => {
-        hideTTS();
-      }, duration);
-
-      // Speak the text (independent of display timer)
+      // Speak the text (must complete before hiding)
       updateDebug('status', 'Speaking...');
       ttsContainer.classList.add('speaking');
 
-      try {
-        // Check if API-generated audio is available
-        if (data.audioUrl && !data.useBrowserTTS) {
-          // Use API-generated audio
-          const audio = document.getElementById('tts-audio');
-          const dashboardUrl = window.location.origin;  // Use origin instead of hardcoded port
-          audio.src = dashboardUrl + data.audioUrl;
-          audio.volume = speechVolume;
+      // Race audio playback against duration timeout
+      const playbackPromise = (async () => {
+        try {
+          // Check if API-generated audio is available
+          if (data.audioUrl && !data.useBrowserTTS) {
+            // Use API-generated audio
+            const audio = document.getElementById('tts-audio');
+            const dashboardUrl = window.location.origin;  // Use origin instead of hardcoded port
+            audio.src = dashboardUrl + data.audioUrl;
+            audio.volume = speechVolume;
 
-          await new Promise((resolve, reject) => {
-            audio.onended = resolve;
-            audio.onerror = reject;
-            audio.play().catch(reject);
-          });
+            await new Promise((resolve, reject) => {
+              audio.onended = resolve;
+              audio.onerror = reject;
+              audio.play().catch(reject);
+            });
 
-          updateDebug('voice', 'API TTS');
-        } else {
-          // Fall back to browser TTS
-          const textToSpeak = config?.ttsTemplate || message;
-          const parsedText = ttsManager.parseTemplate(textToSpeak, data);
-          await ttsManager.speak(parsedText);
-          updateDebug('voice', ttsManager.selectedVoice?.name || 'Default (Browser)');
-        }
-      } catch (err) {
-        console.error('TTS speak error:', err);
-        updateDebug('status', 'Speech error');
-
-        // If API TTS failed, try browser TTS as fallback
-        if (data.audioUrl && !data.useBrowserTTS) {
-          try {
+            updateDebug('voice', 'API TTS');
+          } else {
+            // Fall back to browser TTS
             const textToSpeak = config?.ttsTemplate || message;
             const parsedText = ttsManager.parseTemplate(textToSpeak, data);
             await ttsManager.speak(parsedText);
-            updateDebug('voice', 'Browser TTS (Fallback)');
-          } catch (fallbackErr) {
-            console.error('Browser TTS fallback also failed:', fallbackErr);
+            updateDebug('voice', ttsManager.selectedVoice?.name || 'Default (Browser)');
+          }
+        } catch (err) {
+          console.error('TTS speak error:', err);
+          updateDebug('status', 'Speech error');
+
+          // If API TTS failed, try browser TTS as fallback
+          if (data.audioUrl && !data.useBrowserTTS) {
+            try {
+              const textToSpeak = config?.ttsTemplate || message;
+              const parsedText = ttsManager.parseTemplate(textToSpeak, data);
+              await ttsManager.speak(parsedText);
+              updateDebug('voice', 'Browser TTS (Fallback)');
+            } catch (fallbackErr) {
+              console.error('Browser TTS fallback also failed:', fallbackErr);
+            }
           }
         }
-      }
+      })();
+
+      const timeoutPromise = new Promise(resolve => setTimeout(resolve, duration));
+
+      // Wait for BOTH playback to complete AND timeout to elapse
+      await Promise.all([playbackPromise, timeoutPromise]);
 
       ttsContainer.classList.remove('speaking');
       updateDebug('status', 'Displayed');
+
+      // Now hide after both audio and timer are done
+      hideTTS();
     }
 
     // Hide TTS message

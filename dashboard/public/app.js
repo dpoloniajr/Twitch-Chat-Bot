@@ -588,10 +588,107 @@ async function loadObsOverlayConfig() {
 function updateOverlayUrls() {
   const baseUrl = window.location.origin;
 
-  document.getElementById('alertsUrl').value = `${baseUrl}/obs/overlays/alerts.html`;
-  document.getElementById('recentEventsUrl').value = `${baseUrl}/obs/overlays/recent-events.html`;
-  document.getElementById('chatBoxUrl').value = `${baseUrl}/obs/overlays/chat-box.html`;
-  document.getElementById('goalBarUrl').value = `${baseUrl}/obs/overlays/goal-bar.html`;
+  // Helper to safely parse number and return undefined if NaN
+  function parseNum(value, defaultValue = undefined) {
+    const num = parseFloat(value);
+    return Number.isFinite(num) ? num : defaultValue;
+  }
+
+  // Helper to safely parse integer and return undefined if NaN
+  function parseIntSafe(value, defaultValue = undefined) {
+    const num = parseInt(value);
+    return Number.isFinite(num) ? num : defaultValue;
+  }
+
+  // Helper to build URL with query parameters (filters out undefined/null/NaN)
+  function buildUrl(overlay, params) {
+    const url = new URL(`${baseUrl}/obs/overlays/${overlay}.html`);
+    Object.keys(params).forEach(key => {
+      const value = params[key];
+      if (value !== undefined && value !== null && value !== '' && !Number.isNaN(value)) {
+        url.searchParams.set(key, value);
+      }
+    });
+    return url.toString();
+  }
+
+  // Alerts overlay
+  const alertsDuration = parseIntSafe(document.getElementById('alertsDuration')?.value);
+  const alertsParams = {
+    duration: alertsDuration ? alertsDuration * 1000 : undefined, // Convert seconds to ms
+    volume: parseNum(document.getElementById('alertsVolume')?.value)
+  };
+  document.getElementById('alertsUrl').value = buildUrl('alerts', alertsParams);
+
+  // Recent Events overlay
+  const recentEventsParams = {
+    limit: parseIntSafe(document.getElementById('recentEventsLimit')?.value),
+    showTime: document.getElementById('recentEventsShowTime')?.checked
+  };
+  document.getElementById('recentEventsUrl').value = buildUrl('recent-events', recentEventsParams);
+
+  // Chat Box overlay
+  const chatBoxTimeout = parseIntSafe(document.getElementById('chatBoxMessageTimeout')?.value);
+  const chatBoxParams = {
+    timeout: chatBoxTimeout ? chatBoxTimeout * 1000 : undefined, // Convert to ms
+    hideBot: document.getElementById('chatBoxHideBot')?.checked || undefined
+  };
+  document.getElementById('chatBoxUrl').value = buildUrl('chat-box', chatBoxParams);
+
+  // Goal Bar overlay
+  const goalBarParams = {
+    goal: parseIntSafe(document.getElementById('goalBarGoal')?.value),
+    type: document.getElementById('goalBarType')?.value
+  };
+  document.getElementById('goalBarUrl').value = buildUrl('goal-bar', goalBarParams);
+
+  // TTS Display overlay
+  const ttsDuration = parseIntSafe(document.getElementById('ttsDuration')?.value);
+  const ttsParams = {
+    voice: document.getElementById('ttsVoice')?.value || undefined,
+    rate: parseNum(document.getElementById('ttsRate')?.value),
+    pitch: parseNum(document.getElementById('ttsPitch')?.value),
+    volume: parseNum(document.getElementById('ttsVolume')?.value),
+    duration: ttsDuration ? ttsDuration * 1000 : undefined // Convert to ms
+  };
+  if (document.getElementById('ttsUrl')) {
+    document.getElementById('ttsUrl').value = buildUrl('tts-display', ttsParams);
+  }
+
+  // Leaderboard overlay
+  const leaderboardPoll = parseIntSafe(document.getElementById('leaderboardPoll')?.value);
+  const leaderboardParams = {
+    limit: parseIntSafe(document.getElementById('leaderboardLimit')?.value),
+    poll: leaderboardPoll ? leaderboardPoll * 1000 : undefined, // Convert to ms
+    title: document.getElementById('leaderboardTitle')?.value || undefined
+  };
+  if (document.getElementById('leaderboardUrl')) {
+    document.getElementById('leaderboardUrl').value = buildUrl('leaderboard', leaderboardParams);
+  }
+
+  // Counter Display overlay
+  const counterPoll = parseIntSafe(document.getElementById('counterPoll')?.value);
+  const counterParams = {
+    mode: document.getElementById('counterMode')?.value,
+    counter: document.getElementById('counterName')?.value || undefined,
+    poll: counterPoll ? counterPoll * 1000 : undefined // Convert to ms
+  };
+  if (document.getElementById('counterUrl')) {
+    document.getElementById('counterUrl').value = buildUrl('counter-display', counterParams);
+  }
+
+  // Quote Display overlay
+  const quoteInterval = parseIntSafe(document.getElementById('quoteInterval')?.value);
+  const quoteDuration = parseIntSafe(document.getElementById('quoteDuration')?.value);
+  const quoteParams = {
+    mode: document.getElementById('quoteMode')?.value,
+    rotate: document.getElementById('quoteRotate')?.checked || undefined,
+    interval: quoteInterval ? quoteInterval * 1000 : undefined, // Convert to ms
+    duration: quoteDuration ? quoteDuration * 1000 : undefined // Convert to ms
+  };
+  if (document.getElementById('quoteUrl')) {
+    document.getElementById('quoteUrl').value = buildUrl('quote-display', quoteParams);
+  }
 }
 
 async function updateOverlayConfig(overlay, setting, value) {
@@ -694,6 +791,20 @@ function testOverlay(overlayName) {
     alert('Test alert sent! Check your alerts overlay.');
   } else if (overlayName === 'recentEvents') {
     window.open(`${window.location.origin}/obs/overlays/recent-events.html`, '_blank');
+  } else if (overlayName === 'tts') {
+    fetch('/api/test-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alertType: 'tts',
+        user: 'TestUser',
+        message: 'This is a test TTS message. Welcome to the stream!',
+        config: {
+          duration: parseInt(document.getElementById('ttsDuration')?.value || 5) * 1000
+        }
+      })
+    }).catch(err => console.error('Failed to send test TTS:', err));
+    alert('Test TTS sent! Check your TTS display overlay.');
   }
 }
 
