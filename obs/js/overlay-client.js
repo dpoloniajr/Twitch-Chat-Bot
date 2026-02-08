@@ -309,6 +309,7 @@
       this.synth = window.speechSynthesis || null;
       this.voices = [];
       this.selectedVoice = null;
+      this.currentUtterance = null; // Prevent garbage collection
 
       // Load voices only if supported
       if (this.supported) {
@@ -369,7 +370,7 @@
      * @returns {Promise} Resolves when speech completes
      */
     speak(text, options = {}) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         if (!this.enabled || !this.supported) {
           resolve();
           return;
@@ -383,19 +384,53 @@
         // Cancel any ongoing speech
         this.synth.cancel();
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = this.selectedVoice;
-        utterance.rate = options.rate || this.rate;
-        utterance.pitch = options.pitch || this.pitch;
-        utterance.volume = options.volume || this.volume;
+        // Some browsers need a resume call to ensure the engine isn't paused
+        // or stuck from a previous cancel
+        if (this.synth.paused) {
+          this.synth.resume();
+        }
 
-        utterance.onend = () => resolve();
-        utterance.onerror = (err) => {
-          console.warn('[TTS] Error:', err);
-          resolve(); // Resolve anyway to not block alerts
-        };
+        // Use a small timeout to ensure the cancel has taken effect
+        // and the engine is ready for a new utterance
+        setTimeout(() => {
+          try {
+            // Re-select voice if it's still null (async loading)
+            if (!this.selectedVoice && this.voices.length === 0) {
+              this._loadVoices();
+            }
 
-        this.synth.speak(utterance);
+            const utterance = new SpeechSynthesisUtterance(text);
+            this.currentUtterance = utterance; // Keep reference to prevent GC
+
+            utterance.voice = this.selectedVoice;
+            utterance.rate = options.rate || this.rate;
+            utterance.pitch = options.pitch || this.pitch;
+            utterance.volume = options.volume || this.volume;
+
+            console.log(`[TTS] Speaking: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+
+            utterance.onstart = () => {
+              console.log('[TTS] Speech started');
+            };
+
+            utterance.onend = () => {
+              console.log('[TTS] Speech ended');
+              this.currentUtterance = null;
+              resolve();
+            };
+
+            utterance.onerror = (err) => {
+              console.warn('[TTS] Speech error:', err);
+              this.currentUtterance = null;
+              resolve(); // Resolve anyway to not block alerts
+            };
+
+            this.synth.speak(utterance);
+          } catch (err) {
+            console.error('[TTS] Failed to speak:', err);
+            resolve();
+          }
+        }, 50);
       });
     }
 
