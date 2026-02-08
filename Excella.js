@@ -1911,25 +1911,31 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
     }
   }
 
-  // Generate TTS audio via dashboard API (if API provider is configured)
+  // Generate TTS audio via dashboard API (only if API provider is configured, not browser)
   let audioUrl = null;
   let useBrowserTTS = true;
 
-  try {
-    const ttsResponse = await apiClient_axios.post(`${dashboardBaseUrl}/api/tts/generate`, {
-      text,
-      voice: null, // Use default voice
-      provider: null // Use configured provider
-    }, { timeout: 30000 });
+  // Check TTS provider config - skip API call if using browser TTS
+  const ttsProvider = process.env.TTS_PROVIDER || 'browser';
+  const shouldUseAPI = ttsProvider !== 'browser';
 
-    if (ttsResponse.data.success && !ttsResponse.data.useBrowserTTS) {
-      // API TTS generated successfully
-      audioUrl = ttsResponse.data.audioUrl;
-      useBrowserTTS = false;
+  if (shouldUseAPI) {
+    try {
+      const ttsResponse = await apiClient_axios.post(`${dashboardBaseUrl}/api/tts/generate`, {
+        text,
+        voice: null, // Use default voice
+        provider: null // Use configured provider
+      }, { timeout: 30000 });
+
+      if (ttsResponse.data.success && !ttsResponse.data.useBrowserTTS) {
+        // API TTS generated successfully
+        audioUrl = ttsResponse.data.audioUrl;
+        useBrowserTTS = false;
+      }
+    } catch (err) {
+      console.error('[TTS] Failed to generate API TTS:', err.message);
+      // Fall back to browser TTS
     }
-  } catch (err) {
-    console.error('[TTS] Failed to generate API TTS:', err.message);
-    // Fall back to browser TTS
   }
 
   // Send TTS alert to OBS overlay

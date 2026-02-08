@@ -293,6 +293,17 @@ module.exports = function(paths, envPath) {
 
   // Generate TTS audio
   router.post('/tts/generate', asyncHandler(async (req, res) => {
+    // Security: Restrict to localhost to prevent API credit abuse
+    const remoteAddr = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    const isLocalhost = remoteAddr === '127.0.0.1' ||
+                        remoteAddr === '::1' ||
+                        remoteAddr === '::ffff:127.0.0.1' ||
+                        remoteAddr === 'localhost';
+
+    if (!isLocalhost) {
+      return res.status(403).json({ success: false, error: 'TTS generation restricted to localhost' });
+    }
+
     const { text, voice, provider } = req.body;
 
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
