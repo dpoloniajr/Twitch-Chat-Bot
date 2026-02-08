@@ -129,9 +129,43 @@
     .tts-container.speaking {
       animation: pulse 2s ease-in-out infinite;
     }
+
+    /* Audio unlock button */
+    .audio-unlock-button {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      background: linear-gradient(135deg, #9147ff 0%, #7209b7 100%);
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 15px;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      z-index: 9999;
+    }
+
+    .audio-unlock-button:hover {
+      transform: translate(-50%, -50%) scale(1.05);
+      box-shadow: 0 12px 40px rgba(145, 71, 255, 0.6);
+    }
+
+    .audio-unlock-button.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <!-- Audio unlock button (shown on first load) -->
+  <button class="audio-unlock-button hidden" id="audio-unlock-button">
+    🔊 Click to Enable TTS Audio
+  </button>
+
   <!-- Debug panel -->
   <div class="debug-panel" id="debug-panel">
     <p><strong>TTS Overlay Debug</strong></p>
@@ -139,6 +173,7 @@
     <p>Connection: <span id="debug-connection">Disconnected</span></p>
     <p>Last TTS: <span id="debug-last-tts">None</span></p>
     <p>Voice: <span id="debug-voice">Loading...</span></p>
+    <p>Audio: <span id="debug-audio">Locked</span></p>
   </div>
 
   <!-- TTS display container -->
@@ -217,6 +252,78 @@
       pitch: speechPitch,
       volume: speechVolume
     });
+
+    // Unlock audio on any user interaction (required for browser autoplay policies)
+    let audioUnlocked = false;
+    const unlockButton = document.getElementById('audio-unlock-button');
+
+    function unlockAudio() {
+      if (audioUnlocked) return;
+
+      try {
+        // Unlock Web Speech API
+        if (window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance('');
+          utterance.volume = 0;
+          window.speechSynthesis.speak(utterance);
+          window.speechSynthesis.cancel();
+          console.log('[TTS] Audio unlocked via user interaction');
+        }
+
+        // Unlock HTML5 Audio
+        const audio = document.getElementById('tts-audio');
+        if (audio) {
+          audio.muted = true;
+          audio.play().then(() => {
+            audio.pause();
+            audio.muted = false;
+            audio.currentTime = 0;
+          }).catch(() => {});
+        }
+
+        audioUnlocked = true;
+        updateDebug('status', 'Audio unlocked - Ready');
+        updateDebug('audio', 'Unlocked ✓');
+
+        // Hide unlock button
+        if (unlockButton) {
+          unlockButton.classList.add('hidden');
+        }
+      } catch (err) {
+        console.warn('[TTS] Failed to unlock audio:', err);
+      }
+    }
+
+    // Show unlock button on first load (auto-hide after 3 seconds if in OBS)
+    if (unlockButton) {
+      // Check if we're in OBS browser source (window.obsstudio exists)
+      const isOBS = typeof window.obsstudio !== 'undefined';
+
+      // Show button briefly to allow user to click
+      setTimeout(() => {
+        unlockButton.classList.remove('hidden');
+
+        // Auto-hide after 5 seconds in OBS (user can refresh to show again)
+        if (isOBS) {
+          setTimeout(() => {
+            if (!audioUnlocked) {
+              unlockButton.classList.add('hidden');
+              // Attempt auto-unlock anyway (may work in some OBS versions)
+              unlockAudio();
+            }
+          }, 5000);
+        }
+      }, 500);
+
+      // Handle button click
+      unlockButton.addEventListener('click', () => {
+        unlockAudio();
+      });
+    }
+
+    // Add click/touch listeners to unlock audio anywhere on page
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
 
     updateDebug('status', 'Ready');
 
