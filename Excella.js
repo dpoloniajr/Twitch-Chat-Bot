@@ -150,6 +150,21 @@ const FILTER_CACHE_TTL = 5000; // 5 second cache TTL
 
 const messageHistory = new Map(); // Track user messages for spam detection
 
+// Helper to check if env var is a common falsy value
+function isFalsyEnvValue(envVar) {
+  return ['false', '0', 'no', 'off'].includes(
+    String(envVar || '').toLowerCase()
+  );
+}
+
+// First-time chatter welcome (uses IRC tag first-msg)
+const firstChatterConfig = {
+  // Enabled by default; allow several common falsy values to disable
+  welcomeEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_WELCOME_ENABLED),
+  welcomeMessage: (process.env.FIRST_CHATTER_MESSAGE || 'Welcome to the chat, {user}!').trim(),
+  alertEnabled: !isFalsyEnvValue(process.env.FIRST_CHATTER_ALERT_ENABLED)
+};
+
 // ==================== HELPER FUNCTIONS ====================
 
 // Check if user has moderator or broadcaster permissions
@@ -186,13 +201,13 @@ function validateScopes(requiredScopes) {
 }
 
 // Log command execution to dashboard
-function logCommandExecution(username, command, args, result) {
+function logCommandExecution(username, command, args, success) {
   apiClient_axios.post(`${dashboardBaseUrl}/api/logs`, {
     timestamp: new Date().toISOString(),
     user: username,
     command,
-    args: args.join(' '),
-    result
+    args: Array.isArray(args) ? args.join(' ') : '',
+    success: success === true // Convert to boolean
   }).catch((err) => {
     console.error('[Logging] Failed to post command log:', err.message);
   });
@@ -276,6 +291,48 @@ function checkChatFilters(message, username) {
       lastMessageHistoryCleanup = now;
     }
   }
+
+  return violations;
+}
+
+// Check chat filters without side effects (for TTS validation)
+// This version doesn't update messageHistory to avoid affecting spam detection
+function checkChatFiltersWithoutSideEffects(message) {
+  const text = message.toLowerCase().trim();
+  const violations = [];
+
+  // Check blacklist words
+  if (chatFilters.blacklistWords.size > 0) {
+    const words = text.split(/\s+/);
+    for (const word of words) {
+      const cleaned = word.replace(/[^\w]/g, '');
+      if (chatFilters.blacklistWords.has(cleaned)) {
+        violations.push('blacklist_word');
+        break;
+      }
+    }
+  }
+
+  // Check for URLs
+  if (chatFilters.filterUrls && /https?:\/\/|www\./i.test(message)) {
+    violations.push('url');
+  }
+
+  // Check all caps (if more than 50% caps and at least 5 chars)
+  if (chatFilters.filterAllCaps && message.length >= 5) {
+    const capsCount = (message.match(/[A-Z]/g) || []).length;
+    if (capsCount / message.length >= 0.5) {
+      violations.push('all_caps');
+    }
+  }
+
+  // Check repeated characters (3+ same char in a row)
+  if (chatFilters.filterRepeatChars && /(.)\1{2,}/.test(message)) {
+    violations.push('repeat_chars');
+  }
+
+  // Note: Spam detection is intentionally skipped in this version
+  // as it requires message history tracking which would be a side effect
 
   return violations;
 }
@@ -462,12 +519,24 @@ async function setupBroadcasterEventSub() {
           apiClient_axios.post(`${dashboardBaseUrl}/api/redemptions`, {
             user, reward, input
           }).catch(() => {});
-          // Basic mapping: echo to chat
-          config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
 
-          // Log event and send alert to OBS overlay
-          logEventSubEvent('redemption', { user, reward, message: input });
-          sendAlert('redemption', { user, reward, message: input });
+          // Check if this is a TTS redemption (using configured reward title)
+          const rewardLower = reward.toLowerCase();
+          const isTTSRedemption = rewardLower.includes(TTS_CONFIG.CHANNEL_POINTS_REWARD_TITLE.toLowerCase());
+
+          if (isTTSRedemption && input) {
+            // Process as TTS (bypasses per-user cooldown but respects global cooldown)
+            const channel = config.channels[0]; // Use first channel
+            const args = input.split(' ');
+            await handleTTS(channel, user, args, null, true);
+          } else {
+            // Basic mapping: echo to chat for non-TTS redemptions
+            config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
+
+            // Log event and send alert to OBS overlay
+            logEventSubEvent('redemption', { user, reward, message: input });
+            sendAlert('redemption', { user, reward, message: input });
+          }
         });
         console.log('[EventSub-Broadcaster] Channel Points redemption subscription active');
       } catch (err) {
@@ -597,6 +666,8 @@ async function setupBroadcasterEventSub() {
   }
 }
 const commandCooldowns = new Map();
+const ttsUserCooldowns = new Map(); // Per-user TTS cooldowns
+let lastGlobalTTSTime = 0; // Global TTS cooldown
 
 // Load built-in command configuration
 async function loadBuiltinCommands() {
@@ -638,6 +709,9 @@ async function updateDashboard() {
       commands: [
         { name: '!clip', description: 'Create a clip of the stream' },
         { name: '!followage [username]', description: 'Check how long someone has been following' },
+        { name: '!8ball <question>', description: 'Ask the magic 8ball a yes/no question' },
+        { name: '!dice [sides]', description: 'Roll a die (default 6, e.g. !dice 20 for d20)' },
+        { name: '!coinflip', description: 'Flip a coin — heads or tails' },
         { name: '!shoutout [username] / !so [username]', description: 'Shout out another streamer (mods only)' },
         { name: '!poll', description: 'Manage channel polls' },
         { name: '!prediction', description: 'Manage channel predictions' },
@@ -1627,8 +1701,250 @@ async function handleGame(channel, username, gameQuery) {
   }
 }
 
+// Cache for loyalty config (TTL: 5 minutes)
+let loyaltyConfigCache = null;
+let loyaltyConfigCacheTime = 0;
+const LOYALTY_CONFIG_CACHE_TTL = 5 * 60 * 1000;
+
+async function getLoyaltyConfig() {
+  const now = Date.now();
+  if (loyaltyConfigCache && (now - loyaltyConfigCacheTime) < LOYALTY_CONFIG_CACHE_TTL) {
+    return loyaltyConfigCache;
+  }
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/config`, { timeout: 3000 });
+    loyaltyConfigCache = response.data;
+    loyaltyConfigCacheTime = now;
+    return loyaltyConfigCache;
+  } catch {
+    return { currencyNamePlural: 'points' };
+  }
+}
+
+async function handleBalance(channel, username, args) {
+  // Sanitize input: strip @ symbols, trim whitespace
+  let targetUser = (args[0] || username).replace(/^@+/, '').trim();
+  if (!targetUser) {
+    sendChatMessage(channel, `@${username} Invalid username.`);
+    return false; // Don't apply cooldown on invalid input
+  }
+  try {
+    const encodedUser = encodeURIComponent(targetUser.toLowerCase());
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/user/${encodedUser}`, { timeout: 3000 });
+    const userData = response.data;
+    const config = await getLoyaltyConfig();
+    const currencyName = config.currencyNamePlural || 'points';
+    sendChatMessage(channel, `@${username} ${targetUser} has ${userData.points || 0} ${currencyName}${userData.rank ? ` (Rank: #${userData.rank})` : ''}`);
+    logCommandExecution(username, '!balance', args, true);
+    return true;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `@${username} User "${targetUser}" has no loyalty data yet.`);
+    } else {
+      sendChatMessage(channel, `@${username} Error: Could not fetch balance.`);
+    }
+    logCommandExecution(username, '!balance', args, false);
+    return true; // Apply cooldown on API errors
+  }
+}
+
+async function handleLeaderboard(channel, username) {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/loyalty/leaderboard?limit=5`, { timeout: 3000 });
+    const leaderboard = response.data;
+    if (leaderboard.length === 0) {
+      sendChatMessage(channel, `No loyalty data available yet.`);
+      logCommandExecution(username, '!leaderboard', [], false); // Log empty results as unsuccessful
+      return;
+    }
+    const message = 'Top Loyalists: ' + leaderboard.map(u => `${u.rank}. ${u.username} (${u.points}pts)`).join(' | ');
+    sendChatMessage(channel, message);
+    logCommandExecution(username, '!leaderboard', [], true);
+  } catch (error) {
+    sendChatMessage(channel, `Error: Could not fetch leaderboard.`);
+    logCommandExecution(username, '!leaderboard', [], false);
+  }
+}
+
+async function handleQuote(channel, username) {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/quotes/random`, { timeout: 3000 });
+    const quote = response.data;
+    sendChatMessage(channel, `"${quote.text}" — ${quote.addedBy || 'Unknown'}${quote.game ? ` (${quote.game})` : ''}`);
+    logCommandExecution(username, '!quote', [], true);
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `No quotes available yet.`);
+    } else {
+      sendChatMessage(channel, `Error: Could not fetch quote.`);
+    }
+    logCommandExecution(username, '!quote', [], false);
+  }
+}
+
+async function handleCounter(channel, username, args) {
+  if (!args[0]) {
+    sendChatMessage(channel, `@${username} Usage: !counter <name>`);
+    return false; // Don't apply cooldown on invalid input
+  }
+  // Sanitize input: join all args (supports multi-word names), trim, and URL encode
+  const counterName = args.join(' ').trim();
+  if (!counterName) {
+    sendChatMessage(channel, `@${username} Invalid counter name.`);
+    return false; // Don't apply cooldown on invalid input
+  }
+  try {
+    const encodedName = encodeURIComponent(counterName);
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/counters/${encodedName}`, { timeout: 3000 });
+    const counter = response.data;
+    sendChatMessage(channel, `${counter.name}: ${counter.value}`);
+    logCommandExecution(username, '!counter', args, true);
+    return true;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      sendChatMessage(channel, `@${username} Counter "${counterName}" not found.`);
+    } else {
+      sendChatMessage(channel, `@${username} Error: Could not fetch counter.`);
+    }
+    logCommandExecution(username, '!counter', args, false);
+    return true; // Apply cooldown on API errors
+  }
+}
+
+// Fun commands: 8ball, dice, coinflip
+const EIGHTBALL_ANSWERS = [
+  'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes — definitely.', 'You may rely on it.',
+  'As I see it, yes.', 'Most likely.', 'Outlook good.', 'Yes.', 'Signs point to yes.',
+  'Reply hazy, try again.', 'Ask again later.', 'Better not tell you now.', 'Cannot predict now.', 'Concentrate and ask again.',
+  "Don't count on it.", 'My reply is no.', 'My sources say no.', 'Outlook not so good.', 'Very doubtful.'
+];
+
+async function handle8ball(channel, username, args) {
+  const question = args.join(' ').trim();
+  const answer = EIGHTBALL_ANSWERS[Math.floor(Math.random() * EIGHTBALL_ANSWERS.length)];
+  if (question) {
+    sendChatMessage(channel, `@${username} ${answer}`);
+  } else {
+    sendChatMessage(channel, `@${username} Ask a question! Usage: !8ball <question>`);
+  }
+}
+
+async function handleDice(channel, username, args) {
+  let sides = 6;
+  if (args[0]) {
+    const n = parseInt(args[0], 10);
+    if (Number.isNaN(n) || n < 2 || n > 1000) {
+      sendChatMessage(channel, `@${username} Please choose a number of sides between 2 and 1000 (e.g. !dice 20).`);
+      return;
+    }
+    sides = n;
+  }
+  const roll = Math.floor(Math.random() * sides) + 1;
+  sendChatMessage(channel, `@${username} rolled a ${sides}-sided die and got ${roll}.`);
+}
+
+async function handleCoinflip(channel, username) {
+  const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+  sendChatMessage(channel, `@${username} flipped a coin and got ${result}.`);
+}
+
+// TTS configuration
+const TTS_CONFIG = {
+  MAX_LENGTH: 200,
+  PER_USER_COOLDOWN_SEC: 30,
+  GLOBAL_COOLDOWN_SEC: 10,
+  CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Default reward title to look for
+};
+
+async function handleTTS(channel, username, args, msg, isRedemption = false) {
+  const text = args.join(' ').trim();
+
+  // Normalize username to lowercase for consistent cooldown tracking
+  const normalizedUsername = username.toLowerCase();
+
+  // Validate text length
+  if (!text) {
+    if (!isRedemption) {
+      sendChatMessage(channel, `@${username} Usage: !tts <message> (max ${TTS_CONFIG.MAX_LENGTH} characters)`);
+    }
+    return false; // Don't apply cooldown
+  }
+
+  if (text.length > TTS_CONFIG.MAX_LENGTH) {
+    sendChatMessage(channel, `@${username} TTS message too long! Max ${TTS_CONFIG.MAX_LENGTH} characters (you used ${text.length}).`);
+    return false; // Don't apply cooldown
+  }
+
+  // Apply content filtering (exempt mods and broadcaster, skip side effects)
+  const isMod = msg?.userInfo?.isMod || false;
+  const isBroadcaster = msg?.userInfo?.isBroadcaster || false;
+
+  if (!isMod && !isBroadcaster) {
+    // Check filters without updating message history (avoid spam detection side effects)
+    const violations = checkChatFiltersWithoutSideEffects(text);
+    if (violations.length > 0) {
+      sendChatMessage(channel, `@${username} TTS message blocked: contains filtered content (${violations.join(', ')}).`);
+      logCommandExecution(username, '!tts', args, false);
+      return false; // Don't apply cooldown
+    }
+  }
+
+  // Check global cooldown
+  const now = Date.now();
+  const timeSinceLastGlobalTTS = now - lastGlobalTTSTime;
+  if (timeSinceLastGlobalTTS < TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000) {
+    const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000 - timeSinceLastGlobalTTS) / 1000));
+    if (!isRedemption) {
+      sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
+    }
+    return false; // Don't apply user cooldown
+  }
+
+  // Check per-user cooldown (unless it's a redemption)
+  if (!isRedemption) {
+    const lastUserTTS = ttsUserCooldowns.get(normalizedUsername) || 0;
+    const timeSinceLastUserTTS = now - lastUserTTS;
+    if (timeSinceLastUserTTS < TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000) {
+      const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 - timeSinceLastUserTTS) / 1000));
+      sendChatMessage(channel, `@${username} You're on TTS cooldown. Try again in ${remainingSec}s.`);
+      return false;
+    }
+  }
+
+  // Send TTS alert to OBS overlay
+  sendAlert('tts', {
+    user: username,
+    message: text,
+    timestamp: new Date().toISOString(),
+    config: {
+      ttsEnabled: true,
+      ttsTemplate: text,
+      duration: 5000 + (text.length * 50) // Base 5s + 50ms per character
+    }
+  });
+
+  // Log successful TTS
+  logCommandExecution(username, '!tts', args, true);
+
+  // Update cooldowns (use normalized username for consistency)
+  lastGlobalTTSTime = now;
+  ttsUserCooldowns.set(normalizedUsername, now);
+
+  // Cleanup old user cooldowns (every 100 TTS calls)
+  if (ttsUserCooldowns.size > 100) {
+    const cutoffTime = now - (TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 * 2);
+    for (const [user, timestamp] of ttsUserCooldowns.entries()) {
+      if (timestamp < cutoffTime) {
+        ttsUserCooldowns.delete(user);
+      }
+    }
+  }
+
+  return true; // Successfully processed
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -1666,6 +1982,39 @@ const commandRegistry = new Map([
     }
     await handleFollowage(channel, username, args[0]);
     if (cooldownSeconds > 0) setCooldown('followage');
+  }}],
+  ['!8ball', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!8ball');
+    if (isOnCooldown('8ball', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('8ball') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !8ball is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handle8ball(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('8ball');
+  }}],
+  ['!dice', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!dice');
+    if (isOnCooldown('dice', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('dice') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !dice is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleDice(channel, username, args);
+    if (cooldownSeconds > 0) setCooldown('dice');
+  }}],
+  ['!coinflip', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!coinflip');
+    if (isOnCooldown('coinflip', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('coinflip') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !coinflip is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCoinflip(channel, username);
+    if (cooldownSeconds > 0) setCooldown('coinflip');
   }}],
   ['!shoutout', { perm: 'mod', handler: async ({ channel, username, args }) => {
     const cooldownSeconds = getCommandCooldown('!shoutout');
@@ -1759,6 +2108,53 @@ const commandRegistry = new Map([
   }}],
   ['!filters', { perm: 'mod', handler: async ({ channel }) => {
     sendChatMessage(channel, `Filters: ${JSON.stringify(getFilterStatus())}`);
+  }}],
+  ['!balance', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!balance');
+    if (isOnCooldown('balance', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('balance') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !balance is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    const shouldCooldown = await handleBalance(channel, username, args);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('balance');
+  }}],
+  ['!leaderboard', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!leaderboard');
+    if (isOnCooldown('leaderboard', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('leaderboard') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !leaderboard is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleLeaderboard(channel, username);
+    if (cooldownSeconds > 0) setCooldown('leaderboard');
+  }}],
+  ['!quote', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!quote');
+    if (isOnCooldown('quote', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('quote') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !quote is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleQuote(channel, username);
+    if (cooldownSeconds > 0) setCooldown('quote');
+  }}],
+  ['!counter', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!counter');
+    if (isOnCooldown('counter', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('counter') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !counter is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    const shouldCooldown = await handleCounter(channel, username, args);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('counter');
+  }}],
+  ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    await handleTTS(channel, username, args, msg, false);
   }}]
 ]);
 
@@ -1820,6 +2216,19 @@ chatClient.onMessage(async (channel, user, message, msg) => {
 
     // Log chat to dashboard
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
+
+    // First-time chatter welcome (Twitch IRC tag first-msg; isFirst is on msg, not msg.userInfo)
+    const isFirstChatter = msg.isFirst === true;
+    if (isFirstChatter && (firstChatterConfig.welcomeEnabled || firstChatterConfig.alertEnabled)) {
+      const displayName = msg.userInfo?.displayName || username;
+      if (firstChatterConfig.welcomeEnabled && firstChatterConfig.welcomeMessage) {
+        const welcomeText = firstChatterConfig.welcomeMessage.replace(/\{user\}/gi, displayName);
+        sendChatMessage(channel, welcomeText);
+      }
+      if (firstChatterConfig.alertEnabled) {
+        sendAlert('first_chatter', { user: displayName });
+      }
+    }
 
     // Check if message starts with a command or matches a custom command
     const firstWord = raw.split(/\s+/)[0].toLowerCase();

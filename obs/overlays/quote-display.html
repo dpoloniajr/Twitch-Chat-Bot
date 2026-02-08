@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quote Display - OBS Overlay</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    :root {
+      --quote-bg: rgba(0, 0, 0, 0.75);
+      --quote-text: #ffffff;
+      --quote-author: #9146ff;
+      --quote-meta: #888888;
+      --quote-mark: rgba(145, 70, 255, 0.5);
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: transparent;
+    }
+
+    .quote-container {
+      max-width: 500px;
+      background: var(--quote-bg);
+      border-radius: 12px;
+      padding: 30px 40px;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .quote-mark {
+      position: absolute;
+      font-size: 80px;
+      color: var(--quote-mark);
+      font-family: Georgia, serif;
+      line-height: 1;
+    }
+
+    .quote-mark.open {
+      top: 10px;
+      left: 15px;
+    }
+
+    .quote-mark.close {
+      bottom: 10px;
+      right: 15px;
+    }
+
+    .quote-text {
+      font-size: 24px;
+      color: var(--quote-text);
+      line-height: 1.4;
+      font-style: italic;
+      margin: 20px 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .quote-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .quote-author {
+      font-size: 16px;
+      color: var(--quote-author);
+      font-weight: 600;
+    }
+
+    .quote-meta {
+      font-size: 12px;
+      color: var(--quote-meta);
+    }
+
+    .quote-id {
+      color: var(--quote-author);
+      font-weight: bold;
+    }
+
+    .quote-game {
+      display: inline-block;
+      background: rgba(145, 70, 255, 0.2);
+      color: var(--quote-author);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 10px;
+    }
+
+    /* Animation */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+    }
+
+    .quote-container.show {
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    .quote-container.hide {
+      animation: fadeOut 0.5s ease forwards;
+    }
+
+    /* Hidden state */
+    .hidden {
+      display: none;
+    }
+
+    /* Compact mode */
+    .quote-container.compact {
+      padding: 20px 25px;
+    }
+
+    .quote-container.compact .quote-text {
+      font-size: 18px;
+    }
+
+    .quote-container.compact .quote-mark {
+      font-size: 50px;
+    }
+
+    /* Minimal mode */
+    .quote-container.minimal {
+      background: transparent;
+      padding: 10px;
+      box-shadow: none;
+    }
+
+    .quote-container.minimal .quote-mark {
+      display: none;
+    }
+
+    .quote-container.minimal .quote-text {
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .quote-container.minimal .quote-footer {
+      border-top: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="quote-container hidden" id="quote-container">
+    <span class="quote-mark open">"</span>
+    <div class="quote-text" id="quote-text">Loading...</div>
+    <span class="quote-mark close">"</span>
+    <div class="quote-footer">
+      <div>
+        <span class="quote-author" id="quote-author"></span>
+        <span class="quote-game" id="quote-game"></span>
+      </div>
+      <div class="quote-meta">
+        <span class="quote-id" id="quote-id">#0</span>
+        <span id="quote-date"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // Configuration from URL parameters
+      const config = {
+        mode: OverlayUtils.getQueryParam('mode') || 'normal', // normal, compact, minimal
+        autoRotate: OverlayUtils.getQueryParam('rotate') === 'true',
+        rotateInterval: parseInt(OverlayUtils.getQueryParam('interval') || '60000', 10),
+        displayDuration: parseInt(OverlayUtils.getQueryParam('duration') || '0', 10), // 0 = always visible
+        apiUrl: OverlayUtils.getQueryParam('api') || '/api/quotes/random',
+        showAuthor: OverlayUtils.getQueryParam('author') !== 'false',
+        showGame: OverlayUtils.getQueryParam('game') !== 'false',
+        showDate: OverlayUtils.getQueryParam('date') !== 'false'
+      };
+
+      // State
+      let currentQuote = null;
+      let hideTimeout = null;
+
+      // Elements
+      const container = document.getElementById('quote-container');
+      const textElement = document.getElementById('quote-text');
+      const authorElement = document.getElementById('quote-author');
+      const gameElement = document.getElementById('quote-game');
+      const idElement = document.getElementById('quote-id');
+      const dateElement = document.getElementById('quote-date');
+
+      // Apply mode
+      if (config.mode !== 'normal') {
+        container.classList.add(config.mode);
+      }
+
+      /**
+       * Fetch random quote
+       */
+      async function fetchQuote() {
+        try {
+          const response = await fetch(config.apiUrl);
+          const data = await response.json();
+
+          if (data.quote || data) {
+            displayQuote(data.quote || data);
+          }
+        } catch (err) {
+          console.error('[Quote] Failed to fetch:', err);
+        }
+      }
+
+      /**
+       * Display a quote
+       */
+      function displayQuote(quote) {
+        if (!quote || !quote.text) return;
+
+        currentQuote = quote;
+
+        // Update content
+        textElement.textContent = quote.text;
+        idElement.textContent = `#${quote.id}`;
+
+        if (config.showAuthor && quote.author) {
+          authorElement.textContent = `— ${quote.author}`;
+          authorElement.style.display = '';
+        } else {
+          authorElement.style.display = 'none';
+        }
+
+        if (config.showGame && quote.game) {
+          gameElement.textContent = quote.game;
+          gameElement.style.display = '';
+        } else {
+          gameElement.style.display = 'none';
+        }
+
+        if (config.showDate && quote.addedAt) {
+          dateElement.textContent = ` • ${new Date(quote.addedAt).toLocaleDateString()}`;
+        } else {
+          dateElement.textContent = '';
+        }
+
+        // Show container
+        showQuote();
+
+        // Auto-hide if duration is set
+        if (config.displayDuration > 0) {
+          if (hideTimeout) clearTimeout(hideTimeout);
+          hideTimeout = setTimeout(hideQuote, config.displayDuration);
+        }
+      }
+
+      /**
+       * Show quote with animation
+       */
+      function showQuote() {
+        container.classList.remove('hidden', 'hide');
+        container.classList.add('show');
+      }
+
+      /**
+       * Hide quote with animation
+       */
+      function hideQuote() {
+        container.classList.remove('show');
+        container.classList.add('hide');
+
+        setTimeout(() => {
+          container.classList.add('hidden');
+        }, 500);
+      }
+
+      /**
+       * Initialize
+       */
+      function init() {
+        // Fetch initial quote
+        fetchQuote();
+
+        // Auto-rotate if enabled
+        if (config.autoRotate) {
+          setInterval(fetchQuote, config.rotateInterval);
+        }
+      }
+
+      // Start
+      init();
+
+      // Listen for WebSocket commands
+      const client = new OverlayClient();
+
+      // Listen for quote display commands
+      client.on('quote-display', (data) => {
+        if (data.quote) {
+          displayQuote(data.quote);
+        }
+      });
+
+      // Listen for hide commands
+      client.on('quote-hide', () => {
+        hideQuote();
+      });
+
+      // Listen for chat command triggers (!quote)
+      client.on('quote-command', (data) => {
+        if (data.quote) {
+          displayQuote(data.quote);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

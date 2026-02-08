@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Display</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .tts-container {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 90%;
+      width: 800px;
+      padding: 20px 30px;
+      background: linear-gradient(135deg, rgba(145, 71, 255, 0.95) 0%, rgba(114, 9, 183, 0.95) 100%);
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      transform: translateX(-50%) translateY(100px);
+      transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      pointer-events: none;
+    }
+
+    .tts-container.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .tts-user {
+      font-size: 18px;
+      font-weight: bold;
+      color: #FFD700;
+      margin-bottom: 8px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tts-icon {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>') center / contain no-repeat;
+    }
+
+    .tts-text {
+      font-size: 22px;
+      color: #ffffff;
+      line-height: 1.6;
+      word-wrap: break-word;
+      text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+    }
+
+    .tts-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #FFD700, #FFA500);
+      width: 0%;
+      border-radius: 0 0 12px 12px;
+      transition: width linear;
+    }
+
+    /* Debug panel */
+    .debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #0f0;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      display: none;
+      z-index: 10000;
+    }
+
+    .debug-panel.visible {
+      display: block;
+    }
+
+    .debug-panel p {
+      margin: 4px 0;
+    }
+
+    /* Animation variants */
+    .tts-container.slide-up {
+      animation: slideUpBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+
+    @keyframes slideUpBounce {
+      0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(100px);
+      }
+      60% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-10px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: translateX(-50%) scale(1);
+      }
+      50% {
+        transform: translateX(-50%) scale(1.02);
+      }
+    }
+
+    .tts-container.speaking {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <!-- Debug panel -->
+  <div class="debug-panel" id="debug-panel">
+    <p><strong>TTS Overlay Debug</strong></p>
+    <p>Status: <span id="debug-status">Initializing...</span></p>
+    <p>Connection: <span id="debug-connection">Disconnected</span></p>
+    <p>Last TTS: <span id="debug-last-tts">None</span></p>
+    <p>Voice: <span id="debug-voice">Loading...</span></p>
+  </div>
+
+  <!-- TTS display container -->
+  <div class="tts-container" id="tts-container">
+    <div class="tts-user" id="tts-user">
+      <span class="tts-icon"></span>
+      <span id="tts-username">User</span>
+    </div>
+    <div class="tts-text" id="tts-text">Message text will appear here</div>
+    <div class="tts-progress" id="tts-progress"></div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    // Helper function to validate and clamp numeric values
+    function clamp(value, min, max, defaultValue) {
+      const num = parseFloat(value);
+      if (isNaN(num)) return defaultValue;
+      return Math.max(min, Math.min(max, num));
+    }
+
+    function clampInt(value, min, max, defaultValue) {
+      const num = parseInt(value, 10);
+      if (isNaN(num)) return defaultValue;
+      return Math.max(min, Math.min(max, num));
+    }
+
+    // Parse and validate URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugMode = urlParams.get('debug') === 'true';
+    const voicePreference = urlParams.get('voice') || 'en-US'; // Language code
+
+    // Validate numeric parameters with safe ranges and fallbacks
+    const speechRate = clamp(urlParams.get('rate'), 0.5, 2.0, 1.0);
+    const speechPitch = clamp(urlParams.get('pitch'), 0.0, 2.0, 1.0);
+    const speechVolume = clamp(urlParams.get('volume'), 0.0, 1.0, 1.0);
+    const displayDuration = clampInt(urlParams.get('duration'), 1000, 60000, 5000); // 1s to 60s
+
+    // Show debug panel if enabled
+    if (debugMode) {
+      document.getElementById('debug-panel').classList.add('visible');
+      // Log validated parameters
+      console.log('TTS Parameters:', {
+        voice: voicePreference,
+        rate: speechRate,
+        pitch: speechPitch,
+        volume: speechVolume,
+        duration: displayDuration
+      });
+    }
+
+    function updateDebug(key, value) {
+      if (debugMode) {
+        const element = document.getElementById(`debug-${key}`);
+        if (element) {
+          element.textContent = value;
+        }
+      }
+    }
+
+    // Initialize WebSocket client
+    const client = new OverlayClient();
+    const ttsContainer = document.getElementById('tts-container');
+    const ttsUsername = document.getElementById('tts-username');
+    const ttsText = document.getElementById('tts-text');
+    const ttsProgress = document.getElementById('tts-progress');
+
+    // Initialize TTS Manager
+    const ttsManager = new TTSManager({
+      enabled: true,
+      voice: voicePreference,
+      rate: speechRate,
+      pitch: speechPitch,
+      volume: speechVolume
+    });
+
+    updateDebug('status', 'Ready');
+
+    // Current TTS state
+    let currentTTS = null;
+    let hideTimeout = null;
+
+    // WebSocket connection events
+    client.on('connected', () => {
+      console.log('Connected to dashboard WebSocket');
+      updateDebug('connection', 'Connected');
+      updateDebug('status', 'Listening for TTS events...');
+    });
+
+    client.on('disconnected', () => {
+      console.log('Disconnected from dashboard WebSocket');
+      updateDebug('connection', 'Disconnected');
+      updateDebug('status', 'Reconnecting...');
+    });
+
+    // Handle alert events (TTS is sent as an alert type)
+    client.on('alert', async (alertData) => {
+      // Only process TTS alerts
+      if (alertData.alertType !== 'tts') {
+        return;
+      }
+
+      console.log('TTS alert received:', alertData);
+      updateDebug('last-tts', `${alertData.user}: "${alertData.message.substring(0, 30)}..."`);
+
+      // Cancel any pending hide
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+
+      // Hide current TTS if showing
+      if (currentTTS) {
+        hideTTS();
+        await new Promise(resolve => setTimeout(resolve, 300)); // Wait for hide animation
+      }
+
+      // Display new TTS
+      displayTTS(alertData);
+    });
+
+    // Display TTS message
+    async function displayTTS(data) {
+      currentTTS = data;
+      const { user, message, config } = data;
+      const duration = config?.duration || displayDuration;
+
+      // Update content
+      ttsUsername.textContent = user;
+      ttsText.textContent = message;
+
+      // Show container
+      ttsContainer.classList.add('visible', 'slide-up');
+
+      // Reset and animate progress bar
+      ttsProgress.style.transition = 'none';
+      ttsProgress.style.width = '0%';
+      setTimeout(() => {
+        ttsProgress.style.transition = `width ${duration}ms linear`;
+        ttsProgress.style.width = '100%';
+      }, 50);
+
+      // Start auto-hide timer immediately (progress bar syncs with this)
+      hideTimeout = setTimeout(() => {
+        hideTTS();
+      }, duration);
+
+      // Speak the text (independent of display timer)
+      updateDebug('status', 'Speaking...');
+      ttsContainer.classList.add('speaking');
+
+      try {
+        // Use template from config if available, otherwise use raw message
+        const textToSpeak = config?.ttsTemplate || message;
+        const parsedText = ttsManager.parseTemplate(textToSpeak, data);
+        await ttsManager.speak(parsedText);
+        updateDebug('voice', ttsManager.selectedVoice?.name || 'Default');
+      } catch (err) {
+        console.error('TTS speak error:', err);
+        updateDebug('status', 'Speech error');
+      }
+
+      ttsContainer.classList.remove('speaking');
+      updateDebug('status', 'Displayed');
+    }
+
+    // Hide TTS message
+    function hideTTS() {
+      ttsContainer.classList.remove('visible', 'slide-up', 'speaking');
+      ttsProgress.style.width = '0%';
+      currentTTS = null;
+      updateDebug('status', 'Hidden');
+    }
+
+    // Manual testing (for development)
+    if (debugMode) {
+      console.log('Debug mode enabled. Use testTTS() to test overlay.');
+      window.testTTS = function(user = 'TestUser', message = 'This is a test TTS message.') {
+        displayTTS({
+          user,
+          message,
+          timestamp: new Date().toISOString(),
+          config: {
+            duration: displayDuration,
+            ttsTemplate: message
+          }
+        });
+      };
+      // Auto-test after 2 seconds
+      setTimeout(() => {
+        console.log('Running auto-test...');
+        testTTS('AutoTest', 'Welcome to the TTS overlay! This is a test message.');
+      }, 2000);
+    }
+
+    updateDebug('status', 'Initialized');
+  </script>
+</body>
+</html>

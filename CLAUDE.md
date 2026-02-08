@@ -81,7 +81,7 @@ const commandRegistry = new Map([
 ]);
 ```
 
-**Location:** `Excella` lines 1651-1759
+**Location:** `Excella.js` - Variable: `commandRegistry`
 
 ### Scope Validation Pattern
 
@@ -170,6 +170,7 @@ CHAT_FILTER_TIMEOUT_SEC=60
 |---------|-------------|----------|
 | `!clip` | Create a clip | 60s/channel |
 | `!followage [user]` | Check follow duration | - |
+| `!tts <message>` | Text-to-speech message (max 200 chars) | 30s/user + 10s global |
 | `!commands` / `!help` | List available commands | - |
 
 ### Moderator Commands
@@ -186,7 +187,7 @@ CHAT_FILTER_TIMEOUT_SEC=60
 
 ## Chat Filtering System
 
-**Location:** `Excella` lines 142-287
+**Location:** `Excella.js` - Functions: `checkChatFilters()`, `checkChatFiltersWithoutSideEffects()`
 
 Filter types:
 1. **Blacklist Words** - Case-insensitive matching
@@ -196,6 +197,75 @@ Filter types:
 5. **Spam Detection** - Duplicate messages within 5 seconds
 
 Moderators and broadcaster are exempt from all filters.
+
+## TTS (Text-to-Speech) System
+
+**Location:** `Excella.js` - Function: `handleTTS()`, Config: `TTS_CONFIG`, `/obs/overlays/tts-display.html` (overlay)
+
+### Features
+- **Browser-based TTS** using Web Speech API
+- **Content filtering** - TTS messages go through the same chat filters
+- **Rate limiting**:
+  - Per-user cooldown: 30 seconds
+  - Global cooldown: 10 seconds (prevents spam)
+- **Length limit**: 200 characters maximum
+- **Channel Points integration** - Automatic detection of TTS redemptions
+
+### Usage
+
+**Chat Command:**
+```
+!tts Hello everyone, this is a test message!
+```
+
+**Channel Points Redemption:**
+1. Create a channel points reward with "TTS" in the title (e.g., "TTS Message", "Text to Speech")
+2. Enable "Require Viewer to Enter Text"
+3. When redeemed, the input text will be spoken automatically
+4. Redemptions bypass the per-user cooldown but respect the global cooldown
+
+### OBS Integration
+
+Add as a browser source in OBS:
+```
+http://localhost:3001/obs/overlays/tts-display.html
+```
+
+**URL Parameters:**
+- `?debug=true` - Enable debug panel
+- `?voice=en-US` - Voice language preference (e.g., en-US, en-GB, es-ES)
+- `?rate=1.0` - Speech rate (0.5 to 2.0)
+- `?pitch=1.0` - Speech pitch (0.0 to 2.0)
+- `?volume=1.0` - Speech volume (0.0 to 1.0)
+- `?duration=5000` - Display duration in milliseconds
+
+**Example:**
+```
+http://localhost:3001/obs/overlays/tts-display.html?voice=en-US&rate=1.1&pitch=1.0&volume=0.9&duration=6000
+```
+
+### Configuration
+
+TTS configuration in `Excella.js`:
+```javascript
+const TTS_CONFIG = {
+  MAX_LENGTH: 200,                // Maximum characters
+  PER_USER_COOLDOWN_SEC: 30,      // Per-user cooldown
+  GLOBAL_COOLDOWN_SEC: 10,        // Global cooldown
+  CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Reward title to detect
+};
+```
+
+### Technical Details
+- Uses the browser's built-in TTS engine (quality varies by OS/browser)
+- Available voices depend on the viewer's operating system
+- Windows typically has ~5 voices, macOS has more
+- Messages are filtered for blacklisted words, URLs, all caps, and repeated characters
+- **Note:** Spam detection is intentionally excluded from TTS to avoid affecting regular chat history
+- Moderators and broadcasters are exempt from all filters
+- Usernames are normalized to lowercase for consistent cooldown tracking
+- TTS events are broadcast via WebSocket to all connected overlays
+- URL parameters are validated and clamped to safe ranges to prevent errors
 
 ## Dashboard API Endpoints
 

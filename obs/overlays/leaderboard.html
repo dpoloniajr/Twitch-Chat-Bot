@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loyalty Leaderboard - OBS Overlay</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    :root {
+      --lb-bg: rgba(0, 0, 0, 0.75);
+      --lb-header-bg: rgba(145, 70, 255, 0.8);
+      --lb-text: #ffffff;
+      --lb-subtext: #aaaaaa;
+      --lb-gold: #ffd700;
+      --lb-silver: #c0c0c0;
+      --lb-bronze: #cd7f32;
+      --lb-accent: #9146ff;
+      --lb-row-hover: rgba(145, 70, 255, 0.2);
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: transparent;
+    }
+
+    .leaderboard {
+      width: 320px;
+      background: var(--lb-bg);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .leaderboard-header {
+      background: var(--lb-header-bg);
+      padding: 15px 20px;
+      text-align: center;
+    }
+
+    .leaderboard-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--lb-text);
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .leaderboard-subtitle {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 5px;
+    }
+
+    .leaderboard-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      transition: background 0.3s ease;
+    }
+
+    .leaderboard-item:last-child {
+      border-bottom: none;
+    }
+
+    .leaderboard-item:hover {
+      background: var(--lb-row-hover);
+    }
+
+    .leaderboard-rank {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 14px;
+      color: var(--lb-text);
+      margin-right: 15px;
+    }
+
+    .leaderboard-item:nth-child(1) .leaderboard-rank {
+      color: var(--lb-gold);
+      font-size: 18px;
+    }
+
+    .leaderboard-item:nth-child(2) .leaderboard-rank {
+      color: var(--lb-silver);
+      font-size: 16px;
+    }
+
+    .leaderboard-item:nth-child(3) .leaderboard-rank {
+      color: var(--lb-bronze);
+    }
+
+    .leaderboard-user {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .leaderboard-username {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--lb-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .leaderboard-level {
+      font-size: 11px;
+      color: var(--lb-subtext);
+      margin-top: 2px;
+    }
+
+    .leaderboard-points {
+      text-align: right;
+      min-width: 80px;
+    }
+
+    .leaderboard-points-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--lb-accent);
+    }
+
+    .leaderboard-points-label {
+      font-size: 10px;
+      color: var(--lb-subtext);
+      text-transform: uppercase;
+    }
+
+    /* Animation for new entries */
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .leaderboard-item.new {
+      animation: slideIn 0.5s ease;
+    }
+
+    /* Rank change indicators */
+    .rank-change {
+      font-size: 10px;
+      margin-left: 5px;
+    }
+
+    .rank-up {
+      color: #00ff00;
+    }
+
+    .rank-down {
+      color: #ff4444;
+    }
+
+    /* Loading state */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--lb-subtext);
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--lb-subtext);
+    }
+  </style>
+</head>
+<body>
+  <div class="leaderboard">
+    <div class="leaderboard-header">
+      <h2 class="leaderboard-title">Top Chatters</h2>
+      <div class="leaderboard-subtitle" id="update-time">Loading...</div>
+    </div>
+    <ul class="leaderboard-list" id="leaderboard-list">
+      <li class="loading">Loading leaderboard...</li>
+    </ul>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // Configuration from URL parameters
+      const config = {
+        limit: parseInt(OverlayUtils.getQueryParam('limit') || '5', 10),
+        pollInterval: parseInt(OverlayUtils.getQueryParam('poll') || '30000', 10),
+        apiUrl: OverlayUtils.getQueryParam('api') || '/api/loyalty/leaderboard',
+        showLevel: OverlayUtils.getQueryParam('level') !== 'false',
+        title: OverlayUtils.getQueryParam('title') || 'Top Chatters'
+      };
+
+      // State
+      let previousRanks = {};
+
+      // Elements
+      const listElement = document.getElementById('leaderboard-list');
+      const updateTimeElement = document.getElementById('update-time');
+      const titleElement = document.querySelector('.leaderboard-title');
+
+      // Set custom title
+      if (config.title) {
+        titleElement.textContent = config.title;
+      }
+
+      /**
+       * Fetch leaderboard data
+       */
+      async function fetchLeaderboard() {
+        try {
+          const response = await fetch(`${config.apiUrl}?limit=${config.limit}`);
+          const data = await response.json();
+          updateLeaderboard(data.leaderboard || data);
+          updateTimeElement.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+          console.error('[Leaderboard] Failed to fetch:', err);
+        }
+      }
+
+      /**
+       * Update leaderboard display
+       */
+      function updateLeaderboard(users) {
+        if (!users || users.length === 0) {
+          listElement.innerHTML = '<li class="empty">No data yet</li>';
+          return;
+        }
+
+        listElement.innerHTML = users.map((user, index) => {
+          const rank = index + 1;
+          const prevRank = previousRanks[user.username];
+          let rankChange = '';
+
+          if (prevRank !== undefined && prevRank !== rank) {
+            if (prevRank > rank) {
+              rankChange = `<span class="rank-change rank-up">▲${prevRank - rank}</span>`;
+            } else {
+              rankChange = `<span class="rank-change rank-down">▼${rank - prevRank}</span>`;
+            }
+          }
+
+          previousRanks[user.username] = rank;
+
+          const levelText = config.showLevel && user.level
+            ? `<div class="leaderboard-level">${user.level.name || `Level ${user.level.level}`}</div>`
+            : '';
+
+          return `
+            <li class="leaderboard-item">
+              <div class="leaderboard-rank">${getRankSymbol(rank)}${rankChange}</div>
+              <div class="leaderboard-user">
+                <div class="leaderboard-username">${OverlayUtils.escapeHtml(user.username)}</div>
+                ${levelText}
+              </div>
+              <div class="leaderboard-points">
+                <div class="leaderboard-points-value">${OverlayUtils.formatNumber(user.points)}</div>
+                <div class="leaderboard-points-label">points</div>
+              </div>
+            </li>
+          `;
+        }).join('');
+      }
+
+      /**
+       * Get rank display symbol
+       */
+      function getRankSymbol(rank) {
+        switch (rank) {
+          case 1: return '🥇';
+          case 2: return '🥈';
+          case 3: return '🥉';
+          default: return `#${rank}`;
+        }
+      }
+
+      // Initialize
+      fetchLeaderboard();
+
+      // Poll for updates
+      setInterval(fetchLeaderboard, config.pollInterval);
+
+      // Also listen for WebSocket updates
+      const client = new OverlayClient();
+      client.on('loyalty-update', (data) => {
+        if (data.leaderboard) {
+          updateLeaderboard(data.leaderboard);
+          updateTimeElement.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

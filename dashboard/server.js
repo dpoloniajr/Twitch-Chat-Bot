@@ -39,6 +39,37 @@ const paths = {
   alertConfigFile: path.join(logsDir, 'alert-config.json')
 };
 
+// Migrate built-in commands: add new commands to existing installations
+async function migrateBuiltinCommands() {
+  try {
+    const content = await fs.readFile(paths.builtinCommandsFile, 'utf-8');
+    const commands = JSON.parse(content);
+
+    // List of new commands to add if missing
+    const newCommands = [
+      { name: '!balance', cooldownSeconds: 5, description: 'Check your loyalty points (optional: check another user)', permission: 'Everyone' },
+      { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
+      { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
+      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' }
+    ];
+
+    let updated = false;
+    for (const newCmd of newCommands) {
+      if (!commands.find(c => c.name === newCmd.name)) {
+        commands.push(newCmd);
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      await fs.writeFile(paths.builtinCommandsFile, JSON.stringify(commands, null, 2));
+      console.log('✓ Migrated built-in commands: added new commands for existing users');
+    }
+  } catch (error) {
+    console.warn('Could not migrate built-in commands:', error.message);
+  }
+}
+
 // Initialize logs directory and files
 async function initLogs() {
   try {
@@ -65,6 +96,13 @@ async function initLogs() {
     await initFile(paths.builtinCommandsFile, [
       { name: '!clip', cooldownSeconds: 60, description: 'Create a clip of the current stream', permission: 'Everyone' },
       { name: '!followage', cooldownSeconds: 0, description: 'Check how long you have been following the channel', permission: 'Everyone' },
+      { name: '!8ball', cooldownSeconds: 5, description: 'Ask the magic 8ball a yes/no question', permission: 'Everyone' },
+      { name: '!dice', cooldownSeconds: 5, description: 'Roll a die (default 6 sides, e.g. !dice 20)', permission: 'Everyone' },
+      { name: '!coinflip', cooldownSeconds: 5, description: 'Flip a coin — heads or tails', permission: 'Everyone' },
+      { name: '!balance', cooldownSeconds: 5, description: 'Check your loyalty points (optional: check another user)', permission: 'Everyone' },
+      { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
+      { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
+      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
       { name: '!shoutout', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!so', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!poll', cooldownSeconds: 0, description: 'Start or manage a poll', permission: 'Moderator' },
@@ -85,6 +123,9 @@ async function initLogs() {
       }
     });
     await initFile(paths.alertConfigFile, DEFAULT_ALERT_CONFIG);
+
+    // Run migration for existing installations
+    await migrateBuiltinCommands();
   } catch (error) {
     console.error('Failed to initialize logs:', error.message);
   }
@@ -96,6 +137,12 @@ app.use('/api/filters', require('./routes/filters')(envPath));
 app.use('/api/alerts', require('./routes/alerts')(paths.alertConfigFile));
 app.use('/api/uploads', require('./routes/uploads')(uploadsDir));
 app.use('/obs', require('./routes/obs')(paths));
+
+// Phase 2/3 Feature Routes
+app.use('/api/loyalty', require('./routes/loyalty')(logsDir));
+app.use('/api/quotes', require('./routes/quotes')(logsDir));
+app.use('/api/counters', require('./routes/counters')(logsDir));
+app.use('/api/backup', require('./routes/backup')(logsDir));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
