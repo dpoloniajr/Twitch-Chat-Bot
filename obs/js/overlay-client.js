@@ -309,6 +309,10 @@
       this.synth = window.speechSynthesis || null;
       this.voices = [];
       this.selectedVoice = null;
+      this.currentUtterance = null; // Prevent garbage collection
+      this._speakTimeoutId = null;
+      this._speakRequestId = 0;
+      this._pendingSpeakResolver = null;
 
       // Load voices only if supported
       if (this.supported) {
@@ -369,13 +373,21 @@
      * @returns {Promise} Resolves when speech completes
      */
     speak(text, options = {}) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
+        // Resolve any previous pending speak promise
+        if (this._pendingSpeakResolver) {
+          this._pendingSpeakResolver();
+        }
+        this._pendingSpeakResolver = resolve;
+
         if (!this.enabled || !this.supported) {
+          this._pendingSpeakResolver = null;
           resolve();
           return;
         }
 
         if (!text || text.trim() === '') {
+          this._pendingSpeakResolver = null;
           resolve();
           return;
         }
@@ -383,19 +395,76 @@
         // Cancel any ongoing speech
         this.synth.cancel();
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = this.selectedVoice;
-        utterance.rate = options.rate || this.rate;
-        utterance.pitch = options.pitch || this.pitch;
-        utterance.volume = options.volume || this.volume;
+        // Track and cancel any pending speak timeout to avoid races
+        if (this._speakTimeoutId) {
+          clearTimeout(this._speakTimeoutId);
+          this._speakTimeoutId = null;
+        }
 
-        utterance.onend = () => resolve();
-        utterance.onerror = (err) => {
-          console.warn('[TTS] Error:', err);
-          resolve(); // Resolve anyway to not block alerts
-        };
+        // Monotonic request id to ignore stale scheduled callbacks
+        this._speakRequestId++;
+        const requestId = this._speakRequestId;
 
-        this.synth.speak(utterance);
+        // Some browsers need a resume call to ensure the engine isn't paused
+        // or stuck from a previous cancel
+        if (this.synth.paused) {
+          this.synth.resume();
+        }
+
+        // Use a small timeout to ensure the cancel has taken effect
+        // and the engine is ready for a new utterance
+        this._speakTimeoutId = setTimeout(() => {
+          // Clear stored timeout id now that it has fired
+          this._speakTimeoutId = null;
+
+          // If a newer speak request has been made, ignore this one
+          if (requestId !== this._speakRequestId) {
+            this._pendingSpeakResolver = null;
+            resolve();
+            return;
+          }
+
+          try {
+            // Re-select voice if it's still null (async loading)
+            if (!this.selectedVoice && this.voices.length === 0) {
+              this._loadVoices();
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            this.currentUtterance = utterance; // Keep reference to prevent GC
+
+            utterance.voice = this.selectedVoice;
+            utterance.rate = options.rate !== undefined ? options.rate : this.rate;
+            utterance.pitch = options.pitch !== undefined ? options.pitch : this.pitch;
+            utterance.volume = options.volume !== undefined ? options.volume : this.volume;
+
+            console.log('[TTS] Speaking');
+
+            utterance.onstart = () => {
+              console.log('[TTS] Speech started');
+            };
+
+            utterance.onend = () => {
+              console.log('[TTS] Speech ended');
+              this.currentUtterance = null;
+              this._pendingSpeakResolver = null;
+              resolve();
+            };
+
+            utterance.onerror = (err) => {
+              console.warn('[TTS] Speech error:', err);
+              this.currentUtterance = null;
+              this._pendingSpeakResolver = null;
+              resolve(); // Resolve anyway to not block alerts
+            };
+
+            this.synth.speak(utterance);
+          } catch (err) {
+            console.error('[TTS] Failed to speak:', err);
+            this._pendingSpeakResolver = null;
+            resolve();
+          }
+        }, 50);
       });
     }
 
@@ -417,7 +486,19 @@
      * Stop any ongoing speech
      */
     stop() {
+      if (this._speakTimeoutId) {
+        clearTimeout(this._speakTimeoutId);
+        this._speakTimeoutId = null;
+      }
+      this._speakRequestId++; // Increment to invalidate any pending speak callbacks
       this.synth.cancel();
+      this.currentUtterance = null;
+
+      // Resolve any pending speak promise so callers don't hang
+      if (this._pendingSpeakResolver) {
+        this._pendingSpeakResolver();
+        this._pendingSpeakResolver = null;
+      }
     }
   }
 

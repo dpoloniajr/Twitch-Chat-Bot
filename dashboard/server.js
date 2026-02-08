@@ -50,7 +50,8 @@ async function migrateBuiltinCommands() {
       { name: '!balance', cooldownSeconds: 5, description: 'Check your loyalty points (optional: check another user)', permission: 'Everyone' },
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
-      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' }
+      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
+      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' }
     ];
 
     let updated = false;
@@ -103,6 +104,7 @@ async function initLogs() {
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
       { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
+      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' },
       { name: '!shoutout', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!so', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!poll', cooldownSeconds: 0, description: 'Start or manage a poll', permission: 'Moderator' },
