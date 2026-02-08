@@ -1911,11 +1911,34 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
     }
   }
 
+  // Generate TTS audio via dashboard API (if API provider is configured)
+  let audioPath = null;
+  let useBrowserTTS = true;
+
+  try {
+    const ttsResponse = await apiClient_axios.post(`${dashboardBaseUrl}/api/tts/generate`, {
+      text,
+      voice: null, // Use default voice
+      provider: null // Use configured provider
+    }, { timeout: 30000 });
+
+    if (ttsResponse.data.success && !ttsResponse.data.useBrowserTTS) {
+      // API TTS generated successfully
+      audioPath = `/api/tts/audio/${path.basename(ttsResponse.data.audioPath)}`;
+      useBrowserTTS = false;
+    }
+  } catch (err) {
+    console.error('[TTS] Failed to generate API TTS:', err.message);
+    // Fall back to browser TTS
+  }
+
   // Send TTS alert to OBS overlay
   sendAlert('tts', {
     user: username,
     message: text,
     timestamp: new Date().toISOString(),
+    audioPath, // Path to generated audio file (or null for browser TTS)
+    useBrowserTTS, // Flag to indicate whether to use browser TTS
     config: {
       ttsEnabled: true,
       ttsTemplate: text,

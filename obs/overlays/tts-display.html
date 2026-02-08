@@ -151,6 +151,9 @@
     <div class="tts-progress" id="tts-progress"></div>
   </div>
 
+  <!-- Audio element for API-generated TTS -->
+  <audio id="tts-audio" preload="none"></audio>
+
   <script src="../js/overlay-client.js"></script>
   <script>
     // Helper function to validate and clamp numeric values
@@ -291,14 +294,43 @@
       ttsContainer.classList.add('speaking');
 
       try {
-        // Use template from config if available, otherwise use raw message
-        const textToSpeak = config?.ttsTemplate || message;
-        const parsedText = ttsManager.parseTemplate(textToSpeak, data);
-        await ttsManager.speak(parsedText);
-        updateDebug('voice', ttsManager.selectedVoice?.name || 'Default');
+        // Check if API-generated audio is available
+        if (data.audioPath && !data.useBrowserTTS) {
+          // Use API-generated audio
+          const audio = document.getElementById('tts-audio');
+          const dashboardUrl = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '3001');
+          audio.src = dashboardUrl + data.audioPath;
+          audio.volume = speechVolume;
+
+          await new Promise((resolve, reject) => {
+            audio.onended = resolve;
+            audio.onerror = reject;
+            audio.play().catch(reject);
+          });
+
+          updateDebug('voice', 'API TTS');
+        } else {
+          // Fall back to browser TTS
+          const textToSpeak = config?.ttsTemplate || message;
+          const parsedText = ttsManager.parseTemplate(textToSpeak, data);
+          await ttsManager.speak(parsedText);
+          updateDebug('voice', ttsManager.selectedVoice?.name || 'Default (Browser)');
+        }
       } catch (err) {
         console.error('TTS speak error:', err);
         updateDebug('status', 'Speech error');
+
+        // If API TTS failed, try browser TTS as fallback
+        if (data.audioPath && !data.useBrowserTTS) {
+          try {
+            const textToSpeak = config?.ttsTemplate || message;
+            const parsedText = ttsManager.parseTemplate(textToSpeak, data);
+            await ttsManager.speak(parsedText);
+            updateDebug('voice', 'Browser TTS (Fallback)');
+          } catch (fallbackErr) {
+            console.error('Browser TTS fallback also failed:', fallbackErr);
+          }
+        }
       }
 
       ttsContainer.classList.remove('speaking');
@@ -309,6 +341,13 @@
     function hideTTS() {
       ttsContainer.classList.remove('visible', 'slide-up', 'speaking');
       ttsProgress.style.width = '0%';
+
+      // Stop any playing audio
+      const audio = document.getElementById('tts-audio');
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = '';
+
       currentTTS = null;
       updateDebug('status', 'Hidden');
     }

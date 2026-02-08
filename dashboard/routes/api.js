@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { withFileLock, validateRequest, asyncHandler } = require('../lib/utils');
 const state = require('../lib/state');
+const ttsService = require('../../tts-service');
 
 module.exports = function(paths, envPath) {
   const { commandLogsFile, userStatsFile, customCommandsFile, builtinCommandsFile, redemptionsFile, eventSubEventsFile, announcementsFile } = paths;
@@ -281,6 +282,50 @@ module.exports = function(paths, envPath) {
     state.broadcastState({ type: 'alert', data: alertData });
     res.json({ success: true, alert: alertData });
   });
+
+  // TTS API endpoints
+  // Get TTS service configuration
+  router.get('/tts/config', (req, res) => {
+    res.json(ttsService.getConfig());
+  });
+
+  // Generate TTS audio
+  router.post('/tts/generate', asyncHandler(async (req, res) => {
+    const { text, voice, provider } = req.body;
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Text is required' });
+    }
+
+    if (text.length > 500) {
+      return res.status(400).json({ success: false, error: 'Text too long (max 500 characters)' });
+    }
+
+    const result = await ttsService.generateTTS(text, { voice, provider });
+    res.json(result);
+  }));
+
+  // Serve cached TTS audio files
+  router.get('/tts/audio/:filename', asyncHandler(async (req, res) => {
+    const filename = req.params.filename;
+
+    // Validate filename (only allow hash.mp3 format)
+    if (!/^[a-f0-9]{64}\.mp3$/.test(filename)) {
+      return res.status(400).json({ success: false, error: 'Invalid filename' });
+    }
+
+    const cacheDir = path.join(__dirname, '..', 'cache', 'tts');
+    const filePath = path.join(cacheDir, filename);
+
+    try {
+      await fs.access(filePath);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+      res.sendFile(filePath);
+    } catch (err) {
+      res.status(404).json({ success: false, error: 'Audio file not found' });
+    }
+  }));
 
   return router;
 };

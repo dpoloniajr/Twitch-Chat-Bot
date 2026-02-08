@@ -7,6 +7,7 @@ require('dotenv').config(path.join(__dirname, '..', '.env'));
 
 const state = require('./lib/state');
 const { DEFAULT_ALERT_CONFIG } = require('./lib/constants');
+const ttsService = require('../tts-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -160,8 +161,11 @@ wss.on('connection', (ws) => {
 
 // Start server
 const PORT = process.env.DASHBOARD_PORT || 3001;
-initLogs().then(() => {
+Promise.all([initLogs(), ttsService.initialize()]).then(() => {
   server.listen(PORT, () => {
     console.log(`Dashboard server running on http://localhost:${PORT}`);
   });
+}).catch(err => {
+  console.error('Failed to initialize server:', err);
+  process.exit(1);
 });
