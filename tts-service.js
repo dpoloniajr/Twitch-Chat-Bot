@@ -154,6 +154,10 @@ async function saveCachedAudio(text, voice, provider, audioBuffer) {
   const filePath = path.join(config.cacheDir, `${hash}.mp3`);
 
   try {
+    // Check if hash already exists to handle concurrent writes correctly
+    const existingEntry = cacheMap.get(hash);
+    const oldSize = existingEntry ? existingEntry.size : 0;
+
     await fs.writeFile(filePath, audioBuffer);
     const stats = await fs.stat(filePath);
 
@@ -163,7 +167,8 @@ async function saveCachedAudio(text, voice, provider, audioBuffer) {
       size: stats.size
     });
 
-    cacheSize += stats.size;
+    // Update cache size correctly: subtract old size if replacing, then add new size
+    cacheSize = cacheSize - oldSize + stats.size;
 
     // Cleanup if cache is too large
     if (cacheSize > config.cacheMaxSize) {
@@ -194,23 +199,31 @@ async function deleteCachedAudio(hash) {
 }
 
 /**
- * Cleanup old cache files (LRU)
+ * Cleanup old cache files (LRU) - loops until cache size is under limit
  */
 async function cleanupCache() {
   console.log('[TTS] Cache size exceeded, cleaning up...');
 
-  // Sort by timestamp (oldest first)
-  const entries = Array.from(cacheMap.entries())
-    .sort((a, b) => a[1].timestamp - b[1].timestamp);
+  let totalDeleted = 0;
 
-  // Delete oldest 25% of files
-  const deleteCount = Math.ceil(entries.length * 0.25);
+  // Keep deleting oldest 25% until cache is under limit or no entries remain
+  while (cacheSize > config.cacheMaxSize && cacheMap.size > 0) {
+    // Sort by timestamp (oldest first) - recalculate each iteration
+    const entries = Array.from(cacheMap.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
 
-  for (let i = 0; i < deleteCount; i++) {
-    await deleteCachedAudio(entries[i][0]);
+    if (entries.length === 0) break; // Safety: no more entries
+
+    // Delete oldest 25% of current entries
+    const deleteCount = Math.max(1, Math.ceil(entries.length * 0.25));
+
+    for (let i = 0; i < deleteCount && i < entries.length; i++) {
+      await deleteCachedAudio(entries[i][0]);
+      totalDeleted++;
+    }
   }
 
-  console.log(`[TTS] Cleaned up ${deleteCount} files. New cache size: ${(cacheSize / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`[TTS] Cleaned up ${totalDeleted} files. New cache size: ${(cacheSize / 1024 / 1024).toFixed(2)} MB`);
 }
 
 /**
