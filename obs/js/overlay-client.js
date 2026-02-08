@@ -310,6 +310,8 @@
       this.voices = [];
       this.selectedVoice = null;
       this.currentUtterance = null; // Prevent garbage collection
+      this._speakTimeoutId = null;
+      this._speakRequestId = 0;
 
       // Load voices only if supported
       if (this.supported) {
@@ -384,6 +386,16 @@
         // Cancel any ongoing speech
         this.synth.cancel();
 
+        // Track and cancel any pending speak timeout to avoid races
+        if (this._speakTimeoutId) {
+          clearTimeout(this._speakTimeoutId);
+          this._speakTimeoutId = null;
+        }
+
+        // Monotonic request id to ignore stale scheduled callbacks
+        this._speakRequestId++;
+        const requestId = this._speakRequestId;
+
         // Some browsers need a resume call to ensure the engine isn't paused
         // or stuck from a previous cancel
         if (this.synth.paused) {
@@ -392,7 +404,15 @@
 
         // Use a small timeout to ensure the cancel has taken effect
         // and the engine is ready for a new utterance
-        setTimeout(() => {
+        this._speakTimeoutId = setTimeout(() => {
+          // Clear stored timeout id now that it has fired
+          this._speakTimeoutId = null;
+
+          // If a newer speak request has been made, ignore this one
+          if (requestId !== this._speakRequestId) {
+            return;
+          }
+
           try {
             // Re-select voice if it's still null (async loading)
             if (!this.selectedVoice && this.voices.length === 0) {
@@ -403,11 +423,11 @@
             this.currentUtterance = utterance; // Keep reference to prevent GC
 
             utterance.voice = this.selectedVoice;
-            utterance.rate = options.rate || this.rate;
-            utterance.pitch = options.pitch || this.pitch;
-            utterance.volume = options.volume || this.volume;
+            utterance.rate = options.rate !== undefined ? options.rate : this.rate;
+            utterance.pitch = options.pitch !== undefined ? options.pitch : this.pitch;
+            utterance.volume = options.volume !== undefined ? options.volume : this.volume;
 
-            console.log(`[TTS] Speaking: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+            console.log('[TTS] Speaking');
 
             utterance.onstart = () => {
               console.log('[TTS] Speech started');
@@ -452,7 +472,13 @@
      * Stop any ongoing speech
      */
     stop() {
+      if (this._speakTimeoutId) {
+        clearTimeout(this._speakTimeoutId);
+        this._speakTimeoutId = null;
+      }
+      this._speakRequestId++; // Increment to invalidate any pending speak callbacks
       this.synth.cancel();
+      this.currentUtterance = null;
     }
   }
 
