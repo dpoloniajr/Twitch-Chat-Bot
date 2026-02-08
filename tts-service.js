@@ -104,20 +104,20 @@ async function loadCacheMetadata() {
 }
 
 /**
- * Generate a cache key from text and voice settings
+ * Generate a cache key from text, voice, and provider settings
  */
-function getCacheKey(text, voice) {
-  const data = `${text}:${voice}:${config.provider}`;
+function getCacheKey(text, voice, provider) {
+  const data = `${text}:${voice}:${provider}`;
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
 /**
  * Check if text is cached
  */
-async function getCachedAudio(text, voice) {
+async function getCachedAudio(text, voice, provider) {
   if (!config.cacheEnabled) return null;
 
-  const hash = getCacheKey(text, voice);
+  const hash = getCacheKey(text, voice, provider);
   const cached = cacheMap.get(hash);
 
   if (!cached) return null;
@@ -128,6 +128,10 @@ async function getCachedAudio(text, voice) {
     await deleteCachedAudio(hash);
     return null;
   }
+
+  // Update timestamp for proper LRU (touch on access)
+  cached.timestamp = Date.now();
+  cacheMap.set(hash, cached);
 
   // Verify file still exists
   try {
@@ -143,10 +147,10 @@ async function getCachedAudio(text, voice) {
 /**
  * Save audio to cache
  */
-async function saveCachedAudio(text, voice, audioBuffer) {
+async function saveCachedAudio(text, voice, provider, audioBuffer) {
   if (!config.cacheEnabled) return null;
 
-  const hash = getCacheKey(text, voice);
+  const hash = getCacheKey(text, voice, provider);
   const filePath = path.join(config.cacheDir, `${hash}.mp3`);
 
   try {
@@ -285,16 +289,28 @@ async function generateOpenAITTS(text, voice = null) {
  * @returns {Promise<{success: boolean, audioPath?: string, provider: string, error?: string}>}
  */
 async function generateTTS(text, options = {}) {
-  const voice = options.voice || config.elevenLabsVoiceId || config.openaiVoice;
   const provider = options.provider || config.provider;
 
-  // Check cache first
-  const cachedPath = await getCachedAudio(text, voice);
+  // Select voice based on provider
+  let voice;
+  if (options.voice) {
+    voice = options.voice;
+  } else if (provider === TTS_PROVIDERS.ELEVENLABS) {
+    voice = config.elevenLabsVoiceId;
+  } else if (provider === TTS_PROVIDERS.OPENAI) {
+    voice = config.openaiVoice;
+  } else {
+    voice = 'browser'; // Browser TTS doesn't need voice ID
+  }
+
+  // Check cache first (with provider-aware key)
+  const cachedPath = await getCachedAudio(text, voice, provider);
   if (cachedPath) {
     console.log('[TTS] Using cached audio');
+    const filename = path.basename(cachedPath);
     return {
       success: true,
-      audioPath: cachedPath,
+      audioUrl: `/api/tts/audio/${filename}`,  // Return URL, not filesystem path
       provider: provider,
       cached: true
     };
@@ -317,8 +333,8 @@ async function generateTTS(text, options = {}) {
       };
     }
 
-    // Save to cache
-    const audioPath = await saveCachedAudio(text, voice, audioBuffer);
+    // Save to cache (with provider in key)
+    const audioPath = await saveCachedAudio(text, voice, provider, audioBuffer);
 
     if (!audioPath) {
       throw new Error('Failed to save audio to cache');
@@ -326,9 +342,10 @@ async function generateTTS(text, options = {}) {
 
     console.log('[TTS] Generated new audio:', provider);
 
+    const filename = path.basename(audioPath);
     return {
       success: true,
-      audioPath,
+      audioUrl: `/api/tts/audio/${filename}`,  // Return URL, not filesystem path
       provider,
       cached: false
     };

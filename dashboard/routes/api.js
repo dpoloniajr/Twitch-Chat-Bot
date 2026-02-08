@@ -271,7 +271,7 @@ module.exports = function(paths, envPath) {
 
   // Test alert endpoint for OBS overlay testing (compatibility with Excella.js)
   router.post('/test-alert', (req, res) => {
-    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, config } = req.body;
+    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, config, audioUrl, useBrowserTTS } = req.body;
     const alertData = { alertType, user, timestamp: new Date().toISOString() };
     if (message) alertData.message = message;
     if (alertType === 'subscription' && tier) alertData.tier = tier;
@@ -279,6 +279,8 @@ module.exports = function(paths, envPath) {
     if (alertType === 'raid' && viewers) alertData.viewers = Number(viewers);
     if (alertType === 'redemption' && reward) alertData.reward = reward;
     if (config) alertData.config = config; // Preserve custom config for overlays (e.g., TTS settings)
+    if (audioUrl !== undefined) alertData.audioUrl = audioUrl; // TTS audio URL
+    if (useBrowserTTS !== undefined) alertData.useBrowserTTS = useBrowserTTS; // Browser TTS flag
     state.broadcastState({ type: 'alert', data: alertData });
     res.json({ success: true, alert: alertData });
   });
@@ -297,8 +299,8 @@ module.exports = function(paths, envPath) {
       return res.status(400).json({ success: false, error: 'Text is required' });
     }
 
-    if (text.length > 500) {
-      return res.status(400).json({ success: false, error: 'Text too long (max 500 characters)' });
+    if (text.length > 200) {
+      return res.status(400).json({ success: false, error: 'Text too long (max 200 characters)' });
     }
 
     const result = await ttsService.generateTTS(text, { voice, provider });

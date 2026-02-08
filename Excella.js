@@ -1912,7 +1912,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   }
 
   // Generate TTS audio via dashboard API (if API provider is configured)
-  let audioPath = null;
+  let audioUrl = null;
   let useBrowserTTS = true;
 
   try {
@@ -1924,7 +1924,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
 
     if (ttsResponse.data.success && !ttsResponse.data.useBrowserTTS) {
       // API TTS generated successfully
-      audioPath = `/api/tts/audio/${path.basename(ttsResponse.data.audioPath)}`;
+      audioUrl = ttsResponse.data.audioUrl;
       useBrowserTTS = false;
     }
   } catch (err) {
@@ -1937,7 +1937,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
     user: username,
     message: text,
     timestamp: new Date().toISOString(),
-    audioPath, // Path to generated audio file (or null for browser TTS)
+    audioUrl, // URL to generated audio file (or null for browser TTS)
     useBrowserTTS, // Flag to indicate whether to use browser TTS
     config: {
       ttsEnabled: true,

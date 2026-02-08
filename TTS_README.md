@@ -133,7 +133,7 @@ npm run dev
 
 ### Prerequisites
 
-- Node.js v16+ installed
+- Node.js v18+ installed
 - Twitch bot account configured
 - Dashboard server running (port 3001)
 - (Optional) ElevenLabs or OpenAI API key
@@ -410,7 +410,7 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "audioPath": "/dashboard/cache/tts/abc123...xyz.mp3",
+  "audioUrl": "/api/tts/audio/abc123...xyz.mp3",
   "provider": "elevenlabs",
   "cached": false
 }
@@ -463,7 +463,7 @@ GET /api/tts/audio/a1b2c3d4e5f6...xyz.mp3
     "user": "username",
     "message": "Hello world",
     "timestamp": "2024-01-15T12:34:56.789Z",
-    "audioPath": "/api/tts/audio/hash.mp3",  // null for browser TTS
+    "audioUrl": "/api/tts/audio/hash.mp3",  // null for browser TTS
     "useBrowserTTS": false,                   // true for browser TTS
     "config": {
       "ttsEnabled": true,

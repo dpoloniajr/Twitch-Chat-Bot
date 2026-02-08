@@ -295,11 +295,11 @@
 
       try {
         // Check if API-generated audio is available
-        if (data.audioPath && !data.useBrowserTTS) {
+        if (data.audioUrl && !data.useBrowserTTS) {
           // Use API-generated audio
           const audio = document.getElementById('tts-audio');
-          const dashboardUrl = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '3001');
-          audio.src = dashboardUrl + data.audioPath;
+          const dashboardUrl = window.location.origin;  // Use origin instead of hardcoded port
+          audio.src = dashboardUrl + data.audioUrl;
           audio.volume = speechVolume;
 
           await new Promise((resolve, reject) => {
@@ -321,7 +321,7 @@
         updateDebug('status', 'Speech error');
 
         // If API TTS failed, try browser TTS as fallback
-        if (data.audioPath && !data.useBrowserTTS) {
+        if (data.audioUrl && !data.useBrowserTTS) {
           try {
             const textToSpeak = config?.ttsTemplate || message;
             const parsedText = ttsManager.parseTemplate(textToSpeak, data);
