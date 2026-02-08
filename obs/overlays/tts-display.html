@@ -172,7 +172,8 @@
     <p>Status: <span id="debug-status">Initializing...</span></p>
     <p>Connection: <span id="debug-connection">Disconnected</span></p>
     <p>Last TTS: <span id="debug-last-tts">None</span></p>
-    <p>Voice: <span id="debug-voice">Loading...</span></p>
+    <p>Available Voices: <span id="debug-voices-count">Loading...</span></p>
+    <p>Selected Voice: <span id="debug-voice">Loading...</span></p>
     <p>Audio: <span id="debug-audio">Locked</span></p>
   </div>
 
@@ -252,6 +253,26 @@
       pitch: speechPitch,
       volume: speechVolume
     });
+
+    // Update debug panel with voice information after voices load
+    (async () => {
+      try {
+        // Wait for voices to load
+        await ttsManager._ensureVoicesLoaded();
+
+        // Update debug panel
+        const voiceCount = ttsManager.voices.length;
+        const selectedVoice = ttsManager.selectedVoice?.name || 'Default';
+
+        updateDebug('voices-count', `${voiceCount} voice${voiceCount !== 1 ? 's' : ''} (${voicePreference})`);
+        updateDebug('voice', selectedVoice);
+
+        console.log(`[TTS] Loaded ${voiceCount} voices, selected: ${selectedVoice}`);
+      } catch (err) {
+        console.warn('[TTS] Failed to load voice info:', err);
+        updateDebug('voices-count', 'Error loading');
+      }
+    })();
 
     // Unlock audio on any user interaction (required for browser autoplay policies)
     let audioUnlocked = false;
