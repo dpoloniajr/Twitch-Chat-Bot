@@ -281,25 +281,49 @@
     function unlockAudio() {
       if (audioUnlocked) return;
 
+      console.log('[TTS] Attempting to unlock audio...');
+
       try {
-        // Unlock Web Speech API
+        // Unlock Web Speech API - must speak actual audio, not empty string
         if (window.speechSynthesis) {
-          const utterance = new SpeechSynthesisUtterance('');
-          utterance.volume = 0;
-          window.speechSynthesis.speak(utterance);
+          // Cancel any pending speech first
           window.speechSynthesis.cancel();
-          console.log('[TTS] Audio unlocked via user interaction');
+
+          // Speak a very short phrase with minimal volume to unlock the API
+          // Empty string or volume=0 doesn't properly unlock in all browsers
+          const utterance = new SpeechSynthesisUtterance('.');
+          utterance.volume = 0.01; // Very quiet but not silent
+          utterance.rate = 10; // Very fast to minimize duration
+
+          // Track if unlock was successful
+          utterance.onstart = () => {
+            console.log('[TTS] Audio unlock successful - speech API activated');
+            window.speechSynthesis.cancel(); // Cancel immediately after starting
+          };
+
+          utterance.onerror = (err) => {
+            console.warn('[TTS] Audio unlock may have failed:', err);
+          };
+
+          window.speechSynthesis.speak(utterance);
         }
 
         // Unlock HTML5 Audio
         const audio = document.getElementById('tts-audio');
         if (audio) {
-          audio.muted = true;
-          audio.play().then(() => {
-            audio.pause();
-            audio.muted = false;
-            audio.currentTime = 0;
-          }).catch(() => {});
+          audio.volume = 0.01; // Very quiet but not muted
+          const playPromise = audio.play();
+
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.volume = 1.0; // Restore normal volume
+              console.log('[TTS] HTML5 Audio unlocked');
+            }).catch((err) => {
+              console.warn('[TTS] HTML5 Audio unlock failed:', err);
+            });
+          }
         }
 
         audioUnlocked = true;
@@ -311,7 +335,8 @@
           unlockButton.classList.add('hidden');
         }
       } catch (err) {
-        console.warn('[TTS] Failed to unlock audio:', err);
+        console.error('[TTS] Failed to unlock audio:', err);
+        updateDebug('audio', 'Unlock failed');
       }
     }
 
