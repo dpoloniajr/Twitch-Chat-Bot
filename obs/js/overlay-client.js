@@ -475,20 +475,37 @@
             utterance.volume = options.volume !== undefined ? options.volume : this.volume;
 
             console.log('[TTS] Speaking with voice:', this.selectedVoice?.name || 'default');
+            console.log('[TTS] SpeechSynthesis state - speaking:', this.synth.speaking, 'pending:', this.synth.pending, 'paused:', this.synth.paused);
+
+            // Set a timeout to detect if speech never starts
+            const speechTimeout = setTimeout(() => {
+              if (this.synth.speaking === false && this.synth.pending === false) {
+                console.error('[TTS] ❌ Speech failed to start within 2 seconds - likely blocked by browser');
+                console.error('[TTS] OBS Browser Source may have Web Speech API disabled');
+                console.error('[TTS] 💡 Recommendation: Switch to API-based TTS (set TTS_PROVIDER=elevenlabs or openai)');
+                this.currentUtterance = null;
+                this._pendingSpeakResolver = null;
+                resolve();
+              }
+            }, 2000);
 
             utterance.onstart = () => {
-              console.log('[TTS] Speech started');
+              clearTimeout(speechTimeout);
+              console.log('[TTS] ✓ Speech started');
             };
 
             utterance.onend = () => {
-              console.log('[TTS] Speech ended');
+              clearTimeout(speechTimeout);
+              console.log('[TTS] ✓ Speech ended');
               this.currentUtterance = null;
               this._pendingSpeakResolver = null;
               resolve();
             };
 
             utterance.onerror = (err) => {
-              console.warn('[TTS] Speech error:', err);
+              clearTimeout(speechTimeout);
+              console.warn('[TTS] ❌ Speech error:', err);
+              console.warn('[TTS] Error details - error:', err.error, 'charIndex:', err.charIndex);
               this.currentUtterance = null;
               this._pendingSpeakResolver = null;
               resolve(); // Resolve anyway to not block alerts
