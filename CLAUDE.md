@@ -260,9 +260,12 @@ const TTS_CONFIG = {
 - Uses the browser's built-in TTS engine (quality varies by OS/browser)
 - Available voices depend on the viewer's operating system
 - Windows typically has ~5 voices, macOS has more
-- Messages are filtered for blacklisted words, URLs, all caps, repeated characters, and spam
-- Moderators and broadcasters are exempt from filters
+- Messages are filtered for blacklisted words, URLs, all caps, and repeated characters
+- **Note:** Spam detection is intentionally excluded from TTS to avoid affecting regular chat history
+- Moderators and broadcasters are exempt from all filters
+- Usernames are normalized to lowercase for consistent cooldown tracking
 - TTS events are broadcast via WebSocket to all connected overlays
+- URL parameters are validated and clamped to safe ranges to prevent errors
 
 ## Dashboard API Endpoints
 

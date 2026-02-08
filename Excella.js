@@ -1859,6 +1859,9 @@ const TTS_CONFIG = {
 async function handleTTS(channel, username, args, msg, isRedemption = false) {
   const text = args.join(' ').trim();
 
+  // Normalize username to lowercase for consistent cooldown tracking
+  const normalizedUsername = username.toLowerCase();
+
   // Validate text length
   if (!text) {
     if (!isRedemption) {
@@ -1899,7 +1902,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
 
   // Check per-user cooldown (unless it's a redemption)
   if (!isRedemption) {
-    const lastUserTTS = ttsUserCooldowns.get(username) || 0;
+    const lastUserTTS = ttsUserCooldowns.get(normalizedUsername) || 0;
     const timeSinceLastUserTTS = now - lastUserTTS;
     if (timeSinceLastUserTTS < TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000) {
       const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 - timeSinceLastUserTTS) / 1000));
@@ -1923,9 +1926,9 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   // Log successful TTS
   logCommandExecution(username, '!tts', args, true);
 
-  // Update cooldowns
+  // Update cooldowns (use normalized username for consistency)
   lastGlobalTTSTime = now;
-  ttsUserCooldowns.set(username, now);
+  ttsUserCooldowns.set(normalizedUsername, now);
 
   // Cleanup old user cooldowns (every 100 TTS calls)
   if (ttsUserCooldowns.size > 100) {

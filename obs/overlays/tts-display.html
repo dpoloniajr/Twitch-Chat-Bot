@@ -153,18 +153,41 @@
 
   <script src="../js/overlay-client.js"></script>
   <script>
-    // Parse URL parameters
+    // Helper function to validate and clamp numeric values
+    function clamp(value, min, max, defaultValue) {
+      const num = parseFloat(value);
+      if (isNaN(num)) return defaultValue;
+      return Math.max(min, Math.min(max, num));
+    }
+
+    function clampInt(value, min, max, defaultValue) {
+      const num = parseInt(value, 10);
+      if (isNaN(num)) return defaultValue;
+      return Math.max(min, Math.min(max, num));
+    }
+
+    // Parse and validate URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const debugMode = urlParams.get('debug') === 'true';
     const voicePreference = urlParams.get('voice') || 'en-US'; // Language code
-    const speechRate = parseFloat(urlParams.get('rate') || '1.0');
-    const speechPitch = parseFloat(urlParams.get('pitch') || '1.0');
-    const speechVolume = parseFloat(urlParams.get('volume') || '1.0');
-    const displayDuration = parseInt(urlParams.get('duration') || '5000'); // Default 5s
+
+    // Validate numeric parameters with safe ranges and fallbacks
+    const speechRate = clamp(urlParams.get('rate'), 0.5, 2.0, 1.0);
+    const speechPitch = clamp(urlParams.get('pitch'), 0.0, 2.0, 1.0);
+    const speechVolume = clamp(urlParams.get('volume'), 0.0, 1.0, 1.0);
+    const displayDuration = clampInt(urlParams.get('duration'), 1000, 60000, 5000); // 1s to 60s
 
     // Show debug panel if enabled
     if (debugMode) {
       document.getElementById('debug-panel').classList.add('visible');
+      // Log validated parameters
+      console.log('TTS Parameters:', {
+        voice: voicePreference,
+        rate: speechRate,
+        pitch: speechPitch,
+        volume: speechVolume,
+        duration: displayDuration
+      });
     }
 
     function updateDebug(key, value) {
