@@ -1440,22 +1440,13 @@ async function handleShoutout(channel, username, targetUser) {
     sendChatMessage(channel, `@${username} Usage: !shoutout [username]`);
     return;
   }
-  // Strip @ symbol if present
-  const cleanUsername = targetUser.startsWith('@') ? targetUser.slice(1) : targetUser;
-
-  // Check if username is empty after stripping @
-  if (!cleanUsername) {
-    sendChatMessage(channel, `@${username} Usage: !shoutout [username]`);
-    return;
-  }
-
-  const result = await sendShoutout(cleanUsername);
+  const result = await sendShoutout(targetUser);
   if (!result.success) {
     sendChatMessage(channel, `@${username} Error: ${result.error || result.message}`);
-    logCommandExecution(username, '!shoutout', [cleanUsername], 'failed');
+    logCommandExecution(username, '!shoutout', [targetUser], 'failed');
   } else {
     sendChatMessage(channel, result.message);
-    logCommandExecution(username, '!shoutout', [cleanUsername], 'success');
+    logCommandExecution(username, '!shoutout', [targetUser], 'success');
   }
 }
 
