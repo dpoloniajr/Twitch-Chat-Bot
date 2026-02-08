@@ -1943,6 +1943,217 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   return true; // Successfully processed
 }
 
+// ==================== YOUTUBE API INTEGRATION ====================
+
+// YouTube API configuration
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+const YOUTUBE_VIDEO_ENDPOINT = `${YOUTUBE_API_BASE}/videos`;
+const YOUTUBE_SEARCH_ENDPOINT = `${YOUTUBE_API_BASE}/search`;
+
+// YouTube metadata cache (TTL: 1 hour)
+const youtubeMetadataCache = new Map();
+const YOUTUBE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Extract video ID from YouTube URL or return the input if it's already an ID
+ * @param {string} input - YouTube URL or video ID
+ * @returns {string|null} - Video ID or null if invalid
+ */
+function extractVideoId(input) {
+  if (!input) return null;
+
+  // Already a video ID (11 characters, alphanumeric with - and _)
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
+    return input;
+  }
+
+  // Standard URL: youtube.com/watch?v=VIDEO_ID
+  const standardMatch = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (standardMatch) return standardMatch[1];
+
+  // Short URL: youtu.be/VIDEO_ID
+  const shortMatch = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (shortMatch) return shortMatch[1];
+
+  // Embed URL: youtube.com/embed/VIDEO_ID
+  const embedMatch = input.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+  if (embedMatch) return embedMatch[1];
+
+  return null;
+}
+
+/**
+ * Check if input is a YouTube URL
+ * @param {string} input - URL to check
+ * @returns {boolean}
+ */
+function isYouTubeUrl(input) {
+  if (!input) return false;
+  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(input);
+}
+
+/**
+ * Parse ISO 8601 duration to seconds
+ * @param {string} duration - ISO 8601 duration (e.g., PT4M13S)
+ * @returns {number} - Duration in seconds
+ */
+function parseIsoDuration(duration) {
+  if (!duration) return 0;
+
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+
+  const hours = parseInt(match[1] || 0, 10);
+  const minutes = parseInt(match[2] || 0, 10);
+  const seconds = parseInt(match[3] || 0, 10);
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
+ * Format seconds to HH:MM:SS or MM:SS
+ * @param {number} seconds - Duration in seconds
+ * @returns {string} - Formatted duration
+ */
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Fetch YouTube video metadata from API with caching
+ * @param {string} videoId - YouTube video ID
+ * @returns {Promise<Object|null>} - Video metadata or null if error
+ */
+async function getYouTubeMetadata(videoId) {
+  if (!videoId) return null;
+  if (!YOUTUBE_API_KEY) {
+    console.error('YouTube API key not configured');
+    return null;
+  }
+
+  // Check cache first
+  const cached = youtubeMetadataCache.get(videoId);
+  if (cached && Date.now() - cached.timestamp < YOUTUBE_CACHE_TTL) {
+    return cached.data;
+  }
+
+  try {
+    const response = await apiClient_axios.get(YOUTUBE_VIDEO_ENDPOINT, {
+      params: {
+        part: 'snippet,contentDetails',
+        id: videoId,
+        key: YOUTUBE_API_KEY
+      }
+    });
+
+    if (!response.data.items || response.data.items.length === 0) {
+      return null;
+    }
+
+    const video = response.data.items[0];
+    const metadata = {
+      videoId: video.id,
+      title: video.snippet.title,
+      channelTitle: video.snippet.channelTitle,
+      channelId: video.snippet.channelId,
+      durationSeconds: parseIsoDuration(video.contentDetails.duration),
+      durationFormatted: formatDuration(parseIsoDuration(video.contentDetails.duration)),
+      thumbnail: video.snippet.thumbnails.default.url
+    };
+
+    // Cache the result
+    youtubeMetadataCache.set(videoId, {
+      data: metadata,
+      timestamp: Date.now()
+    });
+
+    return metadata;
+  } catch (error) {
+    console.error('Error fetching YouTube metadata:', error.message);
+    if (error.response?.data?.error) {
+      console.error('YouTube API error:', error.response.data.error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Search YouTube for videos by query
+ * @param {string} query - Search query
+ * @param {number} maxResults - Maximum results to return (default: 1)
+ * @returns {Promise<Array|null>} - Array of video IDs or null if error
+ */
+async function searchYouTube(query, maxResults = 1) {
+  if (!query) return null;
+  if (!YOUTUBE_API_KEY) {
+    console.error('YouTube API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await apiClient_axios.get(YOUTUBE_SEARCH_ENDPOINT, {
+      params: {
+        part: 'id',
+        q: query,
+        type: 'video',
+        maxResults,
+        key: YOUTUBE_API_KEY
+      }
+    });
+
+    if (!response.data.items || response.data.items.length === 0) {
+      return null;
+    }
+
+    return response.data.items.map(item => item.id.videoId);
+  } catch (error) {
+    console.error('Error searching YouTube:', error.message);
+    if (error.response?.data?.error) {
+      console.error('YouTube API error:', error.response.data.error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Get song queue configuration from dashboard API
+ * @returns {Promise<Object|null>} - Configuration object or null if error
+ */
+async function getSongQueueConfig() {
+  try {
+    const response = await apiClient_axios.get('http://localhost:3001/api/song-queue/config');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching song queue config:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Add song to queue via dashboard API
+ * @param {Object} songData - Song data to add
+ * @returns {Promise<Object>} - Response with success status and message
+ */
+async function addSongToQueue(songData) {
+  try {
+    const response = await apiClient_axios.post('http://localhost:3001/api/song-queue/add', songData);
+    return { success: true, data: response.data };
+  } catch (error) {
+    if (error.response?.data) {
+      return { success: false, error: error.response.data.error || 'Failed to add song to queue' };
+    }
+    return { success: false, error: error.message };
+  }
+}
+
 async function handleCommands(channel) {
   sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
