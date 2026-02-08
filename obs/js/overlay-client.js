@@ -410,6 +410,7 @@
 
           // If a newer speak request has been made, ignore this one
           if (requestId !== this._speakRequestId) {
+            resolve();
             return;
           }
 
