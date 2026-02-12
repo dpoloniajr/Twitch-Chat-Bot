@@ -93,6 +93,72 @@ module.exports = function(logsDir, state) {
     }
   });
 
+  // PUT /api/song-queue/config - Update configuration
+  router.put('/config', async (req, res, next) => {
+    try {
+      const updates = req.body;
+
+      // Validate incoming config values
+      const validKeys = ['enabled', 'cost', 'maxDuration', 'maxPerUser', 'allowDuplicates', 'priority'];
+      const invalidKeys = Object.keys(updates).filter(k => !validKeys.includes(k));
+
+      if (invalidKeys.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid config keys: ${invalidKeys.join(', ')}`
+        });
+      }
+
+      // Validate types and values
+      if (updates.enabled !== undefined && typeof updates.enabled !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+      }
+      if (updates.cost !== undefined && (typeof updates.cost !== 'number' || updates.cost < 0)) {
+        return res.status(400).json({ success: false, error: 'cost must be a non-negative number' });
+      }
+      if (updates.maxDuration !== undefined && (typeof updates.maxDuration !== 'number' || updates.maxDuration < 1)) {
+        return res.status(400).json({ success: false, error: 'maxDuration must be a positive number' });
+      }
+      if (updates.maxPerUser !== undefined && (typeof updates.maxPerUser !== 'number' || updates.maxPerUser < 1)) {
+        return res.status(400).json({ success: false, error: 'maxPerUser must be a positive number' });
+      }
+      if (updates.allowDuplicates !== undefined && typeof updates.allowDuplicates !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'allowDuplicates must be a boolean' });
+      }
+      if (updates.priority !== undefined && !['everyone', 'subs', 'vips'].includes(updates.priority)) {
+        return res.status(400).json({ success: false, error: 'priority must be everyone, subs, or vips' });
+      }
+
+      // Read current data, merge config, and save
+      const queueData = await readQueueData();
+      queueData.config = {
+        ...queueData.config,
+        ...updates
+      };
+
+      await writeQueueData(queueData);
+
+      // Broadcast config update via WebSocket
+      if (state && state.wss) {
+        state.wss.clients.forEach(client => {
+          if (client.readyState === 1) { // WebSocket.OPEN
+            client.send(JSON.stringify({
+              type: 'song-queue-config-update',
+              data: queueData.config
+            }));
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        config: queueData.config
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // POST /api/song-queue/add - Add song to queue
   router.post('/add', async (req, res, next) => {
     try {

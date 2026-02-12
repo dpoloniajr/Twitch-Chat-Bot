@@ -2513,6 +2513,130 @@ async function handleClearQueue(channel, username, msg) {
   }
 }
 
+async function handleSongRequestConfig(channel, username, msg, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can configure song requests.`);
+    logCommandExecution(username, '!sr config', args, 'failed');
+    return;
+  }
+
+  // Parse: !sr config <setting> <value>
+  if (args.length < 2) {
+    sendChatMessage(channel, `@${username} Usage: !sr config <setting> <value> | Settings: enabled, cost, maxduration, maxperuser, duplicates, priority`);
+    return;
+  }
+
+  const setting = args[0].toLowerCase();
+  const valueStr = args.slice(1).join(' ');
+
+  // Validate setting name and convert value
+  const validSettings = {
+    enabled: (val) => {
+      const lower = val.toLowerCase();
+      if (lower === 'on' || lower === 'true' || lower === 'yes' || lower === '1') return true;
+      if (lower === 'off' || lower === 'false' || lower === 'no' || lower === '0') return false;
+      throw new Error('Value must be on/off, true/false, yes/no, or 1/0');
+    },
+    cost: (val) => {
+      const num = parseInt(val, 10);
+      if (isNaN(num) || num < 0) throw new Error('Value must be a non-negative number');
+      return num;
+    },
+    maxduration: (val) => {
+      const num = parseInt(val, 10);
+      if (isNaN(num) || num < 1) throw new Error('Value must be a positive number (minutes)');
+      return num * 60; // Convert minutes to seconds
+    },
+    maxperuser: (val) => {
+      const num = parseInt(val, 10);
+      if (isNaN(num) || num < 1) throw new Error('Value must be a positive number');
+      return num;
+    },
+    duplicates: (val) => {
+      const lower = val.toLowerCase();
+      if (lower === 'on' || lower === 'true' || lower === 'yes' || lower === '1') return true;
+      if (lower === 'off' || lower === 'false' || lower === 'no' || lower === '0') return false;
+      throw new Error('Value must be on/off, true/false, yes/no, or 1/0');
+    },
+    priority: (val) => {
+      const lower = val.toLowerCase();
+      if (!['everyone', 'subs', 'vips'].includes(lower)) {
+        throw new Error('Value must be everyone, subs, or vips');
+      }
+      return lower;
+    }
+  };
+
+  if (!validSettings[setting]) {
+    sendChatMessage(channel, `@${username} Invalid setting. Valid settings: enabled, cost, maxduration, maxperuser, duplicates, priority`);
+    return;
+  }
+
+  try {
+    // Convert and validate value
+    const convertedValue = validSettings[setting](valueStr);
+
+    // Build config update object
+    const configUpdate = { [setting]: convertedValue };
+
+    // Special handling for duplicates -> allowDuplicates
+    if (setting === 'duplicates') {
+      delete configUpdate.duplicates;
+      configUpdate.allowDuplicates = convertedValue;
+    }
+
+    // Special handling for maxduration -> maxDuration
+    if (setting === 'maxduration') {
+      delete configUpdate.maxduration;
+      configUpdate.maxDuration = convertedValue;
+    }
+
+    // Special handling for maxperuser -> maxPerUser
+    if (setting === 'maxperuser') {
+      delete configUpdate.maxperuser;
+      configUpdate.maxPerUser = convertedValue;
+    }
+
+    // Call dashboard API to update config
+    const response = await apiClient_axios.put(
+      `${dashboardBaseUrl}/api/song-queue/config`,
+      configUpdate,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      // Format user-friendly response
+      let displayValue = convertedValue;
+      if (setting === 'maxduration') {
+        displayValue = `${Math.floor(convertedValue / 60)} minutes`;
+      } else if (typeof convertedValue === 'boolean') {
+        displayValue = convertedValue ? 'on' : 'off';
+      }
+
+      sendChatMessage(channel, `✓ Song request ${setting} set to: ${displayValue}`);
+      logCommandExecution(username, '!sr config', args, 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to update config.'}`);
+      logCommandExecution(username, '!sr config', args, 'failed');
+    }
+  } catch (error) {
+    console.error('Song request config error:', error.message);
+    if (error.message.includes('must be')) {
+      sendChatMessage(channel, `@${username} ${error.message}`);
+    } else {
+      sendChatMessage(channel, `@${username} Error updating config: ${error.message}`);
+    }
+    logCommandExecution(username, '!sr config', args, 'failed');
+  }
+}
+
 async function handleCommands(channel) {
   sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
@@ -2727,10 +2851,20 @@ const commandRegistry = new Map([
     await handleTTS(channel, username, args, msg, false);
   }}],
   ['!sr', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
-    await handleSongRequest(channel, username, msg, args);
+    // Check if this is a config command: !sr config <setting> <value>
+    if (args.length > 0 && args[0].toLowerCase() === 'config') {
+      await handleSongRequestConfig(channel, username, msg, args.slice(1));
+    } else {
+      await handleSongRequest(channel, username, msg, args);
+    }
   }}],
   ['!songrequest', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
-    await handleSongRequest(channel, username, msg, args);
+    // Check if this is a config command: !songrequest config <setting> <value>
+    if (args.length > 0 && args[0].toLowerCase() === 'config') {
+      await handleSongRequestConfig(channel, username, msg, args.slice(1));
+    } else {
+      await handleSongRequest(channel, username, msg, args);
+    }
   }}],
   ['!song', { perm: 'everyone', handler: async ({ channel, username }) => {
     const cooldownSeconds = getCommandCooldown('!song');
