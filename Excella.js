@@ -2154,8 +2154,109 @@ async function addSongToQueue(songData) {
   }
 }
 
+/**
+ * Handle song request command (!sr / !songrequest)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username of requester
+ * @param {Object} msg - Full message object with userInfo
+ * @param {Array} args - Command arguments
+ * @returns {Promise<void>}
+ */
+async function handleSongRequest(channel, username, msg, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured (missing YouTube API key).`);
+    return;
+  }
+
+  // Check cooldown (30 seconds per user)
+  const cooldownKey = `sr_${username.toLowerCase()}`;
+  const cooldownSeconds = 30;
+  if (isOnCooldown(cooldownKey, cooldownSeconds)) {
+    const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get(cooldownKey) || 0));
+    const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+    sendChatMessage(channel, `@${username} Song requests are on cooldown. Try again in ${remainingSec}s.`);
+    return;
+  }
+
+  // Get the input (everything after the command)
+  const input = args.join(' ').trim();
+  if (!input) {
+    sendChatMessage(channel, `@${username} Usage: !sr <YouTube URL or search query>`);
+    return;
+  }
+
+  let videoId = null;
+  let metadata = null;
+
+  // Check if input is a YouTube URL or search query
+  if (isYouTubeUrl(input)) {
+    // Extract video ID from URL
+    videoId = extractVideoId(input);
+    if (!videoId) {
+      sendChatMessage(channel, `@${username} Invalid YouTube URL.`);
+      return;
+    }
+
+    // Fetch metadata
+    metadata = await getYouTubeMetadata(videoId);
+    if (!metadata) {
+      sendChatMessage(channel, `@${username} Could not fetch video information. Please try again.`);
+      return;
+    }
+  } else {
+    // Search YouTube for the query
+    const searchResults = await searchYouTube(input, 1);
+    if (!searchResults || searchResults.length === 0) {
+      sendChatMessage(channel, `@${username} No results found for: "${input}"`);
+      return;
+    }
+
+    videoId = searchResults[0];
+
+    // Fetch metadata for the first result
+    metadata = await getYouTubeMetadata(videoId);
+    if (!metadata) {
+      sendChatMessage(channel, `@${username} Could not fetch video information. Please try again.`);
+      return;
+    }
+  }
+
+  // Prepare song data
+  const songData = {
+    videoId: metadata.videoId,
+    title: metadata.title,
+    channelTitle: metadata.channelTitle,
+    channelId: metadata.channelId,
+    durationSeconds: metadata.durationSeconds,
+    durationFormatted: metadata.durationFormatted,
+    thumbnail: metadata.thumbnail,
+    requester: username,
+    requesterDisplayName: msg.userInfo.displayName || username,
+    requesterIsSub: msg.userInfo.isSubscriber || false,
+    requesterIsVip: msg.userInfo.isVip || false,
+    requesterIsMod: msg.userInfo.isMod || false,
+    requesterIsBroadcaster: msg.userInfo.isBroadcaster || false
+  };
+
+  // Add song to queue via dashboard API
+  const result = await addSongToQueue(songData);
+
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} ${result.error}`);
+    logCommandExecution(username, '!sr', [input], 'failed');
+    return;
+  }
+
+  // Success! Set cooldown and notify user
+  setCooldown(cooldownKey);
+  const position = result.data?.position || '?';
+  sendChatMessage(channel, `@${username} Added to queue (position ${position}): "${metadata.title}" [${metadata.durationFormatted}]`);
+  logCommandExecution(username, '!sr', [input], 'success');
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -2366,6 +2467,12 @@ const commandRegistry = new Map([
   }}],
   ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
     await handleTTS(channel, username, args, msg, false);
+  }}],
+  ['!sr', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    await handleSongRequest(channel, username, msg, args);
+  }}],
+  ['!songrequest', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    await handleSongRequest(channel, username, msg, args);
   }}]
 ]);
 

@@ -143,7 +143,7 @@ app.use('/api/loyalty', require('./routes/loyalty')(logsDir));
 app.use('/api/quotes', require('./routes/quotes')(logsDir));
 app.use('/api/counters', require('./routes/counters')(logsDir));
 app.use('/api/backup', require('./routes/backup')(logsDir));
-app.use('/api/song-queue', require('./routes/song-queue')(logsDir));
+app.use('/api/song-queue', require('./routes/song-queue')(logsDir, state));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
