@@ -2522,17 +2522,10 @@ async function handleClearQueue(channel, username, msg) {
  * @param {Object} msg - Message object with user info
  * @returns {Promise<void>}
  */
-async function handleBlockSong(channel, username, args, msg) {
+async function handleBlockSong(channel, username, args) {
   // Check if we have YouTube API key configured
   if (!YOUTUBE_API_KEY) {
     sendChatMessage(channel, `@${username} Song requests are not configured.`);
-    return;
-  }
-
-  // Check mod permission
-  if (!checkModPermission(msg, channel, username)) {
-    sendChatMessage(channel, `@${username} Only moderators can block songs.`);
-    logCommandExecution(username, '!blocksong', args, 'failed');
     return;
   }
 
@@ -2606,17 +2599,10 @@ async function handleBlockSong(channel, username, args, msg) {
  * @param {Object} msg - Message object with user info
  * @returns {Promise<void>}
  */
-async function handleUnblockSong(channel, username, args, msg) {
+async function handleUnblockSong(channel, username, args) {
   // Check if we have YouTube API key configured
   if (!YOUTUBE_API_KEY) {
     sendChatMessage(channel, `@${username} Song requests are not configured.`);
-    return;
-  }
-
-  // Check mod permission
-  if (!checkModPermission(msg, channel, username)) {
-    sendChatMessage(channel, `@${username} Only moderators can unblock songs.`);
-    logCommandExecution(username, '!unblocksong', args, 'failed');
     return;
   }
 
@@ -3058,11 +3044,11 @@ const commandRegistry = new Map([
   ['!clearqueue', { perm: 'mod', handler: async ({ channel, username, msg }) => {
     await handleClearQueue(channel, username, msg);
   }}],
-  ['!blocksong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
-    await handleBlockSong(channel, username, args, msg);
+  ['!blocksong', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleBlockSong(channel, username, args);
   }}],
-  ['!unblocksong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
-    await handleUnblockSong(channel, username, args, msg);
+  ['!unblocksong', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleUnblockSong(channel, username, args);
   }}]
 ]);
 

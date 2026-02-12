@@ -578,27 +578,49 @@ module.exports = function(logsDir, state) {
 
       // Remove matching songs from queue
       const queueData = await readQueueData();
-      const initialLength = queueData.active.length;
+      const blockedAt = new Date().toISOString();
+      const removedSongs = [];
 
       queueData.active = queueData.active.filter(song => {
-        if (type === 'video' && song.videoId === normalizedValue) return false;
-        if (type === 'channel' && song.channelId === normalizedValue) return false;
+        let isBlocked = false;
+        if (type === 'video' && song.videoId === normalizedValue) isBlocked = true;
+        if (type === 'channel' && song.channelId === normalizedValue) isBlocked = true;
         if (type === 'keyword') {
           const keywordLower = normalizedValue.toLowerCase();
           const titleLower = (song.title || '').toLowerCase();
           const channelLower = (song.channelTitle || '').toLowerCase();
-          if (titleLower.includes(keywordLower) || channelLower.includes(keywordLower)) return false;
+          if (titleLower.includes(keywordLower) || channelLower.includes(keywordLower)) isBlocked = true;
+        }
+        if (isBlocked) {
+          removedSongs.push(song);
+          return false;
         }
         return true;
       });
 
-      const removedCount = initialLength - queueData.active.length;
+      const removedCount = removedSongs.length;
 
       if (removedCount > 0) {
         // Update positions for remaining songs
         queueData.active.forEach((s, index) => {
           s.position = index + 1;
         });
+
+        // Move blocked songs to history
+        if (!queueData.history) {
+          queueData.history = [];
+        }
+        queueData.history.unshift(...removedSongs.map(song => ({
+          ...song,
+          blockedAt,
+          action: 'blocked',
+          blockType: type,
+          blockValue: normalizedValue
+        })));
+        if (queueData.history.length > 100) {
+          queueData.history = queueData.history.slice(0, 100);
+        }
+
         await writeQueueData(queueData);
 
         // Broadcast queue update
