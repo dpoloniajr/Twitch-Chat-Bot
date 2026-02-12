@@ -2383,7 +2383,7 @@ async function handleSkipSong(channel, username, msg) {
   try {
     // Call dashboard API to skip the current song
     const response = await apiClient_axios.post(
-      `http://localhost:${DASHBOARD_PORT}/api/song-queue/skip`,
+      `${dashboardBaseUrl}/api/song-queue/skip`,
       {},
       { timeout: 5000 }
     );
@@ -2441,7 +2441,7 @@ async function handleRemoveSong(channel, username, args, msg) {
   try {
     // Call dashboard API to remove the song
     const response = await apiClient_axios.delete(
-      `http://localhost:${DASHBOARD_PORT}/api/song-queue/${encodeURIComponent(target)}`,
+      `${dashboardBaseUrl}/api/song-queue/${encodeURIComponent(target)}`,
       { timeout: 5000 }
     );
 
@@ -2489,7 +2489,7 @@ async function handleClearQueue(channel, username, msg) {
   try {
     // Call dashboard API to clear the queue
     const response = await apiClient_axios.post(
-      `http://localhost:${DASHBOARD_PORT}/api/song-queue/clear`,
+      `${dashboardBaseUrl}/api/song-queue/clear`,
       {},
       { timeout: 5000 }
     );
