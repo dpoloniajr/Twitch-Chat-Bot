@@ -2129,7 +2129,7 @@ async function searchYouTube(query, maxResults = 1) {
  */
 async function getSongQueueConfig() {
   try {
-    const response = await apiClient_axios.get('http://localhost:3001/api/song-queue/config');
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/song-queue/config`);
     return response.data;
   } catch (error) {
     console.error('Error fetching song queue config:', error.message);
@@ -2144,7 +2144,7 @@ async function getSongQueueConfig() {
  */
 async function addSongToQueue(songData) {
   try {
-    const response = await apiClient_axios.post('http://localhost:3001/api/song-queue/add', songData);
+    const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/song-queue/add`, songData);
     return { success: true, data: response.data };
   } catch (error) {
     if (error.response?.data) {
@@ -2160,7 +2160,7 @@ async function addSongToQueue(songData) {
  */
 async function getSongQueue() {
   try {
-    const response = await apiClient_axios.get('http://localhost:3001/api/song-queue');
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/song-queue`);
     return response.data;
   } catch (error) {
     console.error('Error fetching song queue:', error.message);
@@ -2344,12 +2344,12 @@ async function handleQueueInfo(channel, username) {
   const count = queueData.active.length;
   let message = `Queue: ${count} song${count !== 1 ? 's' : ''} (${totalFormatted} total)`;
 
-  // Show next 3 songs
-  const nextSongs = queueData.active.slice(0, 3);
-  if (nextSongs.length > 0) {
+  // Show next 3 songs (starting from position 2, after the current song)
+  if (queueData.active.length > 1) {
+    const nextSongs = queueData.active.slice(1, 4); // Get songs at positions 2, 3, 4
     message += ' | Up next: ';
     const songList = nextSongs.map((song, idx) =>
-      `${idx + 1}. "${song.title}" [${song.durationFormatted}]`
+      `${idx + 2}. "${song.title}" [${song.durationFormatted}]`
     ).join(', ');
     message += songList;
   }
@@ -2578,7 +2578,7 @@ const commandRegistry = new Map([
     await handleSongRequest(channel, username, msg, args);
   }}],
   ['!song', { perm: 'everyone', handler: async ({ channel, username }) => {
-    const cooldownSeconds = 10; // 10s global cooldown
+    const cooldownSeconds = getCommandCooldown('!song');
     if (isOnCooldown('song', cooldownSeconds)) {
       const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
       const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
@@ -2586,10 +2586,10 @@ const commandRegistry = new Map([
       return;
     }
     await handleCurrentSong(channel, username);
-    setCooldown('song');
+    if (cooldownSeconds > 0) setCooldown('song');
   }}],
   ['!currentsong', { perm: 'everyone', handler: async ({ channel, username }) => {
-    const cooldownSeconds = 10; // 10s global cooldown
+    const cooldownSeconds = getCommandCooldown('!currentsong');
     if (isOnCooldown('song', cooldownSeconds)) {
       const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
       const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
@@ -2597,10 +2597,10 @@ const commandRegistry = new Map([
       return;
     }
     await handleCurrentSong(channel, username);
-    setCooldown('song');
+    if (cooldownSeconds > 0) setCooldown('song');
   }}],
   ['!queue', { perm: 'everyone', handler: async ({ channel, username }) => {
-    const cooldownSeconds = 10; // 10s global cooldown
+    const cooldownSeconds = getCommandCooldown('!queue');
     if (isOnCooldown('queue', cooldownSeconds)) {
       const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('queue') || 0));
       const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
@@ -2608,7 +2608,7 @@ const commandRegistry = new Map([
       return;
     }
     await handleQueueInfo(channel, username);
-    setCooldown('queue');
+    if (cooldownSeconds > 0) setCooldown('queue');
   }}]
 ]);
 

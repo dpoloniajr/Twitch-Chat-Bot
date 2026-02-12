@@ -147,7 +147,12 @@ async function testQueueDisplay() {
       await axios.post(`${DASHBOARD_URL}/api/song-queue/clear`);
       console.log('✓ Queue cleared successfully\n');
     } catch (error) {
-      console.log('✗ Failed to clear queue:', error.response?.data?.error || error.message);
+      if (error.response?.status === 404) {
+        console.log('⚠ Clear endpoint not yet implemented (Phase 4). Skipping cleanup.\n');
+        console.log('Note: You can manually clear the queue from dashboard/logs/song-queue.json\n');
+      } else {
+        console.log('✗ Failed to clear queue:', error.response?.data?.error || error.message);
+      }
     }
 
     console.log('=== All tests completed ===');

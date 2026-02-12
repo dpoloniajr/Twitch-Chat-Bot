@@ -50,7 +50,10 @@ async function migrateBuiltinCommands() {
       { name: '!balance', cooldownSeconds: 5, description: 'Check your loyalty points (optional: check another user)', permission: 'Everyone' },
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
-      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' }
+      { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
+      { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' }
     ];
 
     let updated = false;
@@ -112,7 +115,10 @@ async function initLogs() {
       { name: '!commands', cooldownSeconds: 0, description: 'List available commands', permission: 'Everyone' },
       { name: '!addfilter', cooldownSeconds: 0, description: 'Add a word to the chat filter', permission: 'Moderator' },
       { name: '!removefilter', cooldownSeconds: 0, description: 'Remove a word from the chat filter', permission: 'Moderator' },
-      { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' }
+      { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' },
+      { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' }
     ]);
     await initFile(paths.obsConfigFile, {
       overlays: {
