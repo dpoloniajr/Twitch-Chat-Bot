@@ -2155,6 +2155,20 @@ async function addSongToQueue(songData) {
 }
 
 /**
+ * Get current song queue from dashboard API
+ * @returns {Promise<Object|null>} - Queue data or null on error
+ */
+async function getSongQueue() {
+  try {
+    const response = await apiClient_axios.get('http://localhost:3001/api/song-queue');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching song queue:', error.message);
+    return null;
+  }
+}
+
+/**
  * Handle song request command (!sr / !songrequest)
  * @param {string} channel - Channel name
  * @param {string} username - Username of requester
@@ -2255,8 +2269,97 @@ async function handleSongRequest(channel, username, msg, args) {
   logCommandExecution(username, '!sr', [input], 'success');
 }
 
+/**
+ * Handle current song command (!song / !currentsong)
+ * Shows the currently playing song (first in queue) and what's up next
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @returns {Promise<void>}
+ */
+async function handleCurrentSong(channel, username) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  const queueData = await getSongQueue();
+  if (!queueData || !queueData.active) {
+    sendChatMessage(channel, `@${username} Error fetching song queue.`);
+    logCommandExecution(username, '!song', [], 'failed');
+    return;
+  }
+
+  if (queueData.active.length === 0) {
+    sendChatMessage(channel, `@${username} No songs in the queue.`);
+    logCommandExecution(username, '!song', [], 'success');
+    return;
+  }
+
+  const current = queueData.active[0];
+  const currentMsg = `Now playing: "${current.title}" by ${current.channelTitle} [${current.durationFormatted}] (requested by @${current.requester})`;
+
+  if (queueData.active.length > 1) {
+    const next = queueData.active[1];
+    sendChatMessage(channel, `${currentMsg} | Next up: "${next.title}" [${next.durationFormatted}]`);
+  } else {
+    sendChatMessage(channel, currentMsg);
+  }
+
+  logCommandExecution(username, '!song', [], 'success');
+}
+
+/**
+ * Handle queue info command (!queue)
+ * Shows queue statistics and next few songs
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @returns {Promise<void>}
+ */
+async function handleQueueInfo(channel, username) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  const queueData = await getSongQueue();
+  if (!queueData || !queueData.active) {
+    sendChatMessage(channel, `@${username} Error fetching song queue.`);
+    logCommandExecution(username, '!queue', [], 'failed');
+    return;
+  }
+
+  if (queueData.active.length === 0) {
+    sendChatMessage(channel, `@${username} The queue is empty. Use !sr <URL or search query> to add a song!`);
+    logCommandExecution(username, '!queue', [], 'success');
+    return;
+  }
+
+  // Calculate total duration
+  const totalSeconds = queueData.active.reduce((sum, song) => sum + (song.durationSeconds || 0), 0);
+  const totalFormatted = formatDuration(totalSeconds);
+
+  // Build message with queue stats
+  const count = queueData.active.length;
+  let message = `Queue: ${count} song${count !== 1 ? 's' : ''} (${totalFormatted} total)`;
+
+  // Show next 3 songs
+  const nextSongs = queueData.active.slice(0, 3);
+  if (nextSongs.length > 0) {
+    message += ' | Up next: ';
+    const songList = nextSongs.map((song, idx) =>
+      `${idx + 1}. "${song.title}" [${song.durationFormatted}]`
+    ).join(', ');
+    message += songList;
+  }
+
+  sendChatMessage(channel, message);
+  logCommandExecution(username, '!queue', [], 'success');
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -2473,6 +2576,39 @@ const commandRegistry = new Map([
   }}],
   ['!songrequest', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
     await handleSongRequest(channel, username, msg, args);
+  }}],
+  ['!song', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = 10; // 10s global cooldown
+    if (isOnCooldown('song', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !song is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCurrentSong(channel, username);
+    setCooldown('song');
+  }}],
+  ['!currentsong', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = 10; // 10s global cooldown
+    if (isOnCooldown('song', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !currentsong is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCurrentSong(channel, username);
+    setCooldown('song');
+  }}],
+  ['!queue', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = 10; // 10s global cooldown
+    if (isOnCooldown('queue', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('queue') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !queue is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleQueueInfo(channel, username);
+    setCooldown('queue');
   }}]
 ]);
 
