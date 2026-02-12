@@ -237,5 +237,215 @@ module.exports = function(logsDir, state) {
     }
   });
 
+  // POST /api/song-queue/skip - Skip current song (moderator only)
+  router.post('/skip', async (req, res, next) => {
+    try {
+      const queueData = await readQueueData();
+
+      if (queueData.active.length === 0) {
+        return res.json({
+          success: false,
+          error: 'No song to skip. Queue is empty.'
+        });
+      }
+
+      // Remove the first song (currently playing)
+      const skippedSong = queueData.active.shift();
+
+      // Update positions for remaining songs
+      queueData.active.forEach((s, index) => {
+        s.position = index + 1;
+      });
+
+      // Move skipped song to history
+      if (!queueData.history) {
+        queueData.history = [];
+      }
+      queueData.history.unshift({
+        ...skippedSong,
+        skippedAt: new Date().toISOString(),
+        action: 'skipped'
+      });
+
+      // Keep history limited to last 100 songs
+      if (queueData.history.length > 100) {
+        queueData.history = queueData.history.slice(0, 100);
+      }
+
+      // Save to file
+      await writeQueueData(queueData);
+
+      // Broadcast WebSocket update
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-update',
+          data: {
+            active: queueData.active,
+            action: 'skip',
+            skippedSong
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        skippedSong,
+        queueLength: queueData.active.length
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // DELETE /api/song-queue/:target - Remove song by position or keyword (moderator only)
+  router.delete('/:target', async (req, res, next) => {
+    try {
+      const { target } = req.params;
+      const queueData = await readQueueData();
+
+      if (queueData.active.length === 0) {
+        return res.json({
+          success: false,
+          error: 'Queue is empty.'
+        });
+      }
+
+      let removedSong = null;
+      let removedIndex = -1;
+
+      // Check if target is a number (position)
+      const position = parseInt(target, 10);
+      if (!isNaN(position) && position >= 1 && position <= queueData.active.length) {
+        // Remove by position
+        removedIndex = position - 1;
+        removedSong = queueData.active[removedIndex];
+      } else {
+        // Remove by keyword (search in title or channel)
+        const keyword = target.toLowerCase();
+        removedIndex = queueData.active.findIndex(song =>
+          song.title.toLowerCase().includes(keyword) ||
+          song.channelTitle.toLowerCase().includes(keyword)
+        );
+
+        if (removedIndex !== -1) {
+          removedSong = queueData.active[removedIndex];
+        }
+      }
+
+      if (!removedSong) {
+        return res.json({
+          success: false,
+          error: `No song found matching "${target}".`
+        });
+      }
+
+      // Remove the song
+      queueData.active.splice(removedIndex, 1);
+
+      // Update positions
+      queueData.active.forEach((s, index) => {
+        s.position = index + 1;
+      });
+
+      // Move removed song to history
+      if (!queueData.history) {
+        queueData.history = [];
+      }
+      queueData.history.unshift({
+        ...removedSong,
+        removedAt: new Date().toISOString(),
+        action: 'removed'
+      });
+
+      // Keep history limited to last 100 songs
+      if (queueData.history.length > 100) {
+        queueData.history = queueData.history.slice(0, 100);
+      }
+
+      // Save to file
+      await writeQueueData(queueData);
+
+      // Broadcast WebSocket update
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-update',
+          data: {
+            active: queueData.active,
+            action: 'remove',
+            removedSong
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        removedSong,
+        queueLength: queueData.active.length
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/song-queue/clear - Clear entire queue (moderator only)
+  router.post('/clear', async (req, res, next) => {
+    try {
+      const queueData = await readQueueData();
+      const clearedCount = queueData.active.length;
+
+      if (clearedCount === 0) {
+        return res.json({
+          success: true,
+          clearedCount: 0,
+          message: 'Queue is already empty.'
+        });
+      }
+
+      // Move all songs to history
+      if (!queueData.history) {
+        queueData.history = [];
+      }
+
+      const clearedSongs = queueData.active.map(song => ({
+        ...song,
+        clearedAt: new Date().toISOString(),
+        action: 'cleared'
+      }));
+
+      queueData.history.unshift(...clearedSongs);
+
+      // Keep history limited to last 100 songs
+      if (queueData.history.length > 100) {
+        queueData.history = queueData.history.slice(0, 100);
+      }
+
+      // Clear the active queue
+      queueData.active = [];
+
+      // Save to file
+      await writeQueueData(queueData);
+
+      // Broadcast WebSocket update
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-update',
+          data: {
+            active: [],
+            action: 'clear',
+            clearedCount
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        clearedCount,
+        message: `Cleared ${clearedCount} song${clearedCount !== 1 ? 's' : ''} from the queue.`
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 };

@@ -2358,6 +2358,161 @@ async function handleQueueInfo(channel, username) {
   logCommandExecution(username, '!queue', [], 'success');
 }
 
+/**
+ * Handle skip song command (!skip / !skipsong) - Moderator only
+ * Removes the currently playing song (first in queue)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleSkipSong(channel, username, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can skip songs.`);
+    logCommandExecution(username, '!skip', [], 'failed');
+    return;
+  }
+
+  try {
+    // Call dashboard API to skip the current song
+    const response = await apiClient_axios.post(
+      `http://localhost:${DASHBOARD_PORT}/api/song-queue/skip`,
+      {},
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const skippedSong = response.data.skippedSong;
+      if (skippedSong) {
+        sendChatMessage(channel, `⏭️ Skipped: "${skippedSong.title}" by ${skippedSong.channelTitle}`);
+      } else {
+        sendChatMessage(channel, `@${username} No song to skip.`);
+      }
+      logCommandExecution(username, '!skip', [], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to skip song.'}`);
+      logCommandExecution(username, '!skip', [], 'failed');
+    }
+  } catch (error) {
+    console.error('Skip song error:', error.message);
+    sendChatMessage(channel, `@${username} Error skipping song: ${error.message}`);
+    logCommandExecution(username, '!skip', [], 'failed');
+  }
+}
+
+/**
+ * Handle remove song command (!removesong) - Moderator only
+ * Removes a song by position (number) or by keyword (searches title/channel)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (position number or keyword)
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleRemoveSong(channel, username, args, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can remove songs.`);
+    logCommandExecution(username, '!removesong', args, 'failed');
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !removesong <position or keyword>`);
+    logCommandExecution(username, '!removesong', [], 'failed');
+    return;
+  }
+
+  const target = args.join(' ');
+
+  try {
+    // Call dashboard API to remove the song
+    const response = await apiClient_axios.delete(
+      `http://localhost:${DASHBOARD_PORT}/api/song-queue/${encodeURIComponent(target)}`,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const removedSong = response.data.removedSong;
+      if (removedSong) {
+        sendChatMessage(channel, `🗑️ Removed: "${removedSong.title}" by ${removedSong.channelTitle} (requested by @${removedSong.requester})`);
+      } else {
+        sendChatMessage(channel, `@${username} No song found matching "${target}".`);
+      }
+      logCommandExecution(username, '!removesong', [target], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to remove song.'}`);
+      logCommandExecution(username, '!removesong', [target], 'failed');
+    }
+  } catch (error) {
+    console.error('Remove song error:', error.message);
+    sendChatMessage(channel, `@${username} Error removing song: ${error.message}`);
+    logCommandExecution(username, '!removesong', [target], 'failed');
+  }
+}
+
+/**
+ * Handle clear queue command (!clearqueue) - Moderator only
+ * Clears all songs from the active queue
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleClearQueue(channel, username, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can clear the queue.`);
+    logCommandExecution(username, '!clearqueue', [], 'failed');
+    return;
+  }
+
+  try {
+    // Call dashboard API to clear the queue
+    const response = await apiClient_axios.post(
+      `http://localhost:${DASHBOARD_PORT}/api/song-queue/clear`,
+      {},
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const count = response.data.clearedCount || 0;
+      if (count > 0) {
+        sendChatMessage(channel, `🗑️ Cleared ${count} song${count !== 1 ? 's' : ''} from the queue.`);
+      } else {
+        sendChatMessage(channel, `@${username} Queue is already empty.`);
+      }
+      logCommandExecution(username, '!clearqueue', [], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to clear queue.'}`);
+      logCommandExecution(username, '!clearqueue', [], 'failed');
+    }
+  } catch (error) {
+    console.error('Clear queue error:', error.message);
+    sendChatMessage(channel, `@${username} Error clearing queue: ${error.message}`);
+    logCommandExecution(username, '!clearqueue', [], 'failed');
+  }
+}
+
 async function handleCommands(channel) {
   sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
@@ -2609,6 +2764,18 @@ const commandRegistry = new Map([
     }
     await handleQueueInfo(channel, username);
     if (cooldownSeconds > 0) setCooldown('queue');
+  }}],
+  ['!skip', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleSkipSong(channel, username, msg);
+  }}],
+  ['!skipsong', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleSkipSong(channel, username, msg);
+  }}],
+  ['!removesong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
+    await handleRemoveSong(channel, username, args, msg);
+  }}],
+  ['!clearqueue', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleClearQueue(channel, username, msg);
   }}]
 ]);
 
