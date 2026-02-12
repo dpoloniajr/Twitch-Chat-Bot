@@ -2513,6 +2513,153 @@ async function handleClearQueue(channel, username, msg) {
   }
 }
 
+/**
+ * Handle block song command (!blocksong) - Moderator only
+ * Blocks a video, channel, or keyword from being requested
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (URL, channel name, or keyword)
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleBlockSong(channel, username, args, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can block songs.`);
+    logCommandExecution(username, '!blocksong', args, 'failed');
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !blocksong <url|channel|keyword>`);
+    logCommandExecution(username, '!blocksong', [], 'failed');
+    return;
+  }
+
+  const input = args.join(' ');
+
+  try {
+    // Determine if input is a URL
+    let blockType = 'keyword';
+    let blockValue = input;
+
+    if (isYouTubeUrl(input)) {
+      // Extract video ID from URL
+      const videoId = extractVideoId(input);
+      if (videoId) {
+        blockType = 'video';
+        blockValue = videoId;
+      }
+    }
+
+    // Call dashboard API to add to blocklist
+    const response = await apiClient_axios.post(
+      `${dashboardBaseUrl}/api/song-queue/block`,
+      {
+        type: blockType,
+        value: blockValue
+      },
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const { type, value, removedCount } = response.data;
+      let message = '';
+
+      if (type === 'video') {
+        message = `🚫 Blocked video: ${value}`;
+      } else if (type === 'channel') {
+        message = `🚫 Blocked channel: ${value}`;
+      } else {
+        message = `🚫 Blocked keyword: "${value}"`;
+      }
+
+      if (removedCount > 0) {
+        message += ` (removed ${removedCount} song${removedCount !== 1 ? 's' : ''} from queue)`;
+      }
+
+      sendChatMessage(channel, message);
+      logCommandExecution(username, '!blocksong', [input], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to block.'}`);
+      logCommandExecution(username, '!blocksong', [input], 'failed');
+    }
+  } catch (error) {
+    console.error('Block song error:', error.message);
+    sendChatMessage(channel, `@${username} Error blocking: ${error.message}`);
+    logCommandExecution(username, '!blocksong', [input], 'failed');
+  }
+}
+
+/**
+ * Handle unblock song command (!unblocksong) - Moderator only
+ * Removes a video, channel, or keyword from the blocklist
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (video ID, channel ID, or keyword)
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleUnblockSong(channel, username, args, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can unblock songs.`);
+    logCommandExecution(username, '!unblocksong', args, 'failed');
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !unblocksong <id|keyword>`);
+    logCommandExecution(username, '!unblocksong', [], 'failed');
+    return;
+  }
+
+  const identifier = args.join(' ');
+
+  try {
+    // Call dashboard API to remove from blocklist
+    const response = await apiClient_axios.delete(
+      `${dashboardBaseUrl}/api/song-queue/block/${encodeURIComponent(identifier)}`,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const { type, value } = response.data;
+      let message = '';
+
+      if (type === 'video') {
+        message = `✅ Unblocked video: ${value}`;
+      } else if (type === 'channel') {
+        message = `✅ Unblocked channel: ${value}`;
+      } else {
+        message = `✅ Unblocked keyword: "${value}"`;
+      }
+
+      sendChatMessage(channel, message);
+      logCommandExecution(username, '!unblocksong', [identifier], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to unblock.'}`);
+      logCommandExecution(username, '!unblocksong', [identifier], 'failed');
+    }
+  } catch (error) {
+    console.error('Unblock song error:', error.message);
+    sendChatMessage(channel, `@${username} Error unblocking: ${error.message}`);
+    logCommandExecution(username, '!unblocksong', [identifier], 'failed');
+  }
+}
+
 async function handleSongRequestConfig(channel, username, msg, args) {
   // Check if we have YouTube API key configured
   if (!YOUTUBE_API_KEY) {
@@ -2910,6 +3057,12 @@ const commandRegistry = new Map([
   }}],
   ['!clearqueue', { perm: 'mod', handler: async ({ channel, username, msg }) => {
     await handleClearQueue(channel, username, msg);
+  }}],
+  ['!blocksong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
+    await handleBlockSong(channel, username, args, msg);
+  }}],
+  ['!unblocksong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
+    await handleUnblockSong(channel, username, args, msg);
   }}]
 ]);
 

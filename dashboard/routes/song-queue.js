@@ -363,6 +363,81 @@ module.exports = function(logsDir, state) {
     }
   });
 
+  // DELETE /api/song-queue/block/:id - Remove from blocklist (moderator only)
+  // :id can be a video ID, channel ID, or keyword text
+  router.delete('/block/:id', async (req, res, next) => {
+    try {
+      const identifier = decodeURIComponent(req.params.id).trim();
+
+      if (!identifier) {
+        return res.status(400).json({ success: false, error: 'Identifier cannot be empty' });
+      }
+
+      const blocklist = await readBlocklistData();
+      const identifierLower = identifier.toLowerCase();
+
+      let removedType = null;
+      let removedValue = null;
+
+      // Check videos list first
+      const videoIndex = blocklist.videos.indexOf(identifier);
+      if (videoIndex !== -1) {
+        blocklist.videos.splice(videoIndex, 1);
+        removedType = 'video';
+        removedValue = identifier;
+      }
+
+      // Check channels list
+      if (!removedType) {
+        const channelIndex = blocklist.channels.indexOf(identifier);
+        if (channelIndex !== -1) {
+          blocklist.channels.splice(channelIndex, 1);
+          removedType = 'channel';
+          removedValue = identifier;
+        }
+      }
+
+      // Check keywords list (case-insensitive)
+      if (!removedType) {
+        const keywordIndex = blocklist.keywords.findIndex(k => k.toLowerCase() === identifierLower);
+        if (keywordIndex !== -1) {
+          removedValue = blocklist.keywords[keywordIndex];
+          blocklist.keywords.splice(keywordIndex, 1);
+          removedType = 'keyword';
+        }
+      }
+
+      if (!removedType) {
+        return res.json({
+          success: false,
+          error: `"${identifier}" not found in blocklist.`
+        });
+      }
+
+      await writeBlocklistData(blocklist);
+
+      // Broadcast blocklist update
+      if (state && state.wss) {
+        state.wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            client.send(JSON.stringify({
+              type: 'song-queue-blocklist-update',
+              data: { action: 'remove', blockType: removedType, value: removedValue }
+            }));
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        type: removedType,
+        value: removedValue
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // DELETE /api/song-queue/:target - Remove song by position or keyword (moderator only)
   router.delete('/:target', async (req, res, next) => {
     try {
@@ -447,6 +522,117 @@ module.exports = function(logsDir, state) {
         success: true,
         removedSong,
         queueLength: queueData.active.length
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/song-queue/block - Add to blocklist (moderator only)
+  // Body: { type: 'video'|'channel'|'keyword', value: string }
+  // If type is 'video', value is a video ID; 'channel' for channel ID; 'keyword' for text
+  router.post('/block', async (req, res, next) => {
+    try {
+      const { type, value } = req.body;
+
+      if (!type || !value) {
+        return res.status(400).json({ success: false, error: 'Missing required fields: type, value' });
+      }
+
+      const validTypes = ['video', 'channel', 'keyword'];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ success: false, error: 'type must be video, channel, or keyword' });
+      }
+
+      const normalizedValue = value.trim();
+      if (!normalizedValue) {
+        return res.status(400).json({ success: false, error: 'value cannot be empty' });
+      }
+
+      const blocklist = await readBlocklistData();
+
+      // Check if already blocked
+      if (type === 'video' && blocklist.videos.includes(normalizedValue)) {
+        return res.status(400).json({ success: false, error: 'Video is already blocked.' });
+      }
+      if (type === 'channel' && blocklist.channels.includes(normalizedValue)) {
+        return res.status(400).json({ success: false, error: 'Channel is already blocked.' });
+      }
+      if (type === 'keyword') {
+        const keywordLower = normalizedValue.toLowerCase();
+        if (blocklist.keywords.some(k => k.toLowerCase() === keywordLower)) {
+          return res.status(400).json({ success: false, error: 'Keyword is already blocked.' });
+        }
+      }
+
+      // Add to appropriate blocklist
+      if (type === 'video') {
+        blocklist.videos.push(normalizedValue);
+      } else if (type === 'channel') {
+        blocklist.channels.push(normalizedValue);
+      } else {
+        blocklist.keywords.push(normalizedValue);
+      }
+
+      await writeBlocklistData(blocklist);
+
+      // Remove matching songs from queue
+      const queueData = await readQueueData();
+      const initialLength = queueData.active.length;
+
+      queueData.active = queueData.active.filter(song => {
+        if (type === 'video' && song.videoId === normalizedValue) return false;
+        if (type === 'channel' && song.channelId === normalizedValue) return false;
+        if (type === 'keyword') {
+          const keywordLower = normalizedValue.toLowerCase();
+          const titleLower = (song.title || '').toLowerCase();
+          const channelLower = (song.channelTitle || '').toLowerCase();
+          if (titleLower.includes(keywordLower) || channelLower.includes(keywordLower)) return false;
+        }
+        return true;
+      });
+
+      const removedCount = initialLength - queueData.active.length;
+
+      if (removedCount > 0) {
+        // Update positions for remaining songs
+        queueData.active.forEach((s, index) => {
+          s.position = index + 1;
+        });
+        await writeQueueData(queueData);
+
+        // Broadcast queue update
+        if (state && state.broadcastState) {
+          state.broadcastState({
+            type: 'song-queue-update',
+            data: {
+              active: queueData.active,
+              action: 'block-removed',
+              blockType: type,
+              blockValue: normalizedValue,
+              removedCount
+            }
+          });
+        }
+      }
+
+      // Broadcast blocklist update
+      if (state && state.wss) {
+        state.wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            client.send(JSON.stringify({
+              type: 'song-queue-blocklist-update',
+              data: { action: 'add', blockType: type, value: normalizedValue }
+            }));
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        type,
+        value: normalizedValue,
+        removedCount
       });
     } catch (error) {
       next(error);
