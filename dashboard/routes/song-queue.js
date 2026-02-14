@@ -318,6 +318,8 @@ module.exports = function(logsDir, state) {
   });
 
   // POST /api/song-queue/skip - Skip current song (moderator only)
+  // Accepts optional body: { songId: string } — if provided, only skips when the
+  // current song matches, preventing duplicate skips from multiple overlay instances.
   router.post('/skip', async (req, res, next) => {
     try {
       const queueData = await readQueueData();
@@ -326,6 +328,17 @@ module.exports = function(logsDir, state) {
         return res.json({
           success: false,
           error: 'No song to skip. Queue is empty.'
+        });
+      }
+
+      // If caller provided a songId, verify it still matches the current (first) song.
+      // This prevents a race where multiple overlay instances each call skip on end,
+      // causing the queue to advance more than once.
+      const { songId } = req.body || {};
+      if (songId && queueData.active[0].id !== songId) {
+        return res.json({
+          success: false,
+          error: 'Song already skipped.'
         });
       }
 

@@ -175,6 +175,13 @@ app.use('/api/song-queue', (req, res, next) => {
   if (req.method === 'GET') return next();
   // If no secret is configured, skip validation (backwards compatible)
   if (!INTERNAL_SECRET) return next();
+  // OBS overlays and dashboard pages are served from the same origin (127.0.0.1).
+  // Requests from localhost/127.0.0.1 are trusted without requiring the bot secret,
+  // since external callers cannot reach the server at all (bound to 127.0.0.1 only).
+  const forwarded = req.headers['x-forwarded-for'];
+  const remoteIp  = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress;
+  const isLocalhost = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+  if (isLocalhost) return next();
   if (req.headers['x-bot-secret'] !== INTERNAL_SECRET) {
     return res.status(403).json({ error: 'Forbidden' });
   }

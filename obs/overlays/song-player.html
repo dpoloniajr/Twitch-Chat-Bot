@@ -480,13 +480,15 @@
     }
 
     /* ─── State ──────────────────────────────────────────────────────────────── */
-    let localQueue     = [];   // mirror of server queue
-    let currentSong    = null; // song currently loaded in YT player
-    let ytPlayer       = null; // YouTube IFrame Player instance
-    let ytReady        = false;
-    let progressTimer  = null;
-    let audioUnlocked  = false;
-    let pendingPlay    = false; // play requested before YT was ready
+    let localQueue        = [];   // mirror of server queue
+    let currentSong       = null; // song currently loaded in YT player
+    let ytPlayer          = null; // YouTube IFrame Player instance
+    let ytReady           = false;
+    let progressTimer     = null;
+    let audioUnlocked     = false;
+    let pendingPlay       = false; // play requested before YT was ready
+    let loadingVideoId    = null;  // videoId currently being loaded (double-load guard)
+    let skipNotifyInFlight = false; // prevents concurrent skip-notify calls
 
     /* ─── DOM refs ───────────────────────────────────────────────────────────── */
     const card          = document.getElementById('now-playing-card');
@@ -697,47 +699,107 @@
     function playSong(song) {
       if (!song) return;
 
+      // Double-load guard: skip if this video is already loaded or loading.
+      // This prevents the race where handleSongEnded() calls playSong() directly
+      // and then the resulting WebSocket skip event also calls playSong().
+      if (song.videoId === loadingVideoId) {
+        log('Ignoring duplicate playSong() for already-loading video:', song.videoId);
+        return;
+      }
+
       if (!ytReady) {
         log('YT not ready yet, queuing play for', song.title);
         pendingPlay = true;
+        loadingVideoId = song.videoId;
         showCard(song);
         return;
       }
 
       log('Playing:', song.title, '(', song.videoId, ')');
+      loadingVideoId = song.videoId;
       showCard(song);
 
       try {
         ytPlayer.loadVideoById({
-          videoId:   song.videoId,
+          videoId:      song.videoId,
           startSeconds: 0
         });
       } catch (e) {
         console.error('[SongPlayer] loadVideoById failed:', e);
+        loadingVideoId = null;
         handleSongEnded();
       }
     }
 
+    // Notify the server that the current song ended (called from overlay when YT fires ENDED).
+    // Sends the current song's id so the server can ignore stale/duplicate calls.
+    // Retries once on transient failure.
+    async function notifyServerSkip(songId) {
+      if (skipNotifyInFlight) {
+        log('Skip notify already in flight, skipping duplicate call');
+        return;
+      }
+      skipNotifyInFlight = true;
+      dbg('status', 'Syncing skip to server…');
+
+      const body = JSON.stringify(songId ? { songId } : {});
+      let attempt = 0;
+
+      while (attempt < 2) {
+        attempt++;
+        try {
+          const res = await fetch('/api/song-queue/skip', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success === false && json.error === 'Song already skipped.') {
+              // Another instance already sent the skip — that's fine, not an error
+              log('Server: song was already skipped by another instance');
+            } else {
+              log('Server skip confirmed');
+              dbg('status', 'Playing');
+            }
+            break;
+          }
+          // Non-ok HTTP status — log and maybe retry
+          console.warn(`[SongPlayer] skip API returned ${res.status} (attempt ${attempt})`);
+          dbg('status', `Skip sync failed (${res.status}) – retrying`);
+        } catch (err) {
+          console.warn(`[SongPlayer] skip API error (attempt ${attempt}):`, err);
+          dbg('status', `Skip sync error – retrying`);
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
+      }
+
+      skipNotifyInFlight = false;
+    }
+
     function handleSongEnded() {
-      log('Song ended, shifting queue');
+      log('Song ended, shifting local queue');
+
+      const endedSong = localQueue.length > 0 ? localQueue[0] : null;
 
       // Remove current song from local queue
       if (localQueue.length > 0) {
         localQueue.shift();
       }
 
-      // Tell server to skip (keeps server state in sync)
-      fetch('/api/song-queue/skip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).catch(err => console.warn('[SongPlayer] skip API error:', err));
+      // Reset loading guard so the next song can be played
+      loadingVideoId = null;
+
+      // Tell server to skip (keep server state in sync).
+      // We pass the ended song's id so the server can reject stale duplicate calls.
+      notifyServerSkip(endedSong ? endedSong.id : null);
 
       // Play next song or hide card
       if (localQueue.length > 0) {
         playSong(localQueue[0]);
       } else {
         hideCard();
-        ytPlayer.stopVideo();
+        if (ytPlayer && ytReady) ytPlayer.stopVideo();
         dbg('status', 'Queue empty – waiting');
         dbg('yt-state', 'Stopped');
       }
@@ -765,7 +827,12 @@
           break;
 
         case 'skip':
-          // Server already popped the first song; localQueue now starts with next
+          // Server already popped the first song; localQueue now starts with next.
+          // Reset loadingVideoId here: if the skip came from a mod command (not from
+          // handleSongEnded), we must allow the new first song to load. If it came
+          // from handleSongEnded, playSong() will see the same videoId already loading
+          // and return early (double-load guard), so this is safe either way.
+          loadingVideoId = null;
           if (localQueue.length > 0) {
             playSong(localQueue[0]);
           } else {
