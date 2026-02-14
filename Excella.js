@@ -1517,8 +1517,8 @@ async function handlePoll(channel, username, args) {
         Number.isFinite(parsedDuration) ? parsedDuration : 300
       )); // 15s-30m, default 5m
       
-      // Check scope
-      if (!hasScope(config.scopes, 'channel:manage:polls')) {
+      // Check scope against the broadcaster token's scopes (the token used for this call)
+      if (!hasScope(getBroadcasterScopes(), 'channel:manage:polls')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
@@ -1558,7 +1558,7 @@ async function handlePoll(channel, username, args) {
         return;
       }
       
-      if (!hasScope(config.scopes, 'channel:manage:polls')) {
+      if (!hasScope(getBroadcasterScopes(), 'channel:manage:polls')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
@@ -1627,8 +1627,8 @@ async function handlePrediction(channel, username, args) {
         Number.isFinite(parsedDuration) ? parsedDuration : 300
       )); // 1m-30m, default 5m
       
-      // Check scope
-      if (!hasScope(config.scopes, 'channel:manage:predictions')) {
+      // Check scope against the broadcaster token's scopes (the token used for this call)
+      if (!hasScope(getBroadcasterScopes(), 'channel:manage:predictions')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }
@@ -1669,7 +1669,7 @@ async function handlePrediction(channel, username, args) {
         return;
       }
       
-      if (!hasScope(config.scopes, 'channel:manage:predictions')) {
+      if (!hasScope(getBroadcasterScopes(), 'channel:manage:predictions')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }
@@ -1678,7 +1678,7 @@ async function handlePrediction(channel, username, args) {
         sendChatMessage(channel, `@${username} Bot not initialized yet.`);
         return;
       }
-      
+
       // Resolve prediction via Helix API (requires broadcaster token)
       const resolveRes = await apiClient_axios.patch(
         `https://api.twitch.tv/helix/predictions?broadcaster_id=${broadcasterId}&id=${predId}`,
