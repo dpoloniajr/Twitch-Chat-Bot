@@ -37,7 +37,7 @@ node token-generator.js  # Start OAuth token generator (port 3000)
 │   │   └── style.css          # Dashboard styles
 │   └── logs/                  # JSON data storage (gitignored)
 ├── obs/
-│   ├── overlays/              # HTML overlay pages for OBS
+│   ├── overlays/              # HTML overlay pages for OBS (alerts, song-player, etc.)
 │   ├── js/overlay-client.js   # WebSocket client for overlays
 │   ├── css/overlay-base.css   # Shared overlay styles
 │   └── assets/sounds/         # Alert sound files
@@ -399,6 +399,24 @@ Song queue data is persisted in `dashboard/logs/`:
   priority: 'everyone'  // 'everyone' | 'subs' | 'vips'
 }
 ```
+
+### Song Player Overlay
+
+Add as a browser source in OBS to play requested songs and show current song info:
+```
+http://localhost:3001/obs/overlays/song-player.html
+```
+
+**URL Parameters:**
+- `?position=bottom-left|bottom-right|top-left|top-right` - Screen position (default: bottom-right)
+- `?theme=purple|blue|green` - UI color theme (default: purple)
+- `?debug=true` - Show debug information and controls
+
+**Features:**
+- Automatic YouTube playback via IFrame API
+- Frosted-glass UI with song thumbnail and progress bar
+- Synchronized with chat `!skip` and `!clearqueue` commands
+- Auto-advances to next song when current one finishes
 
 ### Technical Details
 - YouTube metadata is cached to reduce API quota usage
