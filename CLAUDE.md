@@ -146,9 +146,10 @@ TWITCH_CHANNELS=channel1,channel2
 ### Optional Environment Variables
 
 ```env
-# Broadcaster Account (for EventSub features)
+# Broadcaster Account (for EventSub features and broadcaster-scoped API calls)
 TWITCH_BROADCASTER_ACCESS_TOKEN=...
 TWITCH_BROADCASTER_REFRESH_TOKEN=...
+TWITCH_BROADCASTER_SCOPES=channel:manage:broadcast channel:manage:polls channel:manage:predictions
 
 # YouTube API (required for song request feature)
 YOUTUBE_API_KEY=your_youtube_data_v3_api_key
