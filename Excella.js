@@ -2200,6 +2200,13 @@ async function handleSongRequest(channel, username, msg, args) {
     return;
   }
 
+  // Check if song requests are enabled before calling YouTube API (saves quota)
+  const srConfig = await getSongQueueConfig();
+  if (srConfig && srConfig.enabled === false) {
+    sendChatMessage(channel, `@${username} Song requests are currently disabled.`);
+    return;
+  }
+
   let videoId = null;
   let metadata = null;
 
@@ -2543,11 +2550,18 @@ async function handleBlockSong(channel, username, args) {
     let blockValue = input;
 
     if (isYouTubeUrl(input)) {
-      // Extract video ID from URL
-      const videoId = extractVideoId(input);
-      if (videoId) {
-        blockType = 'video';
-        blockValue = videoId;
+      // Check for channel URL first (youtube.com/channel/UC... or youtube.com/@handle)
+      const channelMatch = input.match(/youtube\.com\/(?:channel\/(UC[\w-]+)|@([\w.-]+))/i);
+      if (channelMatch) {
+        blockType = 'channel';
+        blockValue = channelMatch[1] || channelMatch[2]; // UC... ID or @handle
+      } else {
+        // Fall back to video ID extraction
+        const videoId = extractVideoId(input);
+        if (videoId) {
+          blockType = 'video';
+          blockValue = videoId;
+        }
       }
     }
 

@@ -141,14 +141,10 @@ module.exports = function(logsDir, state) {
       await writeQueueData(queueData);
 
       // Broadcast config update via WebSocket
-      if (state && state.wss) {
-        state.wss.clients.forEach(client => {
-          if (client.readyState === 1) { // WebSocket.OPEN
-            client.send(JSON.stringify({
-              type: 'song-queue-config-update',
-              data: queueData.config
-            }));
-          }
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-config-update',
+          data: queueData.config
         });
       }
 
@@ -433,14 +429,10 @@ module.exports = function(logsDir, state) {
       await writeBlocklistData(blocklist);
 
       // Broadcast blocklist update
-      if (state && state.wss) {
-        state.wss.clients.forEach(client => {
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({
-              type: 'song-queue-blocklist-update',
-              data: { action: 'remove', blockType: removedType, value: removedValue }
-            }));
-          }
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-blocklist-update',
+          data: { action: 'remove', blockType: removedType, value: removedValue }
         });
       }
 
@@ -677,14 +669,10 @@ module.exports = function(logsDir, state) {
       }
 
       // Broadcast blocklist update
-      if (state && state.wss) {
-        state.wss.clients.forEach(client => {
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({
-              type: 'song-queue-blocklist-update',
-              data: { action: 'add', blockType: type, value: normalizedValue }
-            }));
-          }
+      if (state && state.broadcastState) {
+        state.broadcastState({
+          type: 'song-queue-blocklist-update',
+          data: { action: 'add', blockType: type, value: normalizedValue }
         });
       }
 
