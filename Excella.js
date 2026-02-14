@@ -2093,13 +2093,14 @@ async function getYouTubeMetadata(videoId) {
     }
 
     const video = response.data.items[0];
+    const durationSeconds = parseIsoDuration(video.contentDetails.duration);
     const metadata = {
       videoId: video.id,
       title: video.snippet.title,
       channelTitle: video.snippet.channelTitle,
       channelId: video.snippet.channelId,
-      durationSeconds: parseIsoDuration(video.contentDetails.duration),
-      durationFormatted: formatDuration(parseIsoDuration(video.contentDetails.duration)),
+      durationSeconds,
+      durationFormatted: formatDuration(durationSeconds),
       thumbnail: video.snippet.thumbnails.default.url
     };
 
@@ -2179,7 +2180,7 @@ async function getSongQueueConfig() {
 async function addSongToQueue(songData) {
   try {
     const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/song-queue/add`, songData);
-    return { success: true, data: response.data };
+    return { success: true, ...response.data };
   } catch (error) {
     if (error.response?.data) {
       return { success: false, error: error.response.data.error || 'Failed to add song to queue' };
@@ -2305,7 +2306,7 @@ async function handleSongRequest(channel, username, msg, args) {
 
   // Success! Set cooldown and notify user
   setCooldown(cooldownKey);
-  const position = result.data?.position || '?';
+  const position = result.position || '?';
   sendChatMessage(channel, `@${username} Added to queue (position ${position}): "${metadata.title}" [${metadata.durationFormatted}]`);
   logCommandExecution(username, '!sr', [input], 'success');
 }
@@ -2560,7 +2561,6 @@ async function handleClearQueue(channel, username, msg) {
  * @param {string} channel - Channel name
  * @param {string} username - Username who issued the command
  * @param {Array<string>} args - Command arguments (URL, channel name, or keyword)
- * @param {Object} msg - Message object with user info
  * @returns {Promise<void>}
  */
 async function handleBlockSong(channel, username, args) {
@@ -2644,7 +2644,6 @@ async function handleBlockSong(channel, username, args) {
  * @param {string} channel - Channel name
  * @param {string} username - Username who issued the command
  * @param {Array<string>} args - Command arguments (video ID, channel ID, or keyword)
- * @param {Object} msg - Message object with user info
  * @returns {Promise<void>}
  */
 async function handleUnblockSong(channel, username, args) {
@@ -2726,18 +2725,21 @@ async function handleSongRequestConfig(channel, username, msg, args) {
       throw new Error('Value must be on/off, true/false, yes/no, or 1/0');
     },
     cost: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a non-negative integer');
       const num = parseInt(val, 10);
-      if (isNaN(num) || num < 0) throw new Error('Value must be a non-negative number');
+      if (num < 0) throw new Error('Value must be a non-negative number');
       return num;
     },
     maxduration: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a positive integer (minutes)');
       const num = parseInt(val, 10);
-      if (isNaN(num) || num < 1) throw new Error('Value must be a positive number (minutes)');
+      if (num < 1) throw new Error('Value must be a positive number (minutes)');
       return num * 60; // Convert minutes to seconds
     },
     maxperuser: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a positive integer');
       const num = parseInt(val, 10);
-      if (isNaN(num) || num < 1) throw new Error('Value must be a positive number');
+      if (num < 1) throw new Error('Value must be a positive number');
       return num;
     },
     duplicates: (val) => {
