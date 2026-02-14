@@ -4,7 +4,7 @@
 
 const express = require('express');
 const path = require('path');
-const { readLoyaltyData, writeLoyaltyData, appendTransaction, addPoints, setPoints } = require('../lib/loyalty-store');
+const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir) {
   const router = express.Router();
@@ -148,35 +148,23 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'username and a positive amount are required' });
       }
 
-      const data = await readData();
-      const normalizedUsername = username.toLowerCase();
-      const userData = data.users?.[normalizedUsername];
+      const result = await deductPoints(loyaltyFile, username, amount, reason);
 
-      if (!userData) {
-        return res.status(404).json({ error: 'User not found' });
+      if (result.notConfigured) {
+        return res.status(503).json({ error: 'Loyalty system not configured' });
       }
-
-      if ((userData.points || 0) < amount) {
+      if (!result.success) {
+        if (result.code === 'USER_NOT_FOUND') {
+          return res.status(404).json({ error: 'User not found' });
+        }
         return res.status(400).json({
-          error: 'Insufficient points',
-          balance: userData.points || 0,
+          error: result.error,
+          balance: result.balance,
           required: amount
         });
       }
 
-      userData.points -= amount;
-      userData.totalSpent = (userData.totalSpent || 0) + amount;
-
-      appendTransaction(data, {
-        username: normalizedUsername,
-        amount: -amount,
-        type: 'spend',
-        reason: reason || 'Deduction',
-        balance: userData.points
-      });
-
-      await writeData(data);
-      res.json({ success: true, newBalance: userData.points });
+      res.json({ success: true, newBalance: result.newBalance });
     } catch (error) {
       next(error);
     }

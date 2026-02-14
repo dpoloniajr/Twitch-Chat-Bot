@@ -72,7 +72,7 @@ function appendTransaction(data, tx) {
  */
 async function deductPoints(loyaltyFile, username, amount, reason) {
   const data = await readLoyaltyData(loyaltyFile);
-  if (!data) return { success: true }; // Loyalty system not configured – graceful fallback
+  if (!data) return { success: true, notConfigured: true }; // Loyalty system not configured – graceful fallback
 
   const normalizedUsername = username.toLowerCase();
   const userData = data.users?.[normalizedUsername];
@@ -80,6 +80,7 @@ async function deductPoints(loyaltyFile, username, amount, reason) {
   if (!userData) {
     return {
       success: false,
+      code: 'USER_NOT_FOUND',
       error: `You have no loyalty points yet. This request costs ${amount} points.`
     };
   }
@@ -87,6 +88,8 @@ async function deductPoints(loyaltyFile, username, amount, reason) {
   if ((userData.points || 0) < amount) {
     return {
       success: false,
+      code: 'INSUFFICIENT_POINTS',
+      balance: userData.points || 0,
       error: `Insufficient points. This request costs ${amount} points. You have ${userData.points || 0}.`
     };
   }
