@@ -6,6 +6,7 @@
  */
 
 const fs = require('fs').promises;
+const { withCrossProcessLock } = require('../../lib/file-lock');
 
 const DEFAULT_USER = () => ({
   points: 0,
@@ -71,42 +72,44 @@ function appendTransaction(data, tx) {
  * @returns {{ success: boolean, error?: string, newBalance?: number }}
  */
 async function deductPoints(loyaltyFile, username, amount, reason) {
-  const data = await readLoyaltyData(loyaltyFile);
-  if (!data) return { success: true, notConfigured: true }; // Loyalty system not configured – graceful fallback
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: true, notConfigured: true }; // Loyalty system not configured – graceful fallback
 
-  const normalizedUsername = username.toLowerCase();
-  const userData = data.users?.[normalizedUsername];
+    const normalizedUsername = username.toLowerCase();
+    const userData = data.users?.[normalizedUsername];
 
-  if (!userData) {
-    return {
-      success: false,
-      code: 'USER_NOT_FOUND',
-      error: `You have no loyalty points yet. This request costs ${amount} points.`
-    };
-  }
+    if (!userData) {
+      return {
+        success: false,
+        code: 'USER_NOT_FOUND',
+        error: `You have no loyalty points yet. This request costs ${amount} points.`
+      };
+    }
 
-  if ((userData.points || 0) < amount) {
-    return {
-      success: false,
-      code: 'INSUFFICIENT_POINTS',
-      balance: userData.points || 0,
-      error: `Insufficient points. This request costs ${amount} points. You have ${userData.points || 0}.`
-    };
-  }
+    if ((userData.points || 0) < amount) {
+      return {
+        success: false,
+        code: 'INSUFFICIENT_POINTS',
+        balance: userData.points || 0,
+        error: `Insufficient points. This request costs ${amount} points. You have ${userData.points || 0}.`
+      };
+    }
 
-  userData.points -= amount;
-  userData.totalSpent = (userData.totalSpent || 0) + amount;
+    userData.points -= amount;
+    userData.totalSpent = (userData.totalSpent || 0) + amount;
 
-  appendTransaction(data, {
-    username: normalizedUsername,
-    amount: -amount,
-    type: 'spend',
-    reason: reason || 'Deduction',
-    balance: userData.points
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount: -amount,
+      type: 'spend',
+      reason: reason || 'Deduction',
+      balance: userData.points
+    });
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return { success: true, newBalance: userData.points };
   });
-
-  await writeLoyaltyData(loyaltyFile, data);
-  return { success: true, newBalance: userData.points };
 }
 
 /**
@@ -122,30 +125,32 @@ async function deductPoints(loyaltyFile, username, amount, reason) {
 async function refundPoints(loyaltyFile, username, amount, reason) {
   if (!amount || amount <= 0) return;
 
-  const data = await readLoyaltyData(loyaltyFile);
-  if (!data) return;
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return;
 
-  const normalizedUsername = username.toLowerCase();
+    const normalizedUsername = username.toLowerCase();
 
-  if (!data.users) data.users = {};
-  if (!data.users[normalizedUsername]) {
-    data.users[normalizedUsername] = DEFAULT_USER();
-  }
+    if (!data.users) data.users = {};
+    if (!data.users[normalizedUsername]) {
+      data.users[normalizedUsername] = DEFAULT_USER();
+    }
 
-  const userData = data.users[normalizedUsername];
-  userData.points = (userData.points || 0) + amount;
-  // Reverse the spend without counting as a new earn
-  userData.totalSpent = Math.max(0, (userData.totalSpent || 0) - amount);
+    const userData = data.users[normalizedUsername];
+    userData.points = (userData.points || 0) + amount;
+    // Reverse the spend without counting as a new earn
+    userData.totalSpent = Math.max(0, (userData.totalSpent || 0) - amount);
 
-  appendTransaction(data, {
-    username: normalizedUsername,
-    amount,
-    type: 'refund',
-    reason: reason || 'Refund',
-    balance: userData.points
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount,
+      type: 'refund',
+      reason: reason || 'Refund',
+      balance: userData.points
+    });
+
+    await writeLoyaltyData(loyaltyFile, data);
   });
-
-  await writeLoyaltyData(loyaltyFile, data);
 }
 
 /**
@@ -159,30 +164,32 @@ async function refundPoints(loyaltyFile, username, amount, reason) {
  * @returns {{ success: boolean, newBalance: number }}
  */
 async function addPoints(loyaltyFile, username, amount, reason, type = 'bonus') {
-  const data = await readLoyaltyData(loyaltyFile);
-  if (!data) return { success: false, error: 'Loyalty system not configured' };
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, error: 'Loyalty system not configured' };
 
-  const normalizedUsername = username.toLowerCase();
+    const normalizedUsername = username.toLowerCase();
 
-  if (!data.users) data.users = {};
-  if (!data.users[normalizedUsername]) {
-    data.users[normalizedUsername] = DEFAULT_USER();
-  }
+    if (!data.users) data.users = {};
+    if (!data.users[normalizedUsername]) {
+      data.users[normalizedUsername] = DEFAULT_USER();
+    }
 
-  const userData = data.users[normalizedUsername];
-  userData.points = (userData.points || 0) + amount;
-  userData.totalEarned = (userData.totalEarned || 0) + amount;
+    const userData = data.users[normalizedUsername];
+    userData.points = (userData.points || 0) + amount;
+    userData.totalEarned = (userData.totalEarned || 0) + amount;
 
-  appendTransaction(data, {
-    username: normalizedUsername,
-    amount,
-    type,
-    reason: reason || 'Addition',
-    balance: userData.points
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount,
+      type,
+      reason: reason || 'Addition',
+      balance: userData.points
+    });
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return { success: true, newBalance: userData.points };
   });
-
-  await writeLoyaltyData(loyaltyFile, data);
-  return { success: true, newBalance: userData.points };
 }
 
 /**
@@ -196,30 +203,32 @@ async function addPoints(loyaltyFile, username, amount, reason, type = 'bonus') 
  * @returns {{ success: boolean, user: object }}
  */
 async function setPoints(loyaltyFile, username, points, reason) {
-  const data = await readLoyaltyData(loyaltyFile);
-  if (!data) return { success: false, error: 'Loyalty system not configured' };
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, error: 'Loyalty system not configured' };
 
-  const normalizedUsername = username.toLowerCase();
+    const normalizedUsername = username.toLowerCase();
 
-  if (!data.users) data.users = {};
-  if (!data.users[normalizedUsername]) {
-    data.users[normalizedUsername] = DEFAULT_USER();
-  }
+    if (!data.users) data.users = {};
+    if (!data.users[normalizedUsername]) {
+      data.users[normalizedUsername] = DEFAULT_USER();
+    }
 
-  const userData = data.users[normalizedUsername];
-  const oldPoints = userData.points || 0;
-  userData.points = Math.max(0, points);
+    const userData = data.users[normalizedUsername];
+    const oldPoints = userData.points || 0;
+    userData.points = Math.max(0, points);
 
-  appendTransaction(data, {
-    username: normalizedUsername,
-    amount: userData.points - oldPoints,
-    type: 'admin',
-    reason: reason || 'Admin adjustment',
-    balance: userData.points
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount: userData.points - oldPoints,
+      type: 'admin',
+      reason: reason || 'Admin adjustment',
+      balance: userData.points
+    });
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return { success: true, user: userData };
   });
-
-  await writeLoyaltyData(loyaltyFile, data);
-  return { success: true, user: userData };
 }
 
 module.exports = { readLoyaltyData, writeLoyaltyData, appendTransaction, deductPoints, refundPoints, addPoints, setPoints };
