@@ -199,6 +199,28 @@ function getApiHeaders() {
   };
 }
 
+// Get API headers using the broadcaster token (required for broadcaster-scoped endpoints
+// like /helix/polls and /helix/predictions). Falls back to the bot token if no
+// broadcaster token is configured (single-account setup).
+function getBroadcasterApiHeaders() {
+  const token = process.env.TWITCH_BROADCASTER_ACCESS_TOKEN || config.accessToken;
+  return {
+    'Client-ID': config.clientId,
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
+
+// Return the scope list that corresponds to the token used by getBroadcasterApiHeaders().
+// When a separate broadcaster token is configured, validate against its scopes; otherwise
+// fall back to the bot's scopes (single-account setup).
+function getBroadcasterScopes() {
+  if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+    return (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
+  }
+  return config.scopes;
+}
+
 // Centralized scope validation with caching
 function validateScopes(requiredScopes) {
   const scopeSet = new Set(config.scopes);
@@ -1500,13 +1522,13 @@ async function handlePoll(channel, username, args) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
-      
+
       if (!initComplete || !broadcasterId) {
         sendChatMessage(channel, `@${username} Bot not initialized yet.`);
         return;
       }
-      
-      // Create poll via Helix API
+
+      // Create poll via Helix API (requires broadcaster token)
       const pollRes = await apiClient_axios.post(
         'https://api.twitch.tv/helix/polls',
         {
@@ -1516,7 +1538,7 @@ async function handlePoll(channel, username, args) {
           duration,
           channel_points_voting: { is_enabled: false }
         },
-        { headers: getApiHeaders() }
+        { headers: getBroadcasterApiHeaders() }
       );
       
       const poll = pollRes.data?.data?.[0];
@@ -1540,17 +1562,17 @@ async function handlePoll(channel, username, args) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
-      
+
       if (!initComplete || !broadcasterId) {
         sendChatMessage(channel, `@${username} Bot not initialized yet.`);
         return;
       }
-      
-      // End poll via Helix API
+
+      // End poll via Helix API (requires broadcaster token)
       const endRes = await apiClient_axios.patch(
         `https://api.twitch.tv/helix/polls?broadcaster_id=${broadcasterId}&id=${pollId}`,
         { status: 'TERMINATED' },
-        { headers: getApiHeaders() }
+        { headers: getBroadcasterApiHeaders() }
       );
       
       sendChatMessage(channel, `✓ Poll ended.`);
@@ -1610,13 +1632,13 @@ async function handlePrediction(channel, username, args) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }
-      
+
       if (!initComplete || !broadcasterId) {
         sendChatMessage(channel, `@${username} Bot not initialized yet.`);
         return;
       }
-      
-      // Create prediction via Helix API
+
+      // Create prediction via Helix API (requires broadcaster token)
       const predRes = await apiClient_axios.post(
         'https://api.twitch.tv/helix/predictions',
         {
@@ -1625,7 +1647,7 @@ async function handlePrediction(channel, username, args) {
           outcomes: outcomes.map(o => ({ title: o })),
           prediction_window: duration
         },
-        { headers: getApiHeaders() }
+        { headers: getBroadcasterApiHeaders() }
       );
       
       const pred = predRes.data?.data?.[0];
@@ -1651,17 +1673,17 @@ async function handlePrediction(channel, username, args) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }
-      
+
       if (!initComplete || !broadcasterId) {
         sendChatMessage(channel, `@${username} Bot not initialized yet.`);
         return;
       }
       
-      // Resolve prediction via Helix API
+      // Resolve prediction via Helix API (requires broadcaster token)
       const resolveRes = await apiClient_axios.patch(
         `https://api.twitch.tv/helix/predictions?broadcaster_id=${broadcasterId}&id=${predId}`,
         { status: 'RESOLVED', winning_outcome_id: winningId },
-        { headers: getApiHeaders() }
+        { headers: getBroadcasterApiHeaders() }
       );
       
       sendChatMessage(channel, `✓ Prediction resolved.`);
