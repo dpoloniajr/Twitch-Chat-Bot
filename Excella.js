@@ -53,8 +53,13 @@ const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const API_TIMEOUT = 5000;
 
-// Global axios instance with consistent timeout
-const apiClient_axios = axios.create({ timeout: API_TIMEOUT });
+// Global axios instance with consistent timeout and internal bot secret
+const apiClient_axios = axios.create({
+  timeout: API_TIMEOUT,
+  headers: process.env.DASHBOARD_INTERNAL_SECRET
+    ? { 'x-bot-secret': process.env.DASHBOARD_INTERNAL_SECRET }
+    : {}
+});
 
 // Configuration
 const config = {
@@ -207,7 +212,7 @@ function logCommandExecution(username, command, args, success) {
     user: username,
     command,
     args: Array.isArray(args) ? args.join(' ') : '',
-    success: success === true // Convert to boolean
+    success: success === true || success === 'success'
   }).catch((err) => {
     console.error('[Logging] Failed to post command log:', err.message);
   });
@@ -1972,8 +1977,851 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   return true; // Successfully processed
 }
 
+// ==================== YOUTUBE API INTEGRATION ====================
+
+// YouTube API configuration
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+const YOUTUBE_VIDEO_ENDPOINT = `${YOUTUBE_API_BASE}/videos`;
+const YOUTUBE_SEARCH_ENDPOINT = `${YOUTUBE_API_BASE}/search`;
+
+// YouTube metadata cache (TTL: 1 hour)
+const youtubeMetadataCache = new Map();
+const YOUTUBE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Extract video ID from YouTube URL or return the input if it's already an ID
+ * @param {string} input - YouTube URL or video ID
+ * @returns {string|null} - Video ID or null if invalid
+ */
+function extractVideoId(input) {
+  if (!input) return null;
+
+  // Already a video ID (11 characters, alphanumeric with - and _)
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
+    return input;
+  }
+
+  // Standard URL: youtube.com/watch?v=VIDEO_ID
+  const standardMatch = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (standardMatch) return standardMatch[1];
+
+  // Short URL: youtu.be/VIDEO_ID
+  const shortMatch = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (shortMatch) return shortMatch[1];
+
+  // Embed URL: youtube.com/embed/VIDEO_ID
+  const embedMatch = input.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+  if (embedMatch) return embedMatch[1];
+
+  return null;
+}
+
+/**
+ * Check if input is a YouTube URL
+ * @param {string} input - URL to check
+ * @returns {boolean}
+ */
+function isYouTubeUrl(input) {
+  if (!input) return false;
+  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(input);
+}
+
+/**
+ * Parse ISO 8601 duration to seconds
+ * @param {string} duration - ISO 8601 duration (e.g., PT4M13S)
+ * @returns {number} - Duration in seconds
+ */
+function parseIsoDuration(duration) {
+  if (!duration) return 0;
+
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+
+  const hours = parseInt(match[1] || 0, 10);
+  const minutes = parseInt(match[2] || 0, 10);
+  const seconds = parseInt(match[3] || 0, 10);
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
+ * Format seconds to HH:MM:SS or MM:SS
+ * @param {number} seconds - Duration in seconds
+ * @returns {string} - Formatted duration
+ */
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Fetch YouTube video metadata from API with caching
+ * @param {string} videoId - YouTube video ID
+ * @returns {Promise<Object|null>} - Video metadata or null if error
+ */
+async function getYouTubeMetadata(videoId) {
+  if (!videoId) return null;
+  if (!YOUTUBE_API_KEY) {
+    console.error('YouTube API key not configured');
+    return null;
+  }
+
+  // Check cache first
+  const cached = youtubeMetadataCache.get(videoId);
+  if (cached && Date.now() - cached.timestamp < YOUTUBE_CACHE_TTL) {
+    return cached.data;
+  }
+
+  try {
+    const response = await apiClient_axios.get(YOUTUBE_VIDEO_ENDPOINT, {
+      params: {
+        part: 'snippet,contentDetails',
+        id: videoId,
+        key: YOUTUBE_API_KEY
+      }
+    });
+
+    if (!response.data.items || response.data.items.length === 0) {
+      return null;
+    }
+
+    const video = response.data.items[0];
+    const durationSeconds = parseIsoDuration(video.contentDetails.duration);
+    const metadata = {
+      videoId: video.id,
+      title: video.snippet.title,
+      channelTitle: video.snippet.channelTitle,
+      channelId: video.snippet.channelId,
+      durationSeconds,
+      durationFormatted: formatDuration(durationSeconds),
+      thumbnail: video.snippet.thumbnails.default.url
+    };
+
+    // Cache the result
+    youtubeMetadataCache.set(videoId, {
+      data: metadata,
+      timestamp: Date.now()
+    });
+
+    return metadata;
+  } catch (error) {
+    console.error('Error fetching YouTube metadata:', error.message);
+    if (error.response?.data?.error) {
+      console.error('YouTube API error:', error.response.data.error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Search YouTube for videos by query
+ * @param {string} query - Search query
+ * @param {number} maxResults - Maximum results to return (default: 1)
+ * @returns {Promise<Array|null>} - Array of video IDs or null if error
+ */
+async function searchYouTube(query, maxResults = 1) {
+  if (!query) return null;
+  if (!YOUTUBE_API_KEY) {
+    console.error('YouTube API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await apiClient_axios.get(YOUTUBE_SEARCH_ENDPOINT, {
+      params: {
+        part: 'id',
+        q: query,
+        type: 'video',
+        maxResults,
+        key: YOUTUBE_API_KEY
+      }
+    });
+
+    if (!response.data.items || response.data.items.length === 0) {
+      return null;
+    }
+
+    return response.data.items.map(item => item.id.videoId);
+  } catch (error) {
+    console.error('Error searching YouTube:', error.message);
+    if (error.response?.data?.error) {
+      console.error('YouTube API error:', error.response.data.error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Get song queue configuration from dashboard API
+ * @returns {Promise<Object|null>} - Configuration object or null if error
+ */
+async function getSongQueueConfig() {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/song-queue/config`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching song queue config:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Add song to queue via dashboard API
+ * @param {Object} songData - Song data to add
+ * @returns {Promise<Object>} - Response with success status and message
+ */
+async function addSongToQueue(songData) {
+  try {
+    const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/song-queue/add`, songData);
+    return { success: true, ...response.data };
+  } catch (error) {
+    if (error.response?.data) {
+      return { success: false, error: error.response.data.error || 'Failed to add song to queue' };
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get current song queue from dashboard API
+ * @returns {Promise<Object|null>} - Queue data or null on error
+ */
+async function getSongQueue() {
+  try {
+    const response = await apiClient_axios.get(`${dashboardBaseUrl}/api/song-queue`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching song queue:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Handle song request command (!sr / !songrequest)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username of requester
+ * @param {Object} msg - Full message object with userInfo
+ * @param {Array} args - Command arguments
+ * @returns {Promise<void>}
+ */
+async function handleSongRequest(channel, username, msg, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured (missing YouTube API key).`);
+    return;
+  }
+
+  // Check cooldown (30 seconds per user)
+  const cooldownKey = `sr_${username.toLowerCase()}`;
+  const cooldownSeconds = 30;
+  if (isOnCooldown(cooldownKey, cooldownSeconds)) {
+    const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get(cooldownKey) || 0));
+    const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+    sendChatMessage(channel, `@${username} Song requests are on cooldown. Try again in ${remainingSec}s.`);
+    return;
+  }
+
+  // Get the input (everything after the command)
+  const input = args.join(' ').trim();
+  if (!input) {
+    sendChatMessage(channel, `@${username} Usage: !sr <YouTube URL or search query>`);
+    return;
+  }
+
+  // Check if song requests are enabled before calling YouTube API (saves quota)
+  const srConfig = await getSongQueueConfig();
+  if (srConfig && srConfig.enabled === false) {
+    sendChatMessage(channel, `@${username} Song requests are currently disabled.`);
+    return;
+  }
+
+  let videoId = null;
+  let metadata = null;
+
+  // Check if input is a YouTube URL or search query
+  if (isYouTubeUrl(input)) {
+    // Extract video ID from URL
+    videoId = extractVideoId(input);
+    if (!videoId) {
+      sendChatMessage(channel, `@${username} Invalid YouTube URL.`);
+      return;
+    }
+
+    // Fetch metadata
+    metadata = await getYouTubeMetadata(videoId);
+    if (!metadata) {
+      sendChatMessage(channel, `@${username} Could not fetch video information. Please try again.`);
+      return;
+    }
+  } else {
+    // Search YouTube for the query
+    const searchResults = await searchYouTube(input, 1);
+    if (!searchResults || searchResults.length === 0) {
+      sendChatMessage(channel, `@${username} No results found for: "${input}"`);
+      return;
+    }
+
+    videoId = searchResults[0];
+
+    // Fetch metadata for the first result
+    metadata = await getYouTubeMetadata(videoId);
+    if (!metadata) {
+      sendChatMessage(channel, `@${username} Could not fetch video information. Please try again.`);
+      return;
+    }
+  }
+
+  // Prepare song data
+  const songData = {
+    videoId: metadata.videoId,
+    title: metadata.title,
+    channelTitle: metadata.channelTitle,
+    channelId: metadata.channelId,
+    durationSeconds: metadata.durationSeconds,
+    durationFormatted: metadata.durationFormatted,
+    thumbnail: metadata.thumbnail,
+    requester: username,
+    requesterDisplayName: msg.userInfo.displayName || username,
+    requesterIsSub: msg.userInfo.isSubscriber || false,
+    requesterIsVip: msg.userInfo.isVip || false,
+    requesterIsMod: msg.userInfo.isMod || false,
+    requesterIsBroadcaster: msg.userInfo.isBroadcaster || false
+  };
+
+  // Add song to queue via dashboard API
+  const result = await addSongToQueue(songData);
+
+  if (!result.success) {
+    sendChatMessage(channel, `@${username} ${result.error}`);
+    logCommandExecution(username, '!sr', [input], 'failed');
+    return;
+  }
+
+  // Success! Set cooldown and notify user
+  setCooldown(cooldownKey);
+  const position = result.position || '?';
+  sendChatMessage(channel, `@${username} Added to queue (position ${position}): "${metadata.title}" [${metadata.durationFormatted}]`);
+  logCommandExecution(username, '!sr', [input], 'success');
+}
+
+/**
+ * Handle current song command (!song / !currentsong)
+ * Shows the currently playing song (first in queue) and what's up next
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @returns {Promise<void>}
+ */
+async function handleCurrentSong(channel, username) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  const queueData = await getSongQueue();
+  if (!queueData || !queueData.active) {
+    sendChatMessage(channel, `@${username} Error fetching song queue.`);
+    logCommandExecution(username, '!song', [], 'failed');
+    return;
+  }
+
+  if (queueData.active.length === 0) {
+    sendChatMessage(channel, `@${username} No songs in the queue.`);
+    logCommandExecution(username, '!song', [], 'success');
+    return;
+  }
+
+  const current = queueData.active[0];
+  const currentMsg = `Now playing: "${current.title}" by ${current.channelTitle} [${current.durationFormatted}] (requested by @${current.requester})`;
+
+  if (queueData.active.length > 1) {
+    const next = queueData.active[1];
+    sendChatMessage(channel, `${currentMsg} | Next up: "${next.title}" [${next.durationFormatted}]`);
+  } else {
+    sendChatMessage(channel, currentMsg);
+  }
+
+  logCommandExecution(username, '!song', [], 'success');
+}
+
+/**
+ * Handle queue info command (!queue)
+ * Shows queue statistics and next few songs
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @returns {Promise<void>}
+ */
+async function handleQueueInfo(channel, username) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  const queueData = await getSongQueue();
+  if (!queueData || !queueData.active) {
+    sendChatMessage(channel, `@${username} Error fetching song queue.`);
+    logCommandExecution(username, '!queue', [], 'failed');
+    return;
+  }
+
+  if (queueData.active.length === 0) {
+    sendChatMessage(channel, `@${username} The queue is empty. Use !sr <URL or search query> to add a song!`);
+    logCommandExecution(username, '!queue', [], 'success');
+    return;
+  }
+
+  // Calculate total duration
+  const totalSeconds = queueData.active.reduce((sum, song) => sum + (song.durationSeconds || 0), 0);
+  const totalFormatted = formatDuration(totalSeconds);
+
+  // Build message with queue stats
+  const count = queueData.active.length;
+  let message = `Queue: ${count} song${count !== 1 ? 's' : ''} (${totalFormatted} total)`;
+
+  // Show next 3 songs (starting from position 2, after the current song)
+  if (queueData.active.length > 1) {
+    const nextSongs = queueData.active.slice(1, 4); // Get songs at positions 2, 3, 4
+    message += ' | Up next: ';
+    const songList = nextSongs.map((song, idx) =>
+      `${idx + 2}. "${song.title}" [${song.durationFormatted}]`
+    ).join(', ');
+    message += songList;
+  }
+
+  sendChatMessage(channel, message);
+  logCommandExecution(username, '!queue', [], 'success');
+}
+
+/**
+ * Handle skip song command (!skip / !skipsong) - Moderator only
+ * Removes the currently playing song (first in queue)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleSkipSong(channel, username, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can skip songs.`);
+    logCommandExecution(username, '!skip', [], 'failed');
+    return;
+  }
+
+  try {
+    // Call dashboard API to skip the current song
+    const response = await apiClient_axios.post(
+      `${dashboardBaseUrl}/api/song-queue/skip`,
+      {},
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const skippedSong = response.data.skippedSong;
+      if (skippedSong) {
+        sendChatMessage(channel, `⏭️ Skipped: "${skippedSong.title}" by ${skippedSong.channelTitle}`);
+      } else {
+        sendChatMessage(channel, `@${username} No song to skip.`);
+      }
+      logCommandExecution(username, '!skip', [], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to skip song.'}`);
+      logCommandExecution(username, '!skip', [], 'failed');
+    }
+  } catch (error) {
+    console.error('Skip song error:', error.message);
+    sendChatMessage(channel, `@${username} Error skipping song: ${error.message}`);
+    logCommandExecution(username, '!skip', [], 'failed');
+  }
+}
+
+/**
+ * Handle remove song command (!removesong) - Moderator only
+ * Removes a song by position (number) or by keyword (searches title/channel)
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (position number or keyword)
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleRemoveSong(channel, username, args, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can remove songs.`);
+    logCommandExecution(username, '!removesong', args, 'failed');
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !removesong <position or keyword>`);
+    logCommandExecution(username, '!removesong', [], 'failed');
+    return;
+  }
+
+  const target = args.join(' ');
+
+  try {
+    // Call dashboard API to remove the song
+    const response = await apiClient_axios.delete(
+      `${dashboardBaseUrl}/api/song-queue/${encodeURIComponent(target)}`,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const removedSong = response.data.removedSong;
+      if (removedSong) {
+        sendChatMessage(channel, `🗑️ Removed: "${removedSong.title}" by ${removedSong.channelTitle} (requested by @${removedSong.requester})`);
+      } else {
+        sendChatMessage(channel, `@${username} No song found matching "${target}".`);
+      }
+      logCommandExecution(username, '!removesong', [target], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to remove song.'}`);
+      logCommandExecution(username, '!removesong', [target], 'failed');
+    }
+  } catch (error) {
+    console.error('Remove song error:', error.message);
+    sendChatMessage(channel, `@${username} Error removing song: ${error.message}`);
+    logCommandExecution(username, '!removesong', [target], 'failed');
+  }
+}
+
+/**
+ * Handle clear queue command (!clearqueue) - Moderator only
+ * Clears all songs from the active queue
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Object} msg - Message object with user info
+ * @returns {Promise<void>}
+ */
+async function handleClearQueue(channel, username, msg) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can clear the queue.`);
+    logCommandExecution(username, '!clearqueue', [], 'failed');
+    return;
+  }
+
+  try {
+    // Call dashboard API to clear the queue
+    const response = await apiClient_axios.post(
+      `${dashboardBaseUrl}/api/song-queue/clear`,
+      {},
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const count = response.data.clearedCount || 0;
+      if (count > 0) {
+        sendChatMessage(channel, `🗑️ Cleared ${count} song${count !== 1 ? 's' : ''} from the queue.`);
+      } else {
+        sendChatMessage(channel, `@${username} Queue is already empty.`);
+      }
+      logCommandExecution(username, '!clearqueue', [], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to clear queue.'}`);
+      logCommandExecution(username, '!clearqueue', [], 'failed');
+    }
+  } catch (error) {
+    console.error('Clear queue error:', error.message);
+    sendChatMessage(channel, `@${username} Error clearing queue: ${error.message}`);
+    logCommandExecution(username, '!clearqueue', [], 'failed');
+  }
+}
+
+/**
+ * Handle block song command (!blocksong) - Moderator only
+ * Blocks a video, channel, or keyword from being requested
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (URL, channel name, or keyword)
+ * @returns {Promise<void>}
+ */
+async function handleBlockSong(channel, username, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !blocksong <url|channel|keyword>`);
+    logCommandExecution(username, '!blocksong', [], 'failed');
+    return;
+  }
+
+  const input = args.join(' ');
+
+  try {
+    // Determine if input is a URL
+    let blockType = 'keyword';
+    let blockValue = input;
+
+    if (isYouTubeUrl(input)) {
+      // Check for channel URL first (youtube.com/channel/UC... or youtube.com/@handle)
+      const channelMatch = input.match(/youtube\.com\/(?:channel\/(UC[\w-]+)|@([\w.-]+))/i);
+      if (channelMatch) {
+        blockType = 'channel';
+        blockValue = channelMatch[1] || channelMatch[2]; // UC... ID or @handle
+      } else {
+        // Fall back to video ID extraction
+        const videoId = extractVideoId(input);
+        if (videoId) {
+          blockType = 'video';
+          blockValue = videoId;
+        }
+      }
+    }
+
+    // Call dashboard API to add to blocklist
+    const response = await apiClient_axios.post(
+      `${dashboardBaseUrl}/api/song-queue/block`,
+      {
+        type: blockType,
+        value: blockValue
+      },
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const { type, value, removedCount } = response.data;
+      let message = '';
+
+      if (type === 'video') {
+        message = `🚫 Blocked video: ${value}`;
+      } else if (type === 'channel') {
+        message = `🚫 Blocked channel: ${value}`;
+      } else {
+        message = `🚫 Blocked keyword: "${value}"`;
+      }
+
+      if (removedCount > 0) {
+        message += ` (removed ${removedCount} song${removedCount !== 1 ? 's' : ''} from queue)`;
+      }
+
+      sendChatMessage(channel, message);
+      logCommandExecution(username, '!blocksong', [input], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to block.'}`);
+      logCommandExecution(username, '!blocksong', [input], 'failed');
+    }
+  } catch (error) {
+    console.error('Block song error:', error.message);
+    sendChatMessage(channel, `@${username} Error blocking: ${error.message}`);
+    logCommandExecution(username, '!blocksong', [input], 'failed');
+  }
+}
+
+/**
+ * Handle unblock song command (!unblocksong) - Moderator only
+ * Removes a video, channel, or keyword from the blocklist
+ * @param {string} channel - Channel name
+ * @param {string} username - Username who issued the command
+ * @param {Array<string>} args - Command arguments (video ID, channel ID, or keyword)
+ * @returns {Promise<void>}
+ */
+async function handleUnblockSong(channel, username, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  if (!args || args.length === 0) {
+    sendChatMessage(channel, `@${username} Usage: !unblocksong <id|keyword>`);
+    logCommandExecution(username, '!unblocksong', [], 'failed');
+    return;
+  }
+
+  const identifier = args.join(' ');
+
+  try {
+    // Call dashboard API to remove from blocklist
+    const response = await apiClient_axios.delete(
+      `${dashboardBaseUrl}/api/song-queue/block/${encodeURIComponent(identifier)}`,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      const { type, value } = response.data;
+      let message = '';
+
+      if (type === 'video') {
+        message = `✅ Unblocked video: ${value}`;
+      } else if (type === 'channel') {
+        message = `✅ Unblocked channel: ${value}`;
+      } else {
+        message = `✅ Unblocked keyword: "${value}"`;
+      }
+
+      sendChatMessage(channel, message);
+      logCommandExecution(username, '!unblocksong', [identifier], 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to unblock.'}`);
+      logCommandExecution(username, '!unblocksong', [identifier], 'failed');
+    }
+  } catch (error) {
+    console.error('Unblock song error:', error.message);
+    sendChatMessage(channel, `@${username} Error unblocking: ${error.message}`);
+    logCommandExecution(username, '!unblocksong', [identifier], 'failed');
+  }
+}
+
+async function handleSongRequestConfig(channel, username, msg, args) {
+  // Check if we have YouTube API key configured
+  if (!YOUTUBE_API_KEY) {
+    sendChatMessage(channel, `@${username} Song requests are not configured.`);
+    return;
+  }
+
+  // Check mod permission
+  if (!checkModPermission(msg, channel, username)) {
+    sendChatMessage(channel, `@${username} Only moderators can configure song requests.`);
+    logCommandExecution(username, '!sr config', args, 'failed');
+    return;
+  }
+
+  // Parse: !sr config <setting> <value>
+  if (args.length < 2) {
+    sendChatMessage(channel, `@${username} Usage: !sr config <setting> <value> | Settings: enabled, cost, maxduration, maxperuser, duplicates, priority`);
+    return;
+  }
+
+  const setting = args[0].toLowerCase();
+  const valueStr = args.slice(1).join(' ');
+
+  // Validate setting name and convert value
+  const validSettings = {
+    enabled: (val) => {
+      const lower = val.toLowerCase();
+      if (lower === 'on' || lower === 'true' || lower === 'yes' || lower === '1') return true;
+      if (lower === 'off' || lower === 'false' || lower === 'no' || lower === '0') return false;
+      throw new Error('Value must be on/off, true/false, yes/no, or 1/0');
+    },
+    cost: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a non-negative integer');
+      const num = parseInt(val, 10);
+      if (num < 0) throw new Error('Value must be a non-negative number');
+      return num;
+    },
+    maxduration: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a positive integer (minutes)');
+      const num = parseInt(val, 10);
+      if (num < 1) throw new Error('Value must be a positive number (minutes)');
+      return num * 60; // Convert minutes to seconds
+    },
+    maxperuser: (val) => {
+      if (!/^\d+$/.test(val)) throw new Error('Value must be a positive integer');
+      const num = parseInt(val, 10);
+      if (num < 1) throw new Error('Value must be a positive number');
+      return num;
+    },
+    duplicates: (val) => {
+      const lower = val.toLowerCase();
+      if (lower === 'on' || lower === 'true' || lower === 'yes' || lower === '1') return true;
+      if (lower === 'off' || lower === 'false' || lower === 'no' || lower === '0') return false;
+      throw new Error('Value must be on/off, true/false, yes/no, or 1/0');
+    },
+    priority: (val) => {
+      const lower = val.toLowerCase();
+      if (!['everyone', 'subs', 'vips'].includes(lower)) {
+        throw new Error('Value must be everyone, subs, or vips');
+      }
+      return lower;
+    }
+  };
+
+  if (!validSettings[setting]) {
+    sendChatMessage(channel, `@${username} Invalid setting. Valid settings: enabled, cost, maxduration, maxperuser, duplicates, priority`);
+    return;
+  }
+
+  try {
+    // Convert and validate value
+    const convertedValue = validSettings[setting](valueStr);
+
+    // Build config update object
+    const configUpdate = { [setting]: convertedValue };
+
+    // Special handling for duplicates -> allowDuplicates
+    if (setting === 'duplicates') {
+      delete configUpdate.duplicates;
+      configUpdate.allowDuplicates = convertedValue;
+    }
+
+    // Special handling for maxduration -> maxDuration
+    if (setting === 'maxduration') {
+      delete configUpdate.maxduration;
+      configUpdate.maxDuration = convertedValue;
+    }
+
+    // Special handling for maxperuser -> maxPerUser
+    if (setting === 'maxperuser') {
+      delete configUpdate.maxperuser;
+      configUpdate.maxPerUser = convertedValue;
+    }
+
+    // Call dashboard API to update config
+    const response = await apiClient_axios.put(
+      `${dashboardBaseUrl}/api/song-queue/config`,
+      configUpdate,
+      { timeout: 5000 }
+    );
+
+    if (response.data && response.data.success) {
+      // Format user-friendly response
+      let displayValue = convertedValue;
+      if (setting === 'maxduration') {
+        displayValue = `${Math.floor(convertedValue / 60)} minutes`;
+      } else if (typeof convertedValue === 'boolean') {
+        displayValue = convertedValue ? 'on' : 'off';
+      }
+
+      sendChatMessage(channel, `✓ Song request ${setting} set to: ${displayValue}`);
+      logCommandExecution(username, '!sr config', args, 'success');
+    } else {
+      sendChatMessage(channel, `@${username} ${response.data?.error || 'Failed to update config.'}`);
+      logCommandExecution(username, '!sr config', args, 'failed');
+    }
+  } catch (error) {
+    console.error('Song request config error:', error.message);
+    if (error.message.includes('must be')) {
+      sendChatMessage(channel, `@${username} ${error.message}`);
+    } else {
+      sendChatMessage(channel, `@${username} Error updating config: ${error.message}`);
+    }
+    logCommandExecution(username, '!sr config', args, 'failed');
+  }
+}
+
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -2184,6 +3032,73 @@ const commandRegistry = new Map([
   }}],
   ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
     await handleTTS(channel, username, args, msg, false);
+  }}],
+  ['!sr', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    // Check if this is a config command: !sr config <setting> <value>
+    if (args.length > 0 && args[0].toLowerCase() === 'config') {
+      await handleSongRequestConfig(channel, username, msg, args.slice(1));
+    } else {
+      await handleSongRequest(channel, username, msg, args);
+    }
+  }}],
+  ['!songrequest', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    // Check if this is a config command: !songrequest config <setting> <value>
+    if (args.length > 0 && args[0].toLowerCase() === 'config') {
+      await handleSongRequestConfig(channel, username, msg, args.slice(1));
+    } else {
+      await handleSongRequest(channel, username, msg, args);
+    }
+  }}],
+  ['!song', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!song');
+    if (isOnCooldown('song', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !song is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCurrentSong(channel, username);
+    if (cooldownSeconds > 0) setCooldown('song');
+  }}],
+  ['!currentsong', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!currentsong');
+    if (isOnCooldown('song', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('song') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !currentsong is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleCurrentSong(channel, username);
+    if (cooldownSeconds > 0) setCooldown('song');
+  }}],
+  ['!queue', { perm: 'everyone', handler: async ({ channel, username }) => {
+    const cooldownSeconds = getCommandCooldown('!queue');
+    if (isOnCooldown('queue', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('queue') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !queue is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    await handleQueueInfo(channel, username);
+    if (cooldownSeconds > 0) setCooldown('queue');
+  }}],
+  ['!skip', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleSkipSong(channel, username, msg);
+  }}],
+  ['!skipsong', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleSkipSong(channel, username, msg);
+  }}],
+  ['!removesong', { perm: 'mod', handler: async ({ channel, username, args, msg }) => {
+    await handleRemoveSong(channel, username, args, msg);
+  }}],
+  ['!clearqueue', { perm: 'mod', handler: async ({ channel, username, msg }) => {
+    await handleClearQueue(channel, username, msg);
+  }}],
+  ['!blocksong', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleBlockSong(channel, username, args);
+  }}],
+  ['!unblocksong', { perm: 'mod', handler: async ({ channel, username, args }) => {
+    await handleUnblockSong(channel, username, args);
   }}]
 ]);
 

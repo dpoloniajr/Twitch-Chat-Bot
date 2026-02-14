@@ -52,7 +52,18 @@ async function migrateBuiltinCommands() {
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
       { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
-      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' }
+      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' },
+      { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' },
+      { name: '!sr', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!songrequest', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!skip', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!skipsong', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!removesong', cooldownSeconds: 0, description: 'Remove a song by position or keyword (refunds points)', permission: 'Moderator' },
+      { name: '!clearqueue', cooldownSeconds: 0, description: 'Clear the entire song queue (refunds all points)', permission: 'Moderator' },
+      { name: '!blocksong', cooldownSeconds: 0, description: 'Block a video, channel, or keyword from the queue', permission: 'Moderator' },
+      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' }
     ];
 
     let updated = false;
@@ -115,7 +126,18 @@ async function initLogs() {
       { name: '!commands', cooldownSeconds: 0, description: 'List available commands', permission: 'Everyone' },
       { name: '!addfilter', cooldownSeconds: 0, description: 'Add a word to the chat filter', permission: 'Moderator' },
       { name: '!removefilter', cooldownSeconds: 0, description: 'Remove a word from the chat filter', permission: 'Moderator' },
-      { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' }
+      { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' },
+      { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' },
+      { name: '!sr', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!songrequest', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!skip', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!skipsong', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!removesong', cooldownSeconds: 0, description: 'Remove a song by position or keyword (refunds points)', permission: 'Moderator' },
+      { name: '!clearqueue', cooldownSeconds: 0, description: 'Clear the entire song queue (refunds all points)', permission: 'Moderator' },
+      { name: '!blocksong', cooldownSeconds: 0, description: 'Block a video, channel, or keyword from the queue', permission: 'Moderator' },
+      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' }
     ]);
     await initFile(paths.obsConfigFile, {
       overlays: {
@@ -146,6 +168,19 @@ app.use('/api/loyalty', require('./routes/loyalty')(logsDir));
 app.use('/api/quotes', require('./routes/quotes')(logsDir));
 app.use('/api/counters', require('./routes/counters')(logsDir));
 app.use('/api/backup', require('./routes/backup')(logsDir));
+// Internal bot-to-dashboard secret validation for song queue write operations
+const INTERNAL_SECRET = process.env.DASHBOARD_INTERNAL_SECRET;
+app.use('/api/song-queue', (req, res, next) => {
+  // GET requests (read-only) are allowed without a secret (dashboard UI needs them)
+  if (req.method === 'GET') return next();
+  // If no secret is configured, skip validation (backwards compatible)
+  if (!INTERNAL_SECRET) return next();
+  if (req.headers['x-bot-secret'] !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+});
+app.use('/api/song-queue', require('./routes/song-queue')(logsDir, state));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -164,7 +199,7 @@ wss.on('connection', (ws) => {
 // Start server
 const PORT = process.env.DASHBOARD_PORT || 3001;
 Promise.all([initLogs(), ttsService.initialize()]).then(() => {
-  server.listen(PORT, () => {
+  server.listen(PORT, '127.0.0.1', () => {
     console.log(`Dashboard server running on http://localhost:${PORT}`);
   });
 }).catch(err => {
