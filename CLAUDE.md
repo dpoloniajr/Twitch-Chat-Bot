@@ -408,7 +408,7 @@ http://localhost:3001/obs/overlays/song-player.html
 ```
 
 **URL Parameters:**
-- `?position=bottom-left|bottom-right|top-left|top-right` - Screen position (default: bottom-right)
+- `?position=bottom-left|bottom-right|top-left|top-right` - Screen position (default: bottom-left)
 - `?theme=purple|blue|green` - UI color theme (default: purple)
 - `?debug=true` - Show debug information and controls
 

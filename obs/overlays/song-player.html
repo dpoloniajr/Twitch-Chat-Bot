@@ -549,8 +549,10 @@
       thumbWrap.classList.add('loading');
       const thumbUrl = getThumbnailUrl(song);
       if (thumbUrl) {
+        songThumb.addEventListener('load', () => {
+          thumbWrap.classList.remove('loading');
+        }, { once: true });
         songThumb.src = thumbUrl;
-        songThumb.onload = () => thumbWrap.classList.remove('loading');
       }
 
       // Update queue badge
@@ -866,6 +868,7 @@
 
         case 'clear':
           localQueue = [];
+          loadingSongId = null;
           hideCard();
           if (ytPlayer && ytReady) ytPlayer.stopVideo();
           dbg('status', 'Queue cleared');
