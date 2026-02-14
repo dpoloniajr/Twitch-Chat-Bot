@@ -26,7 +26,7 @@ node token-generator.js  # Start OAuth token generator (port 3000)
 
 ```
 /
-├── Excella                    # Main bot application (1,865 lines)
+├── Excella.js                 # Main bot application (3,205 lines)
 ├── token-generator.js         # OAuth server with setup wizard (2,215 lines)
 ├── account-manager.js         # Encrypted account storage (397 lines)
 ├── dashboard/
@@ -422,7 +422,7 @@ Core libraries:
 
 ### Adding a New Command
 
-1. Define handler in `Excella` following the registry pattern
+1. Define handler in `Excella.js` following the registry pattern
 2. Add to `commandRegistry` Map with appropriate permission level
 3. Check required scopes at handler start
 4. Return standardized response object
@@ -469,14 +469,14 @@ Run with: `node test-<name>.js`
 
 | Purpose | File | Key Lines |
 |---------|------|-----------|
-| Command handlers | `Excella.js` | 1321-1625 |
-| Command registry | `Excella.js` | 1651-1759 |
-| Message handler | `Excella.js` | 1794-1827 |
-| Chat filters | `Excella.js` | 142-287 |
-| Token management | `Excella.js` | 750-853 |
-| EventSub setup | `Excella.js` | 316-597 |
-| Cooldown system | `Excella.js` | 599-707 |
-| Song request handlers | `Excella.js` | Search `handleSongRequest` |
+| Command handlers | `Excella.js` | 1399-2795 |
+| Command registry | `Excella.js` | 2798-3053 |
+| Message handler | `Excella.js` | 3087-3205 |
+| Chat filters | `Excella.js` | 238-365 |
+| Token management | `Excella.js` | 1008-1110 |
+| EventSub setup | `Excella.js` | 367-667 |
+| Cooldown system | `Excella.js` | 668-781 |
+| Song request handlers | `Excella.js` | 2179-2795 |
 | Song queue API | `dashboard/routes/song-queue.js` | Full file |
 | Song queue data | `dashboard/logs/song-queue.json` | Runtime file |
 | Song blocklist data | `dashboard/logs/song-blocklist.json` | Runtime file |
