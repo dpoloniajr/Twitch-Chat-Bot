@@ -4,7 +4,7 @@
 
 const express = require('express');
 const path = require('path');
-const fs = require('fs').promises;
+const { readLoyaltyData, writeLoyaltyData, appendTransaction, addPoints, setPoints } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir) {
   const router = express.Router();
@@ -12,10 +12,9 @@ module.exports = function(logsDir) {
 
   // Initialize file if needed
   const initFile = async () => {
-    try {
-      await fs.access(loyaltyFile);
-    } catch {
-      await fs.writeFile(loyaltyFile, JSON.stringify({
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) {
+      await writeLoyaltyData(loyaltyFile, {
         users: {},
         config: {
           pointsPerMinute: 10,
@@ -29,24 +28,19 @@ module.exports = function(logsDir) {
           pointsPerLevel: 1000,
           enabled: true
         },
-        transactions: [],
-        savedAt: new Date().toISOString()
-      }, null, 2));
+        transactions: []
+      });
     }
   };
 
-  // Read loyalty data
+  // Read loyalty data (always initialised)
   const readData = async () => {
     await initFile();
-    const content = await fs.readFile(loyaltyFile, 'utf-8');
-    return JSON.parse(content);
+    return readLoyaltyData(loyaltyFile);
   };
 
   // Write loyalty data
-  const writeData = async (data) => {
-    data.savedAt = new Date().toISOString();
-    await fs.writeFile(loyaltyFile, JSON.stringify(data, null, 2));
-  };
+  const writeData = (data) => writeLoyaltyData(loyaltyFile, data);
 
   // GET /api/loyalty - Get all loyalty data
   router.get('/', async (req, res, next) => {
@@ -135,44 +129,11 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'Points must be a number' });
       }
 
-      const data = await readData();
-      const normalizedUsername = username.toLowerCase();
-
-      if (!data.users) data.users = {};
-      if (!data.users[normalizedUsername]) {
-        data.users[normalizedUsername] = {
-          points: 0,
-          totalEarned: 0,
-          totalSpent: 0,
-          watchTimeMinutes: 0,
-          messageCount: 0,
-          lastSeen: new Date().toISOString(),
-          firstSeen: new Date().toISOString(),
-          level: 1
-        };
+      const result = await setPoints(loyaltyFile, username, points, reason);
+      if (!result.success) {
+        return res.status(503).json({ error: result.error });
       }
-
-      const oldPoints = data.users[normalizedUsername].points;
-      data.users[normalizedUsername].points = Math.max(0, points);
-
-      // Record transaction
-      if (!data.transactions) data.transactions = [];
-      data.transactions.push({
-        username: normalizedUsername,
-        amount: points - oldPoints,
-        type: 'admin',
-        reason: reason || 'Admin adjustment',
-        timestamp: new Date().toISOString(),
-        balance: data.users[normalizedUsername].points
-      });
-
-      // Trim transactions
-      if (data.transactions.length > 2000) {
-        data.transactions = data.transactions.slice(-1000);
-      }
-
-      await writeData(data);
-      res.json({ success: true, user: data.users[normalizedUsername] });
+      res.json({ success: true, user: result.user });
     } catch (error) {
       next(error);
     }
@@ -206,19 +167,13 @@ module.exports = function(logsDir) {
       userData.points -= amount;
       userData.totalSpent = (userData.totalSpent || 0) + amount;
 
-      if (!data.transactions) data.transactions = [];
-      data.transactions.push({
+      appendTransaction(data, {
         username: normalizedUsername,
         amount: -amount,
         type: 'spend',
         reason: reason || 'Deduction',
-        timestamp: new Date().toISOString(),
         balance: userData.points
       });
-
-      if (data.transactions.length > 2000) {
-        data.transactions = data.transactions.slice(-1000);
-      }
 
       await writeData(data);
       res.json({ success: true, newBalance: userData.points });
@@ -236,43 +191,11 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'username and a positive amount are required' });
       }
 
-      const data = await readData();
-      const normalizedUsername = username.toLowerCase();
-
-      if (!data.users) data.users = {};
-      if (!data.users[normalizedUsername]) {
-        data.users[normalizedUsername] = {
-          points: 0,
-          totalEarned: 0,
-          totalSpent: 0,
-          watchTimeMinutes: 0,
-          messageCount: 0,
-          lastSeen: new Date().toISOString(),
-          firstSeen: new Date().toISOString(),
-          level: 1
-        };
+      const result = await addPoints(loyaltyFile, username, amount, reason, 'bonus');
+      if (!result.success) {
+        return res.status(503).json({ error: result.error });
       }
-
-      const userData = data.users[normalizedUsername];
-      userData.points = (userData.points || 0) + amount;
-      userData.totalEarned = (userData.totalEarned || 0) + amount;
-
-      if (!data.transactions) data.transactions = [];
-      data.transactions.push({
-        username: normalizedUsername,
-        amount,
-        type: 'bonus',
-        reason: reason || 'Addition',
-        timestamp: new Date().toISOString(),
-        balance: userData.points
-      });
-
-      if (data.transactions.length > 2000) {
-        data.transactions = data.transactions.slice(-1000);
-      }
-
-      await writeData(data);
-      res.json({ success: true, newBalance: userData.points });
+      res.json({ success: true, newBalance: result.newBalance });
     } catch (error) {
       next(error);
     }

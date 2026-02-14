@@ -6,6 +6,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
+const { deductPoints, refundPoints } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir, state) {
   const router = express.Router();
@@ -72,111 +73,6 @@ module.exports = function(logsDir, state) {
   const writeBlocklistData = async (data) => {
     data.savedAt = new Date().toISOString();
     await fs.writeFile(blocklistFile, JSON.stringify(data, null, 2));
-  };
-
-  // Read loyalty data (returns null if loyalty system not available)
-  const readLoyaltyData = async () => {
-    try {
-      await fs.access(loyaltyFile);
-      const content = await fs.readFile(loyaltyFile, 'utf-8');
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
-  };
-
-  // Write loyalty data
-  const writeLoyaltyData = async (data) => {
-    data.savedAt = new Date().toISOString();
-    await fs.writeFile(loyaltyFile, JSON.stringify(data, null, 2));
-  };
-
-  // Deduct loyalty points from a user. Returns { success, error, newBalance }
-  const deductLoyaltyPoints = async (username, amount, reason) => {
-    const data = await readLoyaltyData();
-    if (!data) return { success: true }; // Loyalty system not set up - graceful fallback
-
-    const normalizedUsername = username.toLowerCase();
-    const userData = data.users?.[normalizedUsername];
-
-    if (!userData) {
-      return { success: false, error: `You have no loyalty points yet. This request costs ${amount} points.` };
-    }
-
-    if ((userData.points || 0) < amount) {
-      return {
-        success: false,
-        error: `Insufficient points. This request costs ${amount} points. You have ${userData.points || 0}.`
-      };
-    }
-
-    userData.points -= amount;
-    userData.totalSpent = (userData.totalSpent || 0) + amount;
-
-    if (!data.transactions) data.transactions = [];
-    data.transactions.push({
-      username: normalizedUsername,
-      amount: -amount,
-      type: 'spend',
-      reason: reason || 'Song request',
-      timestamp: new Date().toISOString(),
-      balance: userData.points
-    });
-
-    if (data.transactions.length > 2000) {
-      data.transactions = data.transactions.slice(-1000);
-    }
-
-    await writeLoyaltyData(data);
-    return { success: true, newBalance: userData.points };
-  };
-
-  // Refund loyalty points to a user (no-op if loyalty not set up or cost was 0)
-  const refundLoyaltyPoints = async (username, amount, reason) => {
-    if (!amount || amount <= 0) return;
-
-    const data = await readLoyaltyData();
-    if (!data) return; // Loyalty system not available
-
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = {
-        points: 0,
-        totalEarned: 0,
-        totalSpent: 0,
-        watchTimeMinutes: 0,
-        messageCount: 0,
-        lastSeen: new Date().toISOString(),
-        firstSeen: new Date().toISOString(),
-        level: 1
-      };
-    }
-
-    const userData = data.users[normalizedUsername];
-    userData.points = (userData.points || 0) + amount;
-    userData.totalEarned = (userData.totalEarned || 0) + amount;
-    // Undo the totalSpent from the original deduction
-    if (userData.totalSpent > 0) {
-      userData.totalSpent = Math.max(0, (userData.totalSpent || 0) - amount);
-    }
-
-    if (!data.transactions) data.transactions = [];
-    data.transactions.push({
-      username: normalizedUsername,
-      amount,
-      type: 'bonus',
-      reason: reason || 'Song request refund',
-      timestamp: new Date().toISOString(),
-      balance: userData.points
-    });
-
-    if (data.transactions.length > 2000) {
-      data.transactions = data.transactions.slice(-1000);
-    }
-
-    await writeLoyaltyData(data);
   };
 
   // GET /api/song-queue - Get current queue
@@ -357,7 +253,8 @@ module.exports = function(logsDir, state) {
       // Check loyalty points if cost is configured
       const pointsCost = config.cost || 0;
       if (pointsCost > 0 && !requesterIsMod && !requesterIsBroadcaster) {
-        const deductResult = await deductLoyaltyPoints(
+        const deductResult = await deductPoints(
+          loyaltyFile,
           requester,
           pointsCost,
           `Song request: ${title}`
@@ -627,7 +524,8 @@ module.exports = function(logsDir, state) {
 
       // Refund loyalty points to requester
       if (removedSong.pointsCost > 0) {
-        await refundLoyaltyPoints(
+        await refundPoints(
+          loyaltyFile,
           removedSong.requester,
           removedSong.pointsCost,
           `Song request removed: ${removedSong.title}`
@@ -754,7 +652,8 @@ module.exports = function(logsDir, state) {
         // Refund loyalty points for removed songs
         for (const song of removedSongs) {
           if (song.pointsCost > 0) {
-            await refundLoyaltyPoints(
+            await refundPoints(
+              loyaltyFile,
               song.requester,
               song.pointsCost,
               `Song blocked from queue: ${song.title}`
@@ -841,7 +740,8 @@ module.exports = function(logsDir, state) {
       // Refund loyalty points for all cleared songs
       for (const song of clearedSongs) {
         if (song.pointsCost > 0) {
-          await refundLoyaltyPoints(
+          await refundPoints(
+            loyaltyFile,
             song.requester,
             song.pointsCost,
             `Queue cleared: ${song.title}`
