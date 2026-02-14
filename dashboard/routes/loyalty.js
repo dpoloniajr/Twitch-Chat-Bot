@@ -178,6 +178,106 @@ module.exports = function(logsDir) {
     }
   });
 
+  // POST /api/loyalty/deduct - Deduct points from user
+  router.post('/deduct', async (req, res, next) => {
+    try {
+      const { username, amount, reason } = req.body;
+
+      if (!username || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'username and a positive amount are required' });
+      }
+
+      const data = await readData();
+      const normalizedUsername = username.toLowerCase();
+      const userData = data.users?.[normalizedUsername];
+
+      if (!userData) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if ((userData.points || 0) < amount) {
+        return res.status(400).json({
+          error: 'Insufficient points',
+          balance: userData.points || 0,
+          required: amount
+        });
+      }
+
+      userData.points -= amount;
+      userData.totalSpent = (userData.totalSpent || 0) + amount;
+
+      if (!data.transactions) data.transactions = [];
+      data.transactions.push({
+        username: normalizedUsername,
+        amount: -amount,
+        type: 'spend',
+        reason: reason || 'Deduction',
+        timestamp: new Date().toISOString(),
+        balance: userData.points
+      });
+
+      if (data.transactions.length > 2000) {
+        data.transactions = data.transactions.slice(-1000);
+      }
+
+      await writeData(data);
+      res.json({ success: true, newBalance: userData.points });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/loyalty/add - Add points to user
+  router.post('/add', async (req, res, next) => {
+    try {
+      const { username, amount, reason } = req.body;
+
+      if (!username || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'username and a positive amount are required' });
+      }
+
+      const data = await readData();
+      const normalizedUsername = username.toLowerCase();
+
+      if (!data.users) data.users = {};
+      if (!data.users[normalizedUsername]) {
+        data.users[normalizedUsername] = {
+          points: 0,
+          totalEarned: 0,
+          totalSpent: 0,
+          watchTimeMinutes: 0,
+          messageCount: 0,
+          lastSeen: new Date().toISOString(),
+          firstSeen: new Date().toISOString(),
+          level: 1
+        };
+      }
+
+      const userData = data.users[normalizedUsername];
+      userData.points = (userData.points || 0) + amount;
+      userData.totalEarned = (userData.totalEarned || 0) + amount;
+
+      if (!data.transactions) data.transactions = [];
+      data.transactions.push({
+        username: normalizedUsername,
+        amount,
+        type: 'bonus',
+        reason: reason || 'Addition',
+        timestamp: new Date().toISOString(),
+        balance: userData.points
+      });
+
+      if (data.transactions.length > 2000) {
+        data.transactions = data.transactions.slice(-1000);
+      }
+
+      await writeData(data);
+      res.json({ success: true, newBalance: userData.points });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // GET /api/loyalty/transactions - Get recent transactions
   router.get('/transactions', async (req, res, next) => {
     try {
