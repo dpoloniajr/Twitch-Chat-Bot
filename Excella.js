@@ -216,7 +216,9 @@ function getBroadcasterApiHeaders() {
 // fall back to the bot's scopes (single-account setup).
 function getBroadcasterScopes() {
   if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
-    return (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
+    const scopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
+    // If broadcaster scopes are not configured, fall back to bot scopes to allow fallback behavior
+    return scopes.length > 0 ? scopes : config.scopes;
   }
   return config.scopes;
 }
@@ -1280,7 +1282,7 @@ async function updateStreamTitle(newTitle) {
     if (!initComplete || !broadcasterId) {
       return { success: false, error: 'Bot not initialized yet. Try again shortly.' };
     }
-    if (!config.scopes.includes('channel:manage:broadcast')) {
+    if (!hasScope(getBroadcasterScopes(), 'channel:manage:broadcast')) {
       return { success: false, error: 'Missing scope: channel:manage:broadcast. Re-authorize via the token generator.' };
     }
     const title = String(newTitle || '').trim();
@@ -1291,7 +1293,7 @@ async function updateStreamTitle(newTitle) {
       `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
       { title },
       {
-        headers: getApiHeaders()
+        headers: getBroadcasterApiHeaders()
       }
     );
     return { success: true, title };
@@ -1307,7 +1309,7 @@ async function updateStreamGame(gameName) {
     if (!initComplete || !broadcasterId) {
       return { success: false, error: 'Bot not initialized yet. Try again shortly.' };
     }
-    if (!config.scopes.includes('channel:manage:broadcast')) {
+    if (!hasScope(getBroadcasterScopes(), 'channel:manage:broadcast')) {
       return { success: false, error: 'Missing scope: channel:manage:broadcast. Re-authorize via the token generator.' };
     }
     const name = String(gameName || '').trim();
@@ -1316,7 +1318,7 @@ async function updateStreamGame(gameName) {
     }
 
     // Resolve game ID by name via Helix API
-    const headers = getApiHeaders();
+    const headers = getBroadcasterApiHeaders();
     let gameId = null;
     let resolvedName = name;
     try {
@@ -1348,7 +1350,7 @@ async function updateStreamGame(gameName) {
       `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
       { game_id: gameId },
       {
-        headers: getApiHeaders()
+        headers: getBroadcasterApiHeaders()
       }
     );
     return { success: true, gameId, gameName: resolvedName };
