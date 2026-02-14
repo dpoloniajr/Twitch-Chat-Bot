@@ -310,6 +310,9 @@
       this.voices = [];
       this.selectedVoice = null;
       this.currentUtterance = null; // Prevent garbage collection
+      this._speakTimeoutId = null;
+      this._speakRequestId = 0;
+      this._pendingSpeakResolver = null;
 
       // Load voices only if supported
       if (this.supported) {
@@ -364,25 +367,84 @@
     }
 
     /**
+     * Wait for voices to be loaded
+     * @returns {Promise} Resolves when voices are available
+     */
+    _ensureVoicesLoaded() {
+      return new Promise((resolve) => {
+        if (this.voices.length > 0) {
+          resolve();
+          return;
+        }
+
+        // Try loading voices immediately
+        this._loadVoices();
+        if (this.voices.length > 0) {
+          resolve();
+          return;
+        }
+
+        // Wait for voiceschanged event with timeout
+        const timeout = setTimeout(() => {
+          this._loadVoices(); // Try one more time
+          resolve();
+        }, 1000);
+
+        if (this.synth.onvoiceschanged !== undefined) {
+          const handler = () => {
+            clearTimeout(timeout);
+            this._loadVoices();
+            this.synth.onvoiceschanged = () => this._loadVoices(); // Restore original handler
+            resolve();
+          };
+          this.synth.onvoiceschanged = handler;
+        } else {
+          // No voiceschanged event support, rely on timeout
+        }
+      });
+    }
+
+    /**
      * Speak text
      * @param {string} text - Text to speak
      * @param {Object} options - Override options
      * @returns {Promise} Resolves when speech completes
      */
-    speak(text, options = {}) {
-      return new Promise((resolve) => {
+    async speak(text, options = {}) {
+      return new Promise(async (resolve) => {
+        // Resolve any previous pending speak promise
+        if (this._pendingSpeakResolver) {
+          this._pendingSpeakResolver();
+        }
+        this._pendingSpeakResolver = resolve;
+
         if (!this.enabled || !this.supported) {
+          this._pendingSpeakResolver = null;
           resolve();
           return;
         }
 
         if (!text || text.trim() === '') {
+          this._pendingSpeakResolver = null;
           resolve();
           return;
         }
 
+        // Ensure voices are loaded before proceeding
+        await this._ensureVoicesLoaded();
+
         // Cancel any ongoing speech
         this.synth.cancel();
+
+        // Track and cancel any pending speak timeout to avoid races
+        if (this._speakTimeoutId) {
+          clearTimeout(this._speakTimeoutId);
+          this._speakTimeoutId = null;
+        }
+
+        // Monotonic request id to ignore stale scheduled callbacks
+        this._speakRequestId++;
+        const requestId = this._speakRequestId;
 
         // Some browsers need a resume call to ensure the engine isn't paused
         // or stuck from a previous cancel
@@ -392,42 +454,67 @@
 
         // Use a small timeout to ensure the cancel has taken effect
         // and the engine is ready for a new utterance
-        setTimeout(() => {
-          try {
-            // Re-select voice if it's still null (async loading)
-            if (!this.selectedVoice && this.voices.length === 0) {
-              this._loadVoices();
-            }
+        this._speakTimeoutId = setTimeout(() => {
+          // Clear stored timeout id now that it has fired
+          this._speakTimeoutId = null;
 
+          // If a newer speak request has been made, ignore this one
+          if (requestId !== this._speakRequestId) {
+            this._pendingSpeakResolver = null;
+            resolve();
+            return;
+          }
+
+          try {
             const utterance = new SpeechSynthesisUtterance(text);
             this.currentUtterance = utterance; // Keep reference to prevent GC
 
             utterance.voice = this.selectedVoice;
-            utterance.rate = options.rate || this.rate;
-            utterance.pitch = options.pitch || this.pitch;
-            utterance.volume = options.volume || this.volume;
+            utterance.rate = options.rate !== undefined ? options.rate : this.rate;
+            utterance.pitch = options.pitch !== undefined ? options.pitch : this.pitch;
+            utterance.volume = options.volume !== undefined ? options.volume : this.volume;
 
-            console.log(`[TTS] Speaking: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+            console.log('[TTS] Speaking with voice:', this.selectedVoice?.name || 'default');
+            console.log('[TTS] SpeechSynthesis state - speaking:', this.synth.speaking, 'pending:', this.synth.pending, 'paused:', this.synth.paused);
+
+            // Set a timeout to detect if speech never starts
+            const speechTimeout = setTimeout(() => {
+              if (this.synth.speaking === false && this.synth.pending === false) {
+                console.error('[TTS] ❌ Speech failed to start within 2 seconds - likely blocked by browser');
+                console.error('[TTS] OBS Browser Source may have Web Speech API disabled');
+                console.error('[TTS] 💡 Recommendation: Switch to API-based TTS (set TTS_PROVIDER=elevenlabs or openai)');
+                this.currentUtterance = null;
+                this._pendingSpeakResolver = null;
+                resolve();
+              }
+            }, 2000);
 
             utterance.onstart = () => {
-              console.log('[TTS] Speech started');
+              clearTimeout(speechTimeout);
+              console.log('[TTS] ✓ Speech started');
             };
 
             utterance.onend = () => {
-              console.log('[TTS] Speech ended');
+              clearTimeout(speechTimeout);
+              console.log('[TTS] ✓ Speech ended');
               this.currentUtterance = null;
+              this._pendingSpeakResolver = null;
               resolve();
             };
 
             utterance.onerror = (err) => {
-              console.warn('[TTS] Speech error:', err);
+              clearTimeout(speechTimeout);
+              console.warn('[TTS] ❌ Speech error:', err);
+              console.warn('[TTS] Error details - error:', err.error, 'charIndex:', err.charIndex);
               this.currentUtterance = null;
+              this._pendingSpeakResolver = null;
               resolve(); // Resolve anyway to not block alerts
             };
 
             this.synth.speak(utterance);
           } catch (err) {
             console.error('[TTS] Failed to speak:', err);
+            this._pendingSpeakResolver = null;
             resolve();
           }
         }, 50);
@@ -452,7 +539,19 @@
      * Stop any ongoing speech
      */
     stop() {
+      if (this._speakTimeoutId) {
+        clearTimeout(this._speakTimeoutId);
+        this._speakTimeoutId = null;
+      }
+      this._speakRequestId++; // Increment to invalidate any pending speak callbacks
       this.synth.cancel();
+      this.currentUtterance = null;
+
+      // Resolve any pending speak promise so callers don't hang
+      if (this._pendingSpeakResolver) {
+        this._pendingSpeakResolver();
+        this._pendingSpeakResolver = null;
+      }
     }
   }
 

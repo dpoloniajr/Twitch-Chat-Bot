@@ -1385,12 +1385,12 @@
 
             <div class="form-group">
               <label>Duration (seconds)</label>
-              <input type="number" id="alertsDuration" min="1" value="5" onchange="updateOverlayConfig('alerts', 'duration', this.value)">
+              <input type="number" id="alertsDuration" min="1" value="5" onchange="updateOverlayConfig('alerts', 'duration', this.value); updateOverlayUrls();">
             </div>
 
             <div class="form-group">
               <label>Volume (0-1)</label>
-              <input type="number" id="alertsVolume" min="0" max="1" step="0.1" value="0.8" onchange="updateOverlayConfig('alerts', 'volume', this.value)">
+              <input type="number" id="alertsVolume" min="0" max="1" step="0.1" value="0.8" onchange="updateOverlayConfig('alerts', 'volume', this.value); updateOverlayUrls();">
             </div>
 
             <div class="form-group">
@@ -1418,12 +1418,12 @@
 
             <div class="form-group">
               <label>Max Events</label>
-              <input type="number" id="recentEventsLimit" min="1" value="10" onchange="updateOverlayConfig('recentEvents', 'limit', this.value)">
+              <input type="number" id="recentEventsLimit" min="1" value="10" onchange="updateOverlayConfig('recentEvents', 'limit', this.value); updateOverlayUrls();">
             </div>
 
             <div class="form-group">
               <label class="checkbox-label">
-                <input type="checkbox" id="recentEventsShowTime" checked onchange="updateOverlayConfig('recentEvents', 'showTime', this.checked)">
+                <input type="checkbox" id="recentEventsShowTime" checked onchange="updateOverlayConfig('recentEvents', 'showTime', this.checked); updateOverlayUrls();">
                 Show Time
               </label>
             </div>
@@ -1453,12 +1453,12 @@
 
             <div class="form-group">
               <label>Message Timeout (seconds)</label>
-              <input type="number" id="chatBoxMessageTimeout" min="1" value="8" onchange="updateOverlayConfig('chatBox', 'messageTimeout', this.value)">
+              <input type="number" id="chatBoxMessageTimeout" min="1" value="8" onchange="updateOverlayConfig('chatBox', 'messageTimeout', this.value); updateOverlayUrls();">
             </div>
 
             <div class="form-group">
               <label class="checkbox-label">
-                <input type="checkbox" id="chatBoxHideBot" onchange="updateOverlayConfig('chatBox', 'hideBot', this.checked)">
+                <input type="checkbox" id="chatBoxHideBot" onchange="updateOverlayConfig('chatBox', 'hideBot', this.checked); updateOverlayUrls();">
                 Hide Bot Messages
               </label>
             </div>
@@ -1486,7 +1486,7 @@
 
             <div class="form-group">
               <label>Goal Type</label>
-              <select id="goalBarType" onchange="updateOverlayConfig('goalBar', 'type', this.value)">
+              <select id="goalBarType" onchange="updateOverlayConfig('goalBar', 'type', this.value); updateOverlayUrls();">
                 <option value="follow">Follower Goal</option>
                 <option value="subscriber">Subscriber Goal</option>
               </select>
@@ -1494,7 +1494,7 @@
 
             <div class="form-group">
               <label>Target Number</label>
-              <input type="number" id="goalBarGoal" min="1" value="1000" onchange="updateOverlayConfig('goalBar', 'goal', this.value)">
+              <input type="number" id="goalBarGoal" min="1" value="1000" onchange="updateOverlayConfig('goalBar', 'goal', this.value); updateOverlayUrls();">
             </div>
 
             <div class="form-group">
@@ -1502,6 +1502,149 @@
                 <input type="checkbox" id="goalBarEnabled" checked onchange="updateOverlayConfig('goalBar', 'enabled', this.checked)">
                 Enabled
               </label>
+            </div>
+          </div>
+
+          <!-- TTS Display Overlay -->
+          <div class="overlay-card">
+            <h3>TTS Display Overlay</h3>
+            <p class="overlay-description">Displays text-to-speech messages with animated display and audio playback.</p>
+
+            <div class="form-group">
+              <label>URL</label>
+              <div class="url-display">
+                <input type="text" id="ttsUrl" readonly class="url-input">
+                <button onclick="copyToClipboard('ttsUrl', this)" class="btn btn-small">Copy</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Voice (Language Code)</label>
+              <input type="text" id="ttsVoice" placeholder="en-US" value="en-US" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Speech Rate (0.5-2.0)</label>
+              <input type="number" id="ttsRate" min="0.5" max="2.0" step="0.1" value="1.0" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Speech Pitch (0.0-2.0)</label>
+              <input type="number" id="ttsPitch" min="0.0" max="2.0" step="0.1" value="1.0" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Volume (0.0-1.0)</label>
+              <input type="number" id="ttsVolume" min="0.0" max="1.0" step="0.1" value="1.0" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Display Duration (seconds)</label>
+              <input type="number" id="ttsDuration" min="1" max="60" value="5" onchange="updateOverlayUrls()">
+            </div>
+
+            <button onclick="testOverlay('tts')" class="btn btn-secondary">Test TTS</button>
+          </div>
+
+          <!-- Leaderboard Overlay -->
+          <div class="overlay-card">
+            <h3>Leaderboard Overlay</h3>
+            <p class="overlay-description">Displays top chatters ranked by loyalty points.</p>
+
+            <div class="form-group">
+              <label>URL</label>
+              <div class="url-display">
+                <input type="text" id="leaderboardUrl" readonly class="url-input">
+                <button onclick="copyToClipboard('leaderboardUrl', this)" class="btn btn-small">Copy</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Max Users</label>
+              <input type="number" id="leaderboardLimit" min="1" max="20" value="5" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Update Interval (seconds)</label>
+              <input type="number" id="leaderboardPoll" min="5" value="30" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="leaderboardTitle" placeholder="Top Chatters" value="Top Chatters" onchange="updateOverlayUrls()">
+            </div>
+          </div>
+
+          <!-- Counter Display Overlay -->
+          <div class="overlay-card">
+            <h3>Counter Display Overlay</h3>
+            <p class="overlay-description">Displays custom counters (deaths, wins, losses, etc.).</p>
+
+            <div class="form-group">
+              <label>URL</label>
+              <div class="url-display">
+                <input type="text" id="counterUrl" readonly class="url-input">
+                <button onclick="copyToClipboard('counterUrl', this)" class="btn btn-small">Copy</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Display Mode</label>
+              <select id="counterMode" onchange="updateOverlayUrls()">
+                <option value="single">Single Counter</option>
+                <option value="multi">Multiple Counters</option>
+                <option value="score">Win/Loss Score</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Counter Name (single mode)</label>
+              <input type="text" id="counterName" placeholder="deaths" value="deaths" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Update Interval (seconds)</label>
+              <input type="number" id="counterPoll" min="1" value="5" onchange="updateOverlayUrls()">
+            </div>
+          </div>
+
+          <!-- Quote Display Overlay -->
+          <div class="overlay-card">
+            <h3>Quote Display Overlay</h3>
+            <p class="overlay-description">Displays random quotes from your quote database.</p>
+
+            <div class="form-group">
+              <label>URL</label>
+              <div class="url-display">
+                <input type="text" id="quoteUrl" readonly class="url-input">
+                <button onclick="copyToClipboard('quoteUrl', this)" class="btn btn-small">Copy</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Display Mode</label>
+              <select id="quoteMode" onchange="updateOverlayUrls()">
+                <option value="normal">Normal</option>
+                <option value="compact">Compact</option>
+                <option value="minimal">Minimal</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="quoteRotate" onchange="updateOverlayUrls()">
+                Auto-Rotate Quotes
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label>Rotation Interval (seconds)</label>
+              <input type="number" id="quoteInterval" min="10" value="60" onchange="updateOverlayUrls()">
+            </div>
+
+            <div class="form-group">
+              <label>Display Duration (seconds, 0=always)</label>
+              <input type="number" id="quoteDuration" min="0" value="0" onchange="updateOverlayUrls()">
             </div>
           </div>
         </div>

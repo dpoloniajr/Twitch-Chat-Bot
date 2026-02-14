@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 {
+      color: #9147ff;
+    }
+    .test-section {
+      background: #16213e;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 10px;
+      border: 2px solid #9147ff;
+    }
+    button {
+      background: #9147ff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      margin: 10px 5px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #7209b7;
+    }
+    .log {
+      background: #0f0f0f;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      padding: 5px;
+      margin: 2px 0;
+    }
+    .log-success {
+      color: #0f0;
+    }
+    .log-error {
+      color: #f00;
+    }
+    .log-info {
+      color: #0ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>TTS Browser Fix Test</h1>
+
+  <div class="test-section">
+    <h2>Test 1: Voice Loading</h2>
+    <p>This tests if voices are loaded correctly (fixes race condition)</p>
+    <button onclick="testVoiceLoading()">Test Voice Loading</button>
+    <div id="voice-status"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 2: Audio Unlock</h2>
+    <p>This tests the audio unlock mechanism (fixes autoplay restrictions)</p>
+    <button onclick="testAudioUnlock()">Unlock Audio</button>
+    <div id="unlock-status"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 3: Speech Synthesis</h2>
+    <p>This tests if speech actually plays after unlocking</p>
+    <button onclick="testSpeech()">Test Speech (Hello World)</button>
+    <button onclick="testSpeech2()">Test Speech (Longer Text)</button>
+    <div id="speech-status"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Console Log</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    const logDiv = document.getElementById('log');
+
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(message);
+    }
+
+    // Test voice loading with timeout
+    async function testVoiceLoading() {
+      const statusDiv = document.getElementById('voice-status');
+      statusDiv.innerHTML = '<p>Loading voices...</p>';
+      log('Testing voice loading...', 'info');
+
+      try {
+        const voices = await ensureVoicesLoaded();
+        statusDiv.innerHTML = `<p style="color: #0f0">✓ Loaded ${voices.length} voices</p>`;
+        log(`SUCCESS: Loaded ${voices.length} voices`, 'success');
+
+        if (voices.length > 0) {
+          const voiceList = voices.map(v => `${v.name} (${v.lang})`).join(', ');
+          log(`Available voices: ${voiceList}`, 'info');
+        }
+      } catch (err) {
+        statusDiv.innerHTML = `<p style="color: #f00">✗ Failed: ${err.message}</p>`;
+        log(`ERROR: ${err.message}`, 'error');
+      }
+    }
+
+    function ensureVoicesLoaded() {
+      return new Promise((resolve) => {
+        const synth = window.speechSynthesis;
+        let voices = synth.getVoices();
+
+        if (voices.length > 0) {
+          resolve(voices);
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          voices = synth.getVoices();
+          resolve(voices);
+        }, 1000);
+
+        if (synth.onvoiceschanged !== undefined) {
+          synth.onvoiceschanged = () => {
+            clearTimeout(timeout);
+            voices = synth.getVoices();
+            resolve(voices);
+          };
+        }
+      });
+    }
+
+    // Test audio unlock
+    function testAudioUnlock() {
+      const statusDiv = document.getElementById('unlock-status');
+      log('Testing audio unlock...', 'info');
+
+      try {
+        if (!window.speechSynthesis) {
+          throw new Error('Speech Synthesis API not supported');
+        }
+
+        // Unlock Web Speech API
+        const utterance = new SpeechSynthesisUtterance('');
+        utterance.volume = 0;
+        window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.cancel();
+
+        statusDiv.innerHTML = '<p style="color: #0f0">✓ Audio unlocked successfully</p>';
+        log('SUCCESS: Audio unlocked', 'success');
+      } catch (err) {
+        statusDiv.innerHTML = `<p style="color: #f00">✗ Failed: ${err.message}</p>`;
+        log(`ERROR: ${err.message}`, 'error');
+      }
+    }
+
+    // Test speech
+    async function testSpeech() {
+      const statusDiv = document.getElementById('speech-status');
+      statusDiv.innerHTML = '<p>Speaking "Hello World"...</p>';
+      log('Testing speech synthesis...', 'info');
+
+      try {
+        const voices = await ensureVoicesLoaded();
+
+        const utterance = new SpeechSynthesisUtterance('Hello World');
+
+        if (voices.length > 0) {
+          utterance.voice = voices[0];
+          log(`Using voice: ${voices[0].name}`, 'info');
+        }
+
+        utterance.onstart = () => {
+          log('Speech started', 'success');
+          statusDiv.innerHTML = '<p style="color: #0ff">🔊 Speaking...</p>';
+        };
+
+        utterance.onend = () => {
+          log('Speech ended', 'success');
+          statusDiv.innerHTML = '<p style="color: #0f0">✓ Speech completed successfully</p>';
+        };
+
+        utterance.onerror = (err) => {
+          log(`Speech error: ${err.error}`, 'error');
+          statusDiv.innerHTML = `<p style="color: #f00">✗ Error: ${err.error}</p>`;
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        statusDiv.innerHTML = `<p style="color: #f00">✗ Failed: ${err.message}</p>`;
+        log(`ERROR: ${err.message}`, 'error');
+      }
+    }
+
+    // Test longer speech
+    async function testSpeech2() {
+      const statusDiv = document.getElementById('speech-status');
+      const text = 'This is a longer test message to verify that the text-to-speech system is working correctly after applying the fixes.';
+      statusDiv.innerHTML = `<p>Speaking longer text...</p>`;
+      log('Testing longer speech...', 'info');
+
+      try {
+        const voices = await ensureVoicesLoaded();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        if (voices.length > 0) {
+          utterance.voice = voices[0];
+          log(`Using voice: ${voices[0].name}`, 'info');
+        }
+
+        utterance.onstart = () => {
+          log('Speech started', 'success');
+          statusDiv.innerHTML = '<p style="color: #0ff">🔊 Speaking longer text...</p>';
+        };
+
+        utterance.onend = () => {
+          log('Speech ended', 'success');
+          statusDiv.innerHTML = '<p style="color: #0f0">✓ Longer speech completed successfully</p>';
+        };
+
+        utterance.onerror = (err) => {
+          log(`Speech error: ${err.error}`, 'error');
+          statusDiv.innerHTML = `<p style="color: #f00">✗ Error: ${err.error}</p>`;
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        statusDiv.innerHTML = `<p style="color: #f00">✗ Failed: ${err.message}</p>`;
+        log(`ERROR: ${err.message}`, 'error');
+      }
+    }
+
+    // Auto-log on load
+    log('Test page loaded', 'success');
+    log('Click "Unlock Audio" before testing speech', 'info');
+  </script>
+</body>
+</html>

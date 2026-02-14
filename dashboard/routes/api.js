@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { withFileLock, validateRequest, asyncHandler } = require('../lib/utils');
 const state = require('../lib/state');
+const ttsService = require('../../tts-service');
 
 module.exports = function(paths, envPath) {
   const { commandLogsFile, userStatsFile, customCommandsFile, builtinCommandsFile, redemptionsFile, eventSubEventsFile, announcementsFile } = paths;
@@ -270,7 +271,7 @@ module.exports = function(paths, envPath) {
 
   // Test alert endpoint for OBS overlay testing (compatibility with Excella.js)
   router.post('/test-alert', (req, res) => {
-    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, config } = req.body;
+    const { alertType = 'follow', user = 'TestUser', message, tier, amount, viewers, reward, config, audioUrl, useBrowserTTS } = req.body;
     const alertData = { alertType, user, timestamp: new Date().toISOString() };
     if (message) alertData.message = message;
     if (alertType === 'subscription' && tier) alertData.tier = tier;
@@ -278,9 +279,66 @@ module.exports = function(paths, envPath) {
     if (alertType === 'raid' && viewers) alertData.viewers = Number(viewers);
     if (alertType === 'redemption' && reward) alertData.reward = reward;
     if (config) alertData.config = config; // Preserve custom config for overlays (e.g., TTS settings)
+    if (audioUrl !== undefined) alertData.audioUrl = audioUrl; // TTS audio URL
+    if (useBrowserTTS !== undefined) alertData.useBrowserTTS = useBrowserTTS; // Browser TTS flag
     state.broadcastState({ type: 'alert', data: alertData });
     res.json({ success: true, alert: alertData });
   });
+
+  // TTS API endpoints
+  // Get TTS service configuration
+  router.get('/tts/config', (req, res) => {
+    res.json(ttsService.getConfig());
+  });
+
+  // Generate TTS audio
+  router.post('/tts/generate', asyncHandler(async (req, res) => {
+    // Security: Restrict to localhost to prevent API credit abuse
+    const remoteAddr = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    const isLocalhost = remoteAddr === '127.0.0.1' ||
+                        remoteAddr === '::1' ||
+                        remoteAddr === '::ffff:127.0.0.1' ||
+                        remoteAddr === 'localhost';
+
+    if (!isLocalhost) {
+      return res.status(403).json({ success: false, error: 'TTS generation restricted to localhost' });
+    }
+
+    const { text, voice, provider } = req.body;
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Text is required' });
+    }
+
+    if (text.length > 200) {
+      return res.status(400).json({ success: false, error: 'Text too long (max 200 characters)' });
+    }
+
+    const result = await ttsService.generateTTS(text, { voice, provider });
+    res.json(result);
+  }));
+
+  // Serve cached TTS audio files
+  router.get('/tts/audio/:filename', asyncHandler(async (req, res) => {
+    const filename = req.params.filename;
+
+    // Validate filename (only allow hash.mp3 format)
+    if (!/^[a-f0-9]{64}\.mp3$/.test(filename)) {
+      return res.status(400).json({ success: false, error: 'Invalid filename' });
+    }
+
+    const cacheDir = path.join(__dirname, '..', 'cache', 'tts');
+    const filePath = path.join(cacheDir, filename);
+
+    try {
+      await fs.access(filePath);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+      res.sendFile(filePath);
+    } catch (err) {
+      res.status(404).json({ success: false, error: 'Audio file not found' });
+    }
+  }));
 
   return router;
 };

@@ -282,9 +282,50 @@ const TTS_CONFIG = {
 };
 ```
 
+### AI TTS Provider Configuration (Phase 2)
+
+The bot supports premium AI TTS providers for higher quality voices. Configure via environment variables:
+
+```env
+# TTS Provider Selection
+TTS_PROVIDER=browser  # Options: browser, elevenlabs, openai
+
+# ElevenLabs Configuration (Premium Quality)
+ELEVENLABS_API_KEY=your_api_key_here
+ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL  # Default: Sarah
+ELEVENLABS_MODEL=eleven_monolingual_v1
+
+# OpenAI TTS Configuration (Good Quality)
+OPENAI_API_KEY=your_api_key_here
+OPENAI_TTS_VOICE=alloy  # Options: alloy, echo, fable, onyx, nova, shimmer
+OPENAI_TTS_MODEL=tts-1  # Options: tts-1, tts-1-hd
+
+# Cache Configuration
+TTS_CACHE_ENABLED=true
+TTS_CACHE_MAX_AGE=86400000      # 24 hours in milliseconds
+TTS_CACHE_MAX_SIZE=104857600    # 100MB in bytes
+```
+
+**Provider Comparison:**
+
+| Provider | Quality | Cost | Features |
+|----------|---------|------|----------|
+| Browser | Basic | Free | OS-dependent voices, no API required |
+| ElevenLabs | Premium | $5/mo (30k chars) | Natural voices, voice cloning, streaming |
+| OpenAI | Good | $0.015/1k chars | Reliable, 6 voices, HD option |
+
+**How it works:**
+1. Bot attempts to generate audio via configured provider (ElevenLabs/OpenAI)
+2. Audio is cached locally for 24 hours to reduce API costs
+3. Overlay receives audio URL and plays it directly
+4. If API fails, automatically falls back to browser TTS
+
 ### Technical Details
-- Uses the browser's built-in TTS engine (quality varies by OS/browser)
-- Available voices depend on the viewer's operating system
+- **Hybrid TTS System**: Supports both browser TTS and AI API providers
+- **Automatic Fallback**: Falls back to browser TTS if API fails
+- **Audio Caching**: Generated audio cached for 24h (configurable)
+- **LRU Cache Management**: Automatically cleans up oldest 25% when cache exceeds limit
+- Available browser voices depend on the viewer's operating system
 - Windows typically has ~5 voices, macOS has more
 - Messages are filtered for blacklisted words, URLs, all caps, and repeated characters
 - **Note:** Spam detection is intentionally excluded from TTS to avoid affecting regular chat history
@@ -388,6 +429,9 @@ Song queue data is persisted in `dashboard/logs/`:
 | POST | `/api/song-queue/clear` | Clear entire queue |
 | POST | `/api/song-queue/block` | Add to blocklist |
 | DELETE | `/api/song-queue/block/:id` | Remove from blocklist |
+| GET | `/api/tts/config` | Get TTS service configuration |
+| POST | `/api/tts/generate` | Generate TTS audio (text, voice, provider) |
+| GET | `/api/tts/audio/:filename` | Serve cached TTS audio files |
 
 ### WebSocket Events
 

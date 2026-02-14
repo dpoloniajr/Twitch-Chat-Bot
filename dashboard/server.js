@@ -7,6 +7,7 @@ require('dotenv').config(path.join(__dirname, '..', '.env'));
 
 const state = require('./lib/state');
 const { DEFAULT_ALERT_CONFIG } = require('./lib/constants');
+const ttsService = require('../tts-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +52,7 @@ async function migrateBuiltinCommands() {
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
       { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
+      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' },
       { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
       { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
       { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' },
@@ -114,6 +116,7 @@ async function initLogs() {
       { name: '!leaderboard', cooldownSeconds: 10, description: 'Show top 5 users by loyalty points', permission: 'Everyone' },
       { name: '!quote', cooldownSeconds: 5, description: 'Display a random quote', permission: 'Everyone' },
       { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
+      { name: '!tts', cooldownSeconds: 30, description: 'Speak a message using Text-to-Speech', permission: 'Everyone' },
       { name: '!shoutout', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!so', cooldownSeconds: 0, description: 'Give a shoutout to another streamer', permission: 'Moderator' },
       { name: '!poll', cooldownSeconds: 0, description: 'Start or manage a poll', permission: 'Moderator' },
@@ -183,8 +186,11 @@ wss.on('connection', (ws) => {
 
 // Start server
 const PORT = process.env.DASHBOARD_PORT || 3001;
-initLogs().then(() => {
+Promise.all([initLogs(), ttsService.initialize()]).then(() => {
   server.listen(PORT, () => {
     console.log(`Dashboard server running on http://localhost:${PORT}`);
   });
+}).catch(err => {
+  console.error('Failed to initialize server:', err);
+  process.exit(1);
 });
