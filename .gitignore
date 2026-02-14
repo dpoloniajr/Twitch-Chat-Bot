@@ -152,3 +152,4 @@ accounts.encrypted.json
 /.zencoder
 /backups
 .claude/settings.local.json
+/dashboard/cache/tts
