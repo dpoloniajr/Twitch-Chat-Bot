@@ -53,8 +53,13 @@ const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const API_TIMEOUT = 5000;
 
-// Global axios instance with consistent timeout
-const apiClient_axios = axios.create({ timeout: API_TIMEOUT });
+// Global axios instance with consistent timeout and internal bot secret
+const apiClient_axios = axios.create({
+  timeout: API_TIMEOUT,
+  headers: process.env.DASHBOARD_INTERNAL_SECRET
+    ? { 'x-bot-secret': process.env.DASHBOARD_INTERNAL_SECRET }
+    : {}
+});
 
 // Configuration
 const config = {
@@ -207,7 +212,7 @@ function logCommandExecution(username, command, args, success) {
     user: username,
     command,
     args: Array.isArray(args) ? args.join(' ') : '',
-    success: success === true // Convert to boolean
+    success: success === true || success === 'success'
   }).catch((err) => {
     console.error('[Logging] Failed to post command log:', err.message);
   });

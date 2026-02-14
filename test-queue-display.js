@@ -60,6 +60,15 @@ async function testQueueDisplay() {
   console.log('=== Testing Queue Display Commands ===\n');
 
   try {
+    // Clear queue before tests to ensure deterministic state
+    console.log('Setup: Clearing queue before tests...');
+    try {
+      await axios.post(`${DASHBOARD_URL}/api/song-queue/clear`);
+      console.log('✓ Queue cleared\n');
+    } catch (err) {
+      console.log('Note: Could not clear queue:', err.message, '\n');
+    }
+
     // Test 1: Get empty queue
     console.log('Test 1: Fetching empty queue...');
     let response = await axios.get(`${DASHBOARD_URL}/api/song-queue`);
@@ -128,11 +137,12 @@ async function testQueueDisplay() {
       const count = queue.length;
       let message = `Queue: ${count} song${count !== 1 ? 's' : ''} (${totalFormatted} total)`;
 
-      const nextSongs = queue.slice(0, 3);
+      // slice(1, 4) skips index 0 (currently playing) to show the next 3 songs
+      const nextSongs = queue.slice(1, 4);
       if (nextSongs.length > 0) {
         message += ' | Up next: ';
         const songList = nextSongs.map((song, idx) =>
-          `${idx + 1}. "${song.title}" [${song.durationFormatted}]`
+          `${idx + 2}. "${song.title}" [${song.durationFormatted}]`
         ).join(', ');
         message += songList;
       }

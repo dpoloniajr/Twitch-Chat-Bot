@@ -12,6 +12,15 @@ async function testModeratorCommands() {
   console.log('=== Phase 4 - Moderator Controls Test ===\n');
 
   try {
+    // Setup - Clear queue before tests to ensure deterministic state
+    console.log('Setup: Clearing queue before tests...');
+    try {
+      await axios.post(`${BASE_URL}/clear`);
+      console.log('✓ Queue cleared\n');
+    } catch (err) {
+      console.log('Note: Could not clear queue:', err.message, '\n');
+    }
+
     // 1. Setup - Add some test songs to the queue
     console.log('1. Setting up test queue with 3 songs...');
     const testSongs = [

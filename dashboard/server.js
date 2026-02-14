@@ -168,6 +168,18 @@ app.use('/api/loyalty', require('./routes/loyalty')(logsDir));
 app.use('/api/quotes', require('./routes/quotes')(logsDir));
 app.use('/api/counters', require('./routes/counters')(logsDir));
 app.use('/api/backup', require('./routes/backup')(logsDir));
+// Internal bot-to-dashboard secret validation for song queue write operations
+const INTERNAL_SECRET = process.env.DASHBOARD_INTERNAL_SECRET;
+app.use('/api/song-queue', (req, res, next) => {
+  // GET requests (read-only) are allowed without a secret (dashboard UI needs them)
+  if (req.method === 'GET') return next();
+  // If no secret is configured, skip validation (backwards compatible)
+  if (!INTERNAL_SECRET) return next();
+  if (req.headers['x-bot-secret'] !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+});
 app.use('/api/song-queue', require('./routes/song-queue')(logsDir, state));
 
 // Health check
@@ -187,7 +199,7 @@ wss.on('connection', (ws) => {
 // Start server
 const PORT = process.env.DASHBOARD_PORT || 3001;
 Promise.all([initLogs(), ttsService.initialize()]).then(() => {
-  server.listen(PORT, () => {
+  server.listen(PORT, '127.0.0.1', () => {
     console.log(`Dashboard server running on http://localhost:${PORT}`);
   });
 }).catch(err => {

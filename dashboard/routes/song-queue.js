@@ -205,14 +205,16 @@ module.exports = function(logsDir, state) {
         });
       }
 
-      // Check per-user limit
-      const userSongsInQueue = queueData.active.filter(song =>
-        song.requester.toLowerCase() === requester.toLowerCase()
-      ).length;
-      if (userSongsInQueue >= config.maxPerUser) {
-        return res.status(400).json({
-          error: `You already have ${config.maxPerUser} song(s) in the queue. Maximum per user is ${config.maxPerUser}.`
-        });
+      // Check per-user limit (mods and broadcasters are exempt)
+      if (!requesterIsMod && !requesterIsBroadcaster) {
+        const userSongsInQueue = queueData.active.filter(song =>
+          song.requester.toLowerCase() === requester.toLowerCase()
+        ).length;
+        if (userSongsInQueue >= config.maxPerUser) {
+          return res.status(400).json({
+            error: `You already have ${config.maxPerUser} song(s) in the queue. Maximum per user is ${config.maxPerUser}.`
+          });
+        }
       }
 
       // Check for duplicates
@@ -462,8 +464,8 @@ module.exports = function(logsDir, state) {
       let removedSong = null;
       let removedIndex = -1;
 
-      // Check if target is a number (position)
-      const position = parseInt(target, 10);
+      // Check if target is a strict integer position (reject mixed strings like "2pac")
+      const position = /^\d+$/.test(target) ? parseInt(target, 10) : NaN;
       if (!isNaN(position) && position >= 1 && position <= queueData.active.length) {
         // Remove by position
         removedIndex = position - 1;
