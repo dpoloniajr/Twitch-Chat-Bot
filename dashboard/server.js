@@ -53,7 +53,15 @@ async function migrateBuiltinCommands() {
       { name: '!counter', cooldownSeconds: 5, description: 'Check a counter value (e.g., !counter deaths)', permission: 'Everyone' },
       { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
       { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
-      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' }
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' },
+      { name: '!sr', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!songrequest', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!skip', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!skipsong', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!removesong', cooldownSeconds: 0, description: 'Remove a song by position or keyword (refunds points)', permission: 'Moderator' },
+      { name: '!clearqueue', cooldownSeconds: 0, description: 'Clear the entire song queue (refunds all points)', permission: 'Moderator' },
+      { name: '!blocksong', cooldownSeconds: 0, description: 'Block a video, channel, or keyword from the queue', permission: 'Moderator' },
+      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' }
     ];
 
     let updated = false;
@@ -118,7 +126,15 @@ async function initLogs() {
       { name: '!filters', cooldownSeconds: 0, description: 'Show active chat filters', permission: 'Moderator' },
       { name: '!song', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
       { name: '!currentsong', cooldownSeconds: 10, description: 'Show the currently playing song and next up', permission: 'Everyone' },
-      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' }
+      { name: '!queue', cooldownSeconds: 10, description: 'Show song queue statistics and next songs', permission: 'Everyone' },
+      { name: '!sr', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!songrequest', cooldownSeconds: 30, description: 'Request a YouTube song by URL or search query', permission: 'Everyone' },
+      { name: '!skip', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!skipsong', cooldownSeconds: 0, description: 'Skip the current song (no points refund)', permission: 'Moderator' },
+      { name: '!removesong', cooldownSeconds: 0, description: 'Remove a song by position or keyword (refunds points)', permission: 'Moderator' },
+      { name: '!clearqueue', cooldownSeconds: 0, description: 'Clear the entire song queue (refunds all points)', permission: 'Moderator' },
+      { name: '!blocksong', cooldownSeconds: 0, description: 'Block a video, channel, or keyword from the queue', permission: 'Moderator' },
+      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' }
     ]);
     await initFile(paths.obsConfigFile, {
       overlays: {

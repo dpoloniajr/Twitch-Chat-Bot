@@ -10,6 +10,7 @@ This document provides essential context for AI assistants working with this cod
 - OBS overlay integration for stream alerts
 - Encrypted multi-account management
 - OAuth token generator with setup wizard
+- YouTube song request queue with loyalty points integration
 
 ## Quick Start Commands
 
@@ -54,6 +55,7 @@ node token-generator.js  # Start OAuth token generator (port 3000)
 3. **Account Manager** - AES-256-CBC encrypted credential storage
 4. **Dashboard Server** - Express API with WebSocket for real-time updates
 5. **OBS Overlays** - Browser sources for stream alerts
+6. **Song Request System** - YouTube-backed queue with blocklist, priority, and loyalty integration
 
 ### Dual-Token System
 
@@ -148,6 +150,9 @@ TWITCH_CHANNELS=channel1,channel2
 TWITCH_BROADCASTER_ACCESS_TOKEN=...
 TWITCH_BROADCASTER_REFRESH_TOKEN=...
 
+# YouTube API (required for song request feature)
+YOUTUBE_API_KEY=your_youtube_data_v3_api_key
+
 # Feature Toggles
 DISABLE_EVENTSUB=false
 DASHBOARD_PORT=3001
@@ -163,6 +168,18 @@ CHAT_FILTER_ACTION=warn|timeout|delete
 CHAT_FILTER_TIMEOUT_SEC=60
 ```
 
+### YouTube API Setup
+
+To enable song requests:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create or select a project
+3. Enable the **YouTube Data API v3**
+4. Create an API key under Credentials
+5. Add `YOUTUBE_API_KEY=<your_key>` to `.env`
+
+The free quota is 10,000 units/day. Each search costs 100 units; metadata lookups cost 1 unit. Enabling song requests by URL (not search) conserves quota significantly.
+
 ## Built-in Commands
 
 ### Everyone Commands
@@ -172,6 +189,9 @@ CHAT_FILTER_TIMEOUT_SEC=60
 | `!followage [user]` | Check follow duration | - |
 | `!tts <message>` | Text-to-speech message (max 200 chars) | 30s/user + 10s global |
 | `!commands` / `!help` | List available commands | - |
+| `!sr <url\|query>` / `!songrequest` | Request a YouTube song | 30s/user |
+| `!song` / `!currentsong` | Show current and next song | 10s global |
+| `!queue` | Show queue stats and next 3 songs | 10s global |
 
 ### Moderator Commands
 | Command | Description |
@@ -184,6 +204,12 @@ CHAT_FILTER_TIMEOUT_SEC=60
 | `!addfilter <word>` | Add to blacklist |
 | `!removefilter <word>` | Remove from blacklist |
 | `!filters` | Show active filters |
+| `!skip` / `!skipsong` | Skip the current song (no refund) |
+| `!removesong <pos\|keyword>` | Remove song by position or keyword (refunds points) |
+| `!clearqueue` | Clear the entire queue (refunds all points) |
+| `!sr config <setting> <value>` | Configure song request settings |
+| `!blocksong <url\|keyword>` | Block a video, channel, or keyword |
+| `!unblocksong <id\|keyword>` | Remove a blocklist entry |
 
 ## Chat Filtering System
 
@@ -267,6 +293,79 @@ const TTS_CONFIG = {
 - TTS events are broadcast via WebSocket to all connected overlays
 - URL parameters are validated and clamped to safe ranges to prevent errors
 
+## Song Request System
+
+**Location:** `Excella.js` - Functions: `handleSongRequest()`, `handleCurrentSong()`, `handleQueueInfo()`, `handleSkipSong()`, `handleRemoveSong()`, `handleClearQueue()`, `handleSongRequestConfig()`, `handleBlockSong()`, `handleUnblockSong()`
+**Route:** `dashboard/routes/song-queue.js`
+
+### Features
+- **YouTube search and URL lookup** using YouTube Data API v3
+- **Configurable queue rules** - duration limits, per-user limits, duplicate control
+- **Loyalty points integration** - require points to request songs, auto-refund on removal
+- **Priority system** - restrict requests to subscribers or VIPs
+- **Blocklist** - block specific videos, channels, or title keywords
+- **Real-time updates** via WebSocket (`song-queue-update` event)
+
+### Usage
+
+**Request a song by URL:**
+```
+!sr https://www.youtube.com/watch?v=dQw4w9WgXcQ
+```
+
+**Request by search query:**
+```
+!sr never gonna give you up
+```
+
+**Check current song:**
+```
+!song
+```
+
+**Queue status:**
+```
+!queue
+```
+
+### Configuration (mod only)
+
+```
+!sr config enabled on|off        # Enable/disable song requests
+!sr config cost <points>         # Loyalty points required per request
+!sr config maxduration <minutes> # Maximum video length in minutes
+!sr config maxperuser <n>        # Max songs per user in queue
+!sr config duplicates on|off     # Allow duplicate videos
+!sr config priority everyone|subs|vips  # Who can request
+```
+
+### Data Storage
+
+Song queue data is persisted in `dashboard/logs/`:
+- `song-queue.json` - Active queue, history, and config
+- `song-blocklist.json` - Blocked videos, channels, and keywords
+
+### Song Queue Config Defaults
+
+```javascript
+{
+  enabled: true,
+  maxDuration: 600,     // 10 minutes in seconds
+  maxPerUser: 3,
+  allowDuplicates: false,
+  cost: 0,              // Loyalty points (0 = free)
+  priority: 'everyone'  // 'everyone' | 'subs' | 'vips'
+}
+```
+
+### Technical Details
+- YouTube metadata is cached to reduce API quota usage
+- Metadata lookups cost 1 quota unit; searches cost 100 quota units
+- Loyalty points are deducted on add, refunded on `!removesong` and `!clearqueue`
+- `!skip` (moderator action) does not refund points
+- Moderators and broadcasters bypass priority restrictions and per-user limits
+- Queue positions are recalculated after each modification
+
 ## Dashboard API Endpoints
 
 **Base URL:** `http://localhost:3001`
@@ -281,6 +380,14 @@ const TTS_CONFIG = {
 | GET/POST | `/api/announcements` | Announcement management |
 | GET/POST | `/api/redemptions` | Channel points log |
 | GET/POST | `/api/eventsub-events` | EventSub event log |
+| GET | `/api/song-queue` | Get active queue and config |
+| POST | `/api/song-queue/add` | Add song to queue |
+| GET/PUT | `/api/song-queue/config` | Get/update queue configuration |
+| POST | `/api/song-queue/skip` | Skip current song |
+| DELETE | `/api/song-queue/:target` | Remove song by position or keyword |
+| POST | `/api/song-queue/clear` | Clear entire queue |
+| POST | `/api/song-queue/block` | Add to blocklist |
+| DELETE | `/api/song-queue/block/:id` | Remove from blocklist |
 
 ### WebSocket Events
 
@@ -291,6 +398,7 @@ Connect to `ws://localhost:3001` for real-time updates:
 - `customCommands` - Custom command updates
 - `redemption` - Channel points redemptions
 - `eventsub-event` - EventSub events
+- `song-queue-update` - Song queue changes (add, skip, remove, clear, config)
 
 ## Dependencies
 
@@ -361,13 +469,17 @@ Run with: `node test-<name>.js`
 
 | Purpose | File | Key Lines |
 |---------|------|-----------|
-| Command handlers | `Excella` | 1321-1625 |
-| Command registry | `Excella` | 1651-1759 |
-| Message handler | `Excella` | 1794-1827 |
-| Chat filters | `Excella` | 142-287 |
-| Token management | `Excella` | 750-853 |
-| EventSub setup | `Excella` | 316-597 |
-| Cooldown system | `Excella` | 599-707 |
+| Command handlers | `Excella.js` | 1321-1625 |
+| Command registry | `Excella.js` | 1651-1759 |
+| Message handler | `Excella.js` | 1794-1827 |
+| Chat filters | `Excella.js` | 142-287 |
+| Token management | `Excella.js` | 750-853 |
+| EventSub setup | `Excella.js` | 316-597 |
+| Cooldown system | `Excella.js` | 599-707 |
+| Song request handlers | `Excella.js` | Search `handleSongRequest` |
+| Song queue API | `dashboard/routes/song-queue.js` | Full file |
+| Song queue data | `dashboard/logs/song-queue.json` | Runtime file |
+| Song blocklist data | `dashboard/logs/song-blocklist.json` | Runtime file |
 | Dashboard routes | `dashboard/server.js` | Full file |
 | Account encryption | `account-manager.js` | Full file |
 | OAuth flow | `token-generator.js` | Full file |
