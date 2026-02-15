@@ -370,6 +370,7 @@ function checkChatFiltersWithoutSideEffects(message) {
 const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
 let announcementTimer = null;
+let tokenRefreshTimer = null;
 
 async function startAnnouncements() {
   if (!ANNOUNCEMENTS.length || ANNOUNCEMENT_INTERVAL_MS < 60000) return;
@@ -382,7 +383,24 @@ async function startAnnouncements() {
       for (const channel of config.channels) {
         // Use chat announcement if scope is available, else fall back to regular say
         if (hasScope(config.scopes, 'moderator:manage:announcements')) {
-          const result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+          let result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+
+          // If the call fails with a token error, attempt a refresh and retry once
+          if (!result.success && result.status === 401) {
+            console.log('Announcement failed with 401 — refreshing token and retrying...');
+            cachedTokenValidation.bot.lastCheck = 0;
+            const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+            if (refreshed) {
+              config.accessToken = refreshed.accessToken;
+              config.refreshToken = refreshed.refreshToken;
+              process.env.TWITCH_ACCESS_TOKEN = refreshed.accessToken;
+              process.env.TWITCH_REFRESH_TOKEN = refreshed.refreshToken;
+              await recreateAuthProvider();
+              scheduleProactiveTokenRefresh();
+              result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+            }
+          }
+
           if (!result.success) {
             sendChatMessage(channel, msg);
           }
@@ -923,7 +941,10 @@ async function validateAndRefreshTokens() {
     console.log('Recreating auth provider with refreshed tokens...');
     await recreateAuthProvider();
   }
-  
+
+  // Schedule next proactive refresh based on known expiry time
+  scheduleProactiveTokenRefresh();
+
   console.log('');
 }
 
@@ -974,6 +995,45 @@ async function recreateAuthProvider() {
   }
 
   console.log('API clients recreated with new tokens');
+}
+
+// Schedule a proactive token refresh before the token expires
+function scheduleProactiveTokenRefresh() {
+  // Clear any existing scheduled refresh
+  if (tokenRefreshTimer) {
+    clearTimeout(tokenRefreshTimer);
+    tokenRefreshTimer = null;
+  }
+
+  const now = Date.now();
+  const botExpiresAt = cachedTokenValidation.bot.expiresAt;
+
+  // Only schedule if we have a known expiry time
+  if (!botExpiresAt || botExpiresAt <= now) {
+    return;
+  }
+
+  // Refresh 5 minutes before expiry (or immediately if less than 5 minutes remain)
+  const refreshLeadMs = 5 * 60 * 1000;
+  const msUntilRefresh = Math.max(0, botExpiresAt - now - refreshLeadMs);
+  const minutesUntilRefresh = Math.round(msUntilRefresh / 60000);
+
+  console.log(`Token refresh scheduled in ~${minutesUntilRefresh} minute(s)`);
+
+  tokenRefreshTimer = setTimeout(async () => {
+    tokenRefreshTimer = null;
+    console.log('\nProactively refreshing tokens before expiry...');
+    try {
+      // Force revalidation by clearing the cache
+      cachedTokenValidation.bot.lastCheck = 0;
+      if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+        cachedTokenValidation.broadcaster.lastCheck = 0;
+      }
+      await validateAndRefreshTokens();
+    } catch (err) {
+      console.error('Proactive token refresh failed:', err.message);
+    }
+  }, msUntilRefresh);
 }
 
 
