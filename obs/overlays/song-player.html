@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Song Request Player</title>
+  <!-- Orbitron (futuristic labels/timecodes). Falls back to system monospace when offline. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
@@ -66,18 +67,6 @@
       --border-base:  rgba(34, 197, 94, 0.5);
       --text-secondary: rgba(185, 255, 210, 0.7);
       --scan-color:   rgba(34, 197, 94, 0.06);
-    }
-
-    /* ─── Clip-path shape (cut corners) ────────────────────────────────────────── */
-    .cut-corners {
-      clip-path: polygon(
-        0 0,
-        calc(100% - var(--cut-size)) 0,
-        100% var(--cut-size),
-        100% 100%,
-        var(--cut-size) 100%,
-        0 calc(100% - var(--cut-size))
-      );
     }
 
     /* ─── Card positioning ─────────────────────────────────────────────────────── */
@@ -220,7 +209,7 @@
     }
 
     .now-playing-label {
-      font-family: 'Orbitron', sans-serif;
+      font-family: 'Orbitron', 'Courier New', monospace;
       font-size: 9px;
       font-weight: 700;
       letter-spacing: 0.2em;
@@ -438,15 +427,15 @@
       box-shadow: 0 0 12px var(--accent-glow2), inset 0 0 8px var(--accent-glow2);
     }
 
-    .ctrl-btn:hover {
+    .ctrl-btn:not(:disabled):hover {
       color: var(--accent-light);
       border-color: var(--accent-light);
       box-shadow: 0 0 14px var(--accent-glow), inset 0 0 6px var(--accent-glow2);
       transform: scale(1.08);
     }
 
-    .ctrl-btn.ctrl-play:hover {
-      background: rgba(145, 71, 255, 0.25);
+    .ctrl-btn.ctrl-play:not(:disabled):hover {
+      background: var(--accent-dim);
       box-shadow: 0 0 20px var(--accent-glow), inset 0 0 10px var(--accent-glow2);
       transform: scale(1.1);
     }
@@ -535,7 +524,7 @@
     }
 
     .progress-times span {
-      font-family: 'Orbitron', sans-serif;
+      font-family: 'Orbitron', 'Courier New', monospace;
       font-size: 8px;
       color: var(--text-secondary);
       letter-spacing: 0.08em;
@@ -548,7 +537,7 @@
       right: 10px;
       background: var(--accent);
       color: white;
-      font-family: 'Orbitron', sans-serif;
+      font-family: 'Orbitron', 'Courier New', monospace;
       font-size: 8px;
       font-weight: 700;
       letter-spacing: 0.05em;
@@ -581,7 +570,7 @@
       background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
       border: 1px solid var(--border-base);
       color: white;
-      font-family: 'Orbitron', sans-serif;
+      font-family: 'Orbitron', 'Courier New', monospace;
       font-size: 13px;
       font-weight: 700;
       letter-spacing: 0.1em;
@@ -691,23 +680,23 @@
 
         <!-- Playback controls -->
         <div class="card-controls">
-          <button class="ctrl-btn ctrl-skip" id="btn-prev" title="Previous / Restart" aria-label="Restart song" disabled>
+          <button class="ctrl-btn ctrl-skip" id="btn-prev" title="Restart" aria-label="Restart current song" disabled>
             <!-- Restart/rewind icon -->
-            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
               <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
             </svg>
           </button>
 
           <button class="ctrl-btn ctrl-play" id="btn-play-pause" title="Play / Pause" aria-label="Play or pause">
             <!-- Play icon (default) -->
-            <svg viewBox="0 0 24 24" fill="currentColor" id="icon-play-pause" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-play-pause" xmlns="http://www.w3.org/2000/svg">
               <polygon points="5,3 19,12 5,21"/>
             </svg>
           </button>
 
           <button class="ctrl-btn ctrl-skip" id="btn-skip" title="Skip song" aria-label="Skip current song">
             <!-- Skip forward icon -->
-            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
               <path d="M6 18l8.5-6L6 6v12zm8.5-6l1.5 1.06V6H16v12h-1.5V13.06z"/>
             </svg>
           </button>
@@ -932,7 +921,7 @@
     btnSkip.addEventListener('click', async () => {
       if (!currentSong || btnSkip.disabled) return;
       btnSkip.disabled = true;
-      await notifyServerSkip(currentSong ? currentSong.id : null);
+      await notifyServerSkip(currentSong.id);
       // The WebSocket 'skip' event will re-enable if another song is queued
     });
 
@@ -1017,6 +1006,7 @@
         startProgressTimer();
       } else if (stateCode === YT.PlayerState.PAUSED) {
         card.classList.remove('playing');
+        wrapper.classList.remove('playing');
         setPlayIcon(false);
         stopProgressTimer();
       } else if (stateCode === YT.PlayerState.BUFFERING) {
