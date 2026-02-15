@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Song Request Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/overlay-base.css">
   <style>
     /* ─── Reset & base ─────────────────────────────────────────────────────────── */
@@ -17,33 +20,64 @@
       overflow: hidden;
     }
 
+    /* ─── Houdini custom property for rotating border ──────────────────────────── */
+    @property --border-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+
     /* ─── Theme variables ──────────────────────────────────────────────────────── */
     :root {
-      --accent:        #9147ff;
-      --accent-glow:   rgba(145, 71, 255, 0.55);
-      --accent-light:  #b57bff;
-      --accent-dark:   #6320d4;
-      --card-bg:       rgba(12, 10, 22, 0.92);
-      --text-primary:  #ffffff;
-      --text-secondary: rgba(255, 255, 255, 0.65);
-      --border:        rgba(145, 71, 255, 0.35);
-      --progress-track: rgba(255, 255, 255, 0.12);
+      --accent:         #9147ff;
+      --accent-glow:    rgba(145, 71, 255, 0.6);
+      --accent-glow2:   rgba(145, 71, 255, 0.2);
+      --accent-light:   #c084fc;
+      --accent-dark:    #6320d4;
+      --accent-dim:     rgba(145, 71, 255, 0.15);
+      --card-bg:        rgba(8, 6, 18, 0.94);
+      --text-primary:   #ffffff;
+      --text-secondary: rgba(200, 185, 255, 0.7);
+      --border-base:    rgba(145, 71, 255, 0.5);
+      --progress-track: rgba(255, 255, 255, 0.1);
+      --scan-color:     rgba(145, 71, 255, 0.06);
+      --cut-size:       18px;
     }
 
     body.theme-blue {
-      --accent:        #0ea5e9;
-      --accent-glow:   rgba(14, 165, 233, 0.55);
-      --accent-light:  #38bdf8;
-      --accent-dark:   #0284c7;
-      --border:        rgba(14, 165, 233, 0.35);
+      --accent:       #0ea5e9;
+      --accent-glow:  rgba(14, 165, 233, 0.6);
+      --accent-glow2: rgba(14, 165, 233, 0.2);
+      --accent-light: #7dd3fc;
+      --accent-dark:  #0284c7;
+      --accent-dim:   rgba(14, 165, 233, 0.15);
+      --border-base:  rgba(14, 165, 233, 0.5);
+      --text-secondary: rgba(185, 220, 255, 0.7);
+      --scan-color:   rgba(14, 165, 233, 0.06);
     }
 
     body.theme-green {
-      --accent:        #22c55e;
-      --accent-glow:   rgba(34, 197, 94, 0.55);
-      --accent-light:  #4ade80;
-      --accent-dark:   #16a34a;
-      --border:        rgba(34, 197, 94, 0.35);
+      --accent:       #22c55e;
+      --accent-glow:  rgba(34, 197, 94, 0.6);
+      --accent-glow2: rgba(34, 197, 94, 0.2);
+      --accent-light: #86efac;
+      --accent-dark:  #16a34a;
+      --accent-dim:   rgba(34, 197, 94, 0.15);
+      --border-base:  rgba(34, 197, 94, 0.5);
+      --text-secondary: rgba(185, 255, 210, 0.7);
+      --scan-color:   rgba(34, 197, 94, 0.06);
+    }
+
+    /* ─── Clip-path shape (cut corners) ────────────────────────────────────────── */
+    .cut-corners {
+      clip-path: polygon(
+        0 0,
+        calc(100% - var(--cut-size)) 0,
+        100% var(--cut-size),
+        100% 100%,
+        var(--cut-size) 100%,
+        0 calc(100% - var(--cut-size))
+      );
     }
 
     /* ─── Card positioning ─────────────────────────────────────────────────────── */
@@ -51,6 +85,11 @@
       position: fixed;
       padding: 20px;
       z-index: 100;
+      /* drop-shadow works with clip-path unlike box-shadow */
+      filter:
+        drop-shadow(0 0 18px var(--accent-glow))
+        drop-shadow(0 0 40px var(--accent-glow2))
+        drop-shadow(0 12px 40px rgba(0, 0, 0, 0.7));
     }
 
     .player-anchor.bottom-left  { bottom: 0; left:  0; }
@@ -58,46 +97,118 @@
     .player-anchor.top-left     { top:    0; left:  0; }
     .player-anchor.top-right    { top:    0; right: 0; }
 
-    /* ─── Now-playing card ─────────────────────────────────────────────────────── */
-    .now-playing-card {
+    /* ─── Rotating neon border wrapper ─────────────────────────────────────────── */
+    .card-border-wrapper {
       position: relative;
-      width: 360px;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px 16px 10px;
-      box-shadow:
-        0 8px 40px rgba(0, 0, 0, 0.6),
-        0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-        0 2px 32px var(--accent-glow);
-      backdrop-filter: blur(18px) saturate(1.4);
-      -webkit-backdrop-filter: blur(18px) saturate(1.4);
+      padding: 1px;
+      background: conic-gradient(
+        from var(--border-angle),
+        var(--accent-dark) 0%,
+        var(--accent) 25%,
+        var(--accent-light) 50%,
+        var(--accent) 75%,
+        var(--accent-dark) 100%
+      );
+      animation: rotate-border 4s linear infinite;
+      clip-path: polygon(
+        0 0,
+        calc(100% - var(--cut-size)) 0,
+        100% var(--cut-size),
+        100% 100%,
+        var(--cut-size) 100%,
+        0 calc(100% - var(--cut-size))
+      );
 
       /* Hidden by default */
       opacity: 0;
       transform: translateY(32px);
       pointer-events: none;
-      transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    .now-playing-card.visible {
+    .card-border-wrapper.visible {
       opacity: 1;
       transform: translateY(0);
+      pointer-events: auto;
     }
 
-    /* Entry animation from bottom */
-    .player-anchor.bottom-left  .now-playing-card,
-    .player-anchor.bottom-right .now-playing-card {
-      transform-origin: bottom center;
-    }
-
-    .player-anchor.top-left  .now-playing-card,
-    .player-anchor.top-right .now-playing-card {
+    .player-anchor.top-left  .card-border-wrapper,
+    .player-anchor.top-right .card-border-wrapper {
       transform: translateY(-32px);
     }
-    .player-anchor.top-left  .now-playing-card.visible,
-    .player-anchor.top-right .now-playing-card.visible {
+    .player-anchor.top-left  .card-border-wrapper.visible,
+    .player-anchor.top-right .card-border-wrapper.visible {
       transform: translateY(0);
+    }
+
+    @keyframes rotate-border {
+      to { --border-angle: 360deg; }
+    }
+
+    /* ─── Now-playing card ─────────────────────────────────────────────────────── */
+    .now-playing-card {
+      position: relative;
+      width: 420px;
+      background: var(--card-bg);
+      padding: 14px 16px 12px;
+      overflow: hidden;
+      clip-path: polygon(
+        0 0,
+        calc(100% - var(--cut-size)) 0,
+        100% var(--cut-size),
+        100% 100%,
+        var(--cut-size) 100%,
+        0 calc(100% - var(--cut-size))
+      );
+    }
+
+    /* ─── Scanline sweep animation ──────────────────────────────────────────────── */
+    .now-playing-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        var(--scan-color) 3px,
+        var(--scan-color) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .now-playing-card::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -40%;
+      height: 40%;
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.025) 50%,
+        transparent 100%
+      );
+      animation: scan-sweep 5s linear infinite;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    @keyframes scan-sweep {
+      0%   { top: -40%; }
+      100% { top: 140%; }
+    }
+
+    /* All card children above scanlines */
+    .card-header,
+    .card-body,
+    .card-controls,
+    .progress-section,
+    .queue-badge {
+      position: relative;
+      z-index: 2;
     }
 
     /* ─── Top strip: label + equalizer ────────────────────────────────────────── */
@@ -105,34 +216,51 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .now-playing-label {
-      font-size: 10px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.2em;
       text-transform: uppercase;
       color: var(--accent-light);
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 7px;
+      text-shadow: 0 0 10px var(--accent);
     }
 
-    .now-playing-label::before {
+    .now-playing-label .pulse-ring {
+      position: relative;
+      width: 8px;
+      height: 8px;
+      flex-shrink: 0;
+    }
+
+    .now-playing-label .pulse-ring::before,
+    .now-playing-label .pulse-ring::after {
       content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
+      position: absolute;
+      inset: 0;
       border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 6px var(--accent);
-      animation: pulse-dot 1.8s ease-in-out infinite;
     }
 
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: 0.5; transform: scale(0.75); }
+    .now-playing-label .pulse-ring::before {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .now-playing-label .pulse-ring::after {
+      border: 1.5px solid var(--accent);
+      animation: ring-pulse 2s ease-out infinite;
+      opacity: 0;
+    }
+
+    @keyframes ring-pulse {
+      0%   { transform: scale(1);   opacity: 0.8; }
+      100% { transform: scale(2.5); opacity: 0;   }
     }
 
     /* ─── Equalizer bars ───────────────────────────────────────────────────────── */
@@ -145,20 +273,18 @@
 
     .eq-bar {
       width: 3px;
-      background: linear-gradient(to top, var(--accent), var(--accent-light));
+      background: linear-gradient(to top, var(--accent-dark), var(--accent-light));
       border-radius: 2px;
-      min-height: 3px;
+      height: 6px;
+      transition: height 0.2s ease;
+      box-shadow: 0 0 4px var(--accent);
     }
 
-    /* Paused state – all bars at resting height */
-    .eq-bar { height: 6px; transition: height 0.2s ease; }
-
-    /* Animated state when playing */
-    .now-playing-card.playing .eq-bar:nth-child(1) { animation: eq1 0.9s ease-in-out infinite; }
-    .now-playing-card.playing .eq-bar:nth-child(2) { animation: eq2 0.7s ease-in-out infinite 0.1s; }
-    .now-playing-card.playing .eq-bar:nth-child(3) { animation: eq3 1.1s ease-in-out infinite 0.2s; }
-    .now-playing-card.playing .eq-bar:nth-child(4) { animation: eq4 0.8s ease-in-out infinite 0.05s; }
-    .now-playing-card.playing .eq-bar:nth-child(5) { animation: eq5 1.0s ease-in-out infinite 0.15s; }
+    .now-playing-card.playing .eq-bar:nth-child(1) { animation: eq1 0.9s  ease-in-out infinite; }
+    .now-playing-card.playing .eq-bar:nth-child(2) { animation: eq2 0.7s  ease-in-out infinite 0.10s; }
+    .now-playing-card.playing .eq-bar:nth-child(3) { animation: eq3 1.1s  ease-in-out infinite 0.20s; }
+    .now-playing-card.playing .eq-bar:nth-child(4) { animation: eq4 0.8s  ease-in-out infinite 0.05s; }
+    .now-playing-card.playing .eq-bar:nth-child(5) { animation: eq5 1.0s  ease-in-out infinite 0.15s; }
 
     @keyframes eq1 { 0%,100%{height:4px}  50%{height:16px} }
     @keyframes eq2 { 0%,100%{height:10px} 50%{height:5px}  }
@@ -169,7 +295,7 @@
     /* ─── Main content row ─────────────────────────────────────────────────────── */
     .card-body {
       display: flex;
-      gap: 12px;
+      gap: 14px;
       align-items: center;
     }
 
@@ -177,11 +303,14 @@
     .thumbnail-wrap {
       position: relative;
       flex-shrink: 0;
-      width: 72px;
-      height: 72px;
-      border-radius: 10px;
+      width: 74px;
+      height: 74px;
+      border-radius: 8px;
       overflow: hidden;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
+      box-shadow:
+        0 0 0 1px var(--border-base),
+        0 0 16px var(--accent-glow2),
+        0 4px 16px rgba(0, 0, 0, 0.6);
     }
 
     .thumbnail-img {
@@ -191,7 +320,7 @@
       display: block;
     }
 
-    /* Subtle shimmer loading placeholder */
+    /* Shimmer loading */
     .thumbnail-wrap::after {
       content: '';
       position: absolute;
@@ -199,7 +328,7 @@
       background: linear-gradient(
         90deg,
         transparent 0%,
-        rgba(255,255,255,0.06) 50%,
+        rgba(255,255,255,0.07) 50%,
         transparent 100%
       );
       background-size: 200% 100%;
@@ -207,18 +336,17 @@
       opacity: 0;
       transition: opacity 0.3s;
     }
-
     .thumbnail-wrap.loading::after { opacity: 1; }
 
     @keyframes shimmer {
       0%   { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
+      100% { background-position:  200% 0; }
     }
 
     /* ─── Song info ────────────────────────────────────────────────────────────── */
     .song-info {
       flex: 1;
-      min-width: 0; /* allow text truncation */
+      min-width: 0;
     }
 
     .song-title {
@@ -229,7 +357,8 @@
       overflow: hidden;
       text-overflow: ellipsis;
       line-height: 1.3;
-      margin-bottom: 2px;
+      margin-bottom: 3px;
+      text-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
     }
 
     .song-channel {
@@ -252,62 +381,184 @@
     .song-requester .requester-name {
       color: var(--accent-light);
       font-weight: 600;
+      text-shadow: 0 0 8px var(--accent);
     }
 
-    .song-duration {
-      font-size: 10px;
+    /* ─── Controls row ─────────────────────────────────────────────────────────── */
+    .card-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 8px 0 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .ctrl-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: 1px solid var(--border-base);
+      border-radius: 50%;
+      cursor: pointer;
       color: var(--text-secondary);
-      margin-top: 3px;
-      font-variant-numeric: tabular-nums;
+      transition:
+        color       0.2s ease,
+        border-color 0.2s ease,
+        background  0.2s ease,
+        box-shadow  0.2s ease,
+        transform   0.15s ease;
+      position: relative;
+      outline: none;
     }
 
-    /* ─── Progress bar ─────────────────────────────────────────────────────────── */
-    .progress-wrap {
+    .ctrl-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    /* Skip back/forward – smaller */
+    .ctrl-btn.ctrl-skip {
+      width: 34px;
+      height: 34px;
+      padding: 8px;
+    }
+
+    /* Play/Pause – larger, primary */
+    .ctrl-btn.ctrl-play {
+      width: 44px;
+      height: 44px;
+      padding: 10px;
+      border-color: var(--accent);
+      color: var(--accent-light);
+      background: var(--accent-dim);
+      box-shadow: 0 0 12px var(--accent-glow2), inset 0 0 8px var(--accent-glow2);
+    }
+
+    .ctrl-btn:hover {
+      color: var(--accent-light);
+      border-color: var(--accent-light);
+      box-shadow: 0 0 14px var(--accent-glow), inset 0 0 6px var(--accent-glow2);
+      transform: scale(1.08);
+    }
+
+    .ctrl-btn.ctrl-play:hover {
+      background: rgba(145, 71, 255, 0.25);
+      box-shadow: 0 0 20px var(--accent-glow), inset 0 0 10px var(--accent-glow2);
+      transform: scale(1.1);
+    }
+
+    .ctrl-btn:active {
+      transform: scale(0.95);
+    }
+
+    .ctrl-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .ctrl-btn svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Corner accent marks on the controls row */
+    .card-controls::before,
+    .card-controls::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        var(--border-base) 60%,
+        transparent
+      );
+      opacity: 0.5;
+    }
+
+    /* ─── Progress section ─────────────────────────────────────────────────────── */
+    .progress-section {
       margin-top: 10px;
+    }
+
+    .progress-wrap {
+      position: relative;
       background: var(--progress-track);
       border-radius: 4px;
-      height: 3px;
-      overflow: hidden;
+      height: 5px;
+      overflow: visible;
+      cursor: default;
     }
 
     .progress-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--accent-light));
+      background: linear-gradient(90deg, var(--accent-dark), var(--accent), var(--accent-light));
       border-radius: 4px;
-      box-shadow: 0 0 6px var(--accent-glow);
-      transition: width 0.8s linear;
+      box-shadow: 0 0 10px var(--accent-glow);
+      transition: width 1s linear;
+      position: relative;
     }
+
+    /* Glowing cursor dot at the tip of progress */
+    .progress-fill::after {
+      content: '';
+      position: absolute;
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 9px;
+      height: 9px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow:
+        0 0 6px var(--accent),
+        0 0 14px var(--accent-glow);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    /* Show dot when progress is meaningful */
+    .progress-fill.active::after { opacity: 1; }
 
     .progress-times {
       display: flex;
       justify-content: space-between;
-      margin-top: 4px;
+      margin-top: 5px;
     }
 
     .progress-times span {
-      font-size: 9px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 8px;
       color: var(--text-secondary);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
     }
 
     /* ─── Queue counter badge ──────────────────────────────────────────────────── */
     .queue-badge {
       position: absolute;
-      top: -6px;
-      right: -6px;
+      top: -8px;
+      right: 10px;
       background: var(--accent);
       color: white;
-      font-size: 10px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 8px;
       font-weight: 700;
-      border-radius: 10px;
-      padding: 1px 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      box-shadow: 0 0 10px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.4);
       display: none;
+      clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
     }
 
-    .now-playing-card.has-queue .queue-badge { display: block; }
+    .card-border-wrapper.has-queue .queue-badge { display: block; }
 
     /* ─── Hidden YouTube iframe ────────────────────────────────────────────────── */
     #yt-player-container {
@@ -328,22 +579,23 @@
       transform: translate(-50%, -50%);
       padding: 18px 36px;
       background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
-      border: 2px solid rgba(255, 255, 255, 0.25);
-      border-radius: 14px;
+      border: 1px solid var(--border-base);
       color: white;
-      font-size: 16px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
       font-weight: 700;
+      letter-spacing: 0.1em;
       cursor: pointer;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px var(--accent-glow);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 24px var(--accent-glow);
       backdrop-filter: blur(10px);
       transition: all 0.25s ease;
       z-index: 9999;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
     }
 
     .audio-unlock-button:hover {
-      transform: translate(-50%, -50%) scale(1.04);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 36px var(--accent-glow);
+      transform: translate(-50%, -50%) scale(1.05);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 40px var(--accent-glow);
     }
 
     .audio-unlock-button.hidden { display: none; }
@@ -353,16 +605,16 @@
       position: fixed;
       top: 10px;
       right: 10px;
-      background: rgba(0, 0, 0, 0.88);
+      background: rgba(0, 0, 0, 0.9);
       color: #00ff88;
       padding: 10px 12px;
-      border-radius: 8px;
+      border-radius: 4px;
       font-family: monospace;
       font-size: 11px;
       display: none;
       z-index: 10000;
       min-width: 220px;
-      border: 1px solid rgba(0, 255, 136, 0.25);
+      border: 1px solid rgba(0, 255, 136, 0.3);
       line-height: 1.6;
     }
 
@@ -380,7 +632,7 @@
 
   <!-- Audio unlock button (shown on first load in OBS) -->
   <button class="audio-unlock-button hidden" id="audio-unlock-btn">
-    &#9654; Click to Enable Audio
+    &#9654;&nbsp; ENABLE AUDIO
   </button>
 
   <!-- Debug panel -->
@@ -396,61 +648,92 @@
 
   <!-- Player anchor (position set by JS) -->
   <div class="player-anchor bottom-left" id="player-anchor">
-    <div class="now-playing-card" id="now-playing-card">
-      <!-- Badge showing how many songs are queued behind current -->
+    <!-- 1px gradient border wrapper -->
+    <div class="card-border-wrapper" id="card-border-wrapper">
+      <!-- Queue badge (parallelogram shape) -->
       <div class="queue-badge" id="queue-badge">+1</div>
 
-      <!-- Header: label + equalizer -->
-      <div class="card-header">
-        <span class="now-playing-label">Now Playing</span>
-        <div class="eq-bars" aria-hidden="true">
-          <div class="eq-bar"></div>
-          <div class="eq-bar"></div>
-          <div class="eq-bar"></div>
-          <div class="eq-bar"></div>
-          <div class="eq-bar"></div>
-        </div>
-      </div>
-
-      <!-- Thumbnail + song info -->
-      <div class="card-body">
-        <div class="thumbnail-wrap loading" id="thumbnail-wrap">
-          <img
-            class="thumbnail-img"
-            id="song-thumbnail"
-            src=""
-            alt="Song thumbnail"
-            crossorigin="anonymous"
-          >
-        </div>
-        <div class="song-info">
-          <div class="song-title"    id="song-title">Loading…</div>
-          <div class="song-channel"  id="song-channel"></div>
-          <div class="song-requester">
-            Requested by <span class="requester-name" id="song-requester"></span>
+      <div class="now-playing-card" id="now-playing-card">
+        <!-- Header: label + equalizer -->
+        <div class="card-header">
+          <span class="now-playing-label">
+            <span class="pulse-ring"></span>
+            Now Playing
+          </span>
+          <div class="eq-bars" aria-hidden="true">
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
+            <div class="eq-bar"></div>
           </div>
-          <div class="song-duration" id="song-duration"></div>
         </div>
-      </div>
 
-      <!-- Progress bar -->
-      <div class="progress-wrap">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <div class="progress-times">
-        <span id="time-current">0:00</span>
-        <span id="time-total">0:00</span>
-      </div>
-    </div>
-  </div>
+        <!-- Thumbnail + song info -->
+        <div class="card-body">
+          <div class="thumbnail-wrap loading" id="thumbnail-wrap">
+            <img
+              class="thumbnail-img"
+              id="song-thumbnail"
+              src=""
+              alt="Song thumbnail"
+              crossorigin="anonymous"
+            >
+          </div>
+          <div class="song-info">
+            <div class="song-title"   id="song-title">Loading…</div>
+            <div class="song-channel" id="song-channel"></div>
+            <div class="song-requester">
+              Requested by <span class="requester-name" id="song-requester"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Playback controls -->
+        <div class="card-controls">
+          <button class="ctrl-btn ctrl-skip" id="btn-prev" title="Previous / Restart" aria-label="Restart song" disabled>
+            <!-- Restart/rewind icon -->
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+            </svg>
+          </button>
+
+          <button class="ctrl-btn ctrl-play" id="btn-play-pause" title="Play / Pause" aria-label="Play or pause">
+            <!-- Play icon (default) -->
+            <svg viewBox="0 0 24 24" fill="currentColor" id="icon-play-pause" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </button>
+
+          <button class="ctrl-btn ctrl-skip" id="btn-skip" title="Skip song" aria-label="Skip current song">
+            <!-- Skip forward icon -->
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 18l8.5-6L6 6v12zm8.5-6l1.5 1.06V6H16v12h-1.5V13.06z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="progress-section">
+          <div class="progress-wrap">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-times">
+            <span id="time-current">0:00</span>
+            <span id="time-total">0:00</span>
+          </div>
+        </div>
+      </div><!-- /.now-playing-card -->
+    </div><!-- /.card-border-wrapper -->
+  </div><!-- /.player-anchor -->
 
   <script src="../js/overlay-client.js"></script>
   <script>
     'use strict';
 
     /* ─── URL parameter parsing ──────────────────────────────────────────────── */
-    const urlParams   = new URLSearchParams(window.location.search);
-    const debugMode   = urlParams.get('debug') === 'true';
+    const urlParams     = new URLSearchParams(window.location.search);
+    const debugMode     = urlParams.get('debug') === 'true';
     const positionParam = (urlParams.get('position') || 'bottom-left').toLowerCase();
     const themeParam    = (urlParams.get('theme')    || 'purple').toLowerCase();
 
@@ -480,17 +763,19 @@
     }
 
     /* ─── State ──────────────────────────────────────────────────────────────── */
-    let localQueue        = [];   // mirror of server queue
-    let currentSong       = null; // song currently loaded in YT player
-    let ytPlayer          = null; // YouTube IFrame Player instance
-    let ytReady           = false;
-    let progressTimer     = null;
-    let audioUnlocked     = false;
-    let pendingPlay       = false; // play requested before YT was ready
-    let loadingSongId     = null;  // song.id currently being loaded (double-load guard)
-    let skipNotifyInFlight = false; // prevents concurrent skip-notify calls
+    let localQueue         = [];
+    let currentSong        = null;
+    let ytPlayer           = null;
+    let ytReady            = false;
+    let progressTimer      = null;
+    let audioUnlocked      = false;
+    let pendingPlay        = false;
+    let loadingSongId      = null;
+    let skipNotifyInFlight = false;
+    let isPlayerPaused     = false; // track manual pause state
 
     /* ─── DOM refs ───────────────────────────────────────────────────────────── */
+    const wrapper       = document.getElementById('card-border-wrapper');
     const card          = document.getElementById('now-playing-card');
     const queueBadge    = document.getElementById('queue-badge');
     const thumbWrap     = document.getElementById('thumbnail-wrap');
@@ -498,10 +783,15 @@
     const songTitle     = document.getElementById('song-title');
     const songChannel   = document.getElementById('song-channel');
     const songRequester = document.getElementById('song-requester');
-    const songDuration  = document.getElementById('song-duration');
     const progressFill  = document.getElementById('progress-fill');
     const timeCurrent   = document.getElementById('time-current');
     const timeTotal     = document.getElementById('time-total');
+
+    /* Control buttons */
+    const btnPlayPause  = document.getElementById('btn-play-pause');
+    const btnSkip       = document.getElementById('btn-skip');
+    const btnPrev       = document.getElementById('btn-prev');
+    const iconPlayPause = document.getElementById('icon-play-pause');
 
     /* ─── Time formatter ─────────────────────────────────────────────────────── */
     function formatTime(seconds) {
@@ -511,13 +801,21 @@
       return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
+    /* ─── Play/Pause icon switcher ───────────────────────────────────────────── */
+    const SVG_PLAY  = `<polygon points="5,3 19,12 5,21"/>`;
+    const SVG_PAUSE = `<rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/>`;
+
+    function setPlayIcon(isPlaying) {
+      iconPlayPause.innerHTML = isPlaying ? SVG_PAUSE : SVG_PLAY;
+      btnPlayPause.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+      btnPlayPause.setAttribute('title', isPlaying ? 'Pause' : 'Play');
+    }
+
     /* ─── Thumbnail helpers ──────────────────────────────────────────────────── */
     function getThumbnailUrl(song) {
-      // Prefer hqdefault (480×360), fallback handled by onerror
       if (song.videoId) {
         return `https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg`;
       }
-      // If thumbnail field exists, try upgrading to hq
       if (song.thumbnail) {
         return song.thumbnail.replace(/\/(default|mqdefault|sddefault)\.jpg/, '/hqdefault.jpg');
       }
@@ -533,7 +831,6 @@
         } else if (current.includes('mqdefault')) {
           this.src = current.replace('mqdefault', 'default');
         }
-        // If all fallbacks fail, keep the broken image hidden gracefully
       };
     }
 
@@ -542,44 +839,52 @@
       songTitle.textContent     = song.title       || 'Unknown Title';
       songChannel.textContent   = song.channelTitle || '';
       songRequester.textContent = song.requesterDisplayName || song.requester || 'Unknown';
-      songDuration.textContent  = song.durationFormatted ? `Duration: ${song.durationFormatted}` : '';
       timeTotal.textContent     = song.durationFormatted || '0:00';
 
-      // Update thumbnail
+      /* Thumbnail */
       thumbWrap.classList.add('loading');
       const thumbUrl = getThumbnailUrl(song);
       if (thumbUrl) {
-        songThumb.addEventListener('load', () => {
-          thumbWrap.classList.remove('loading');
-        }, { once: true });
+        songThumb.addEventListener('load', () => thumbWrap.classList.remove('loading'), { once: true });
         songThumb.src = thumbUrl;
       }
 
-      // Update queue badge
-      const queued = localQueue.length - 1; // songs after current
+      /* Queue badge */
+      const queued = localQueue.length - 1;
       if (queued > 0) {
         queueBadge.textContent = `+${queued}`;
-        card.classList.add('has-queue');
+        wrapper.classList.add('has-queue');
       } else {
-        card.classList.remove('has-queue');
+        wrapper.classList.remove('has-queue');
       }
 
-      dbg('song', song.title ? song.title.substring(0, 30) : '—');
+      dbg('song',  song.title ? song.title.substring(0, 30) : '—');
       dbg('queue', localQueue.length);
     }
 
     function showCard(song) {
       currentSong = song;
       updateCardUI(song);
-      card.classList.add('visible', 'playing');
+      wrapper.classList.add('visible', 'playing');
+      card.classList.add('playing');
+      btnPlayPause.disabled = false;
+      btnSkip.disabled      = false;
     }
 
     function hideCard() {
-      card.classList.remove('visible', 'playing');
+      wrapper.classList.remove('visible', 'playing', 'has-queue');
+      card.classList.remove('playing');
       stopProgressTimer();
-      currentSong = null;
+      currentSong    = null;
+      isPlayerPaused = false;
       progressFill.style.width = '0%';
-      timeCurrent.textContent = '0:00';
+      progressFill.classList.remove('active');
+      timeCurrent.textContent  = '0:00';
+      timeTotal.textContent    = '0:00';
+      btnPlayPause.disabled    = true;
+      btnSkip.disabled         = true;
+      btnPrev.disabled         = true;
+      setPlayIcon(false);
     }
 
     /* ─── Progress bar ticker ────────────────────────────────────────────────── */
@@ -588,18 +893,18 @@
       progressTimer = setInterval(() => {
         if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
         try {
-          const cur  = ytPlayer.getCurrentTime();
-          const dur  = ytPlayer.getDuration();
+          const cur = ytPlayer.getCurrentTime();
+          const dur = ytPlayer.getDuration();
           if (dur > 0) {
             const pct = Math.min((cur / dur) * 100, 100);
-            progressFill.style.width   = `${pct}%`;
-            timeCurrent.textContent    = formatTime(cur);
-            timeTotal.textContent      = formatTime(dur);
-            // Also update the transition to be smoother between ticks
+            progressFill.style.width      = `${pct}%`;
             progressFill.style.transition = 'width 1s linear';
+            progressFill.classList.toggle('active', pct > 0);
+            timeCurrent.textContent = formatTime(cur);
+            timeTotal.textContent   = formatTime(dur);
           }
         } catch (e) {
-          // YT player may not be ready
+          // YT player not ready
         }
       }, 1000);
     }
@@ -611,32 +916,61 @@
       }
     }
 
-    /* ─── YouTube IFrame API ─────────────────────────────────────────────────── */
+    /* ─── Control button wiring ──────────────────────────────────────────────── */
+    btnPlayPause.addEventListener('click', () => {
+      if (!ytPlayer || !ytReady) return;
+      const state = ytPlayer.getPlayerState();
+      if (state === YT.PlayerState.PLAYING) {
+        ytPlayer.pauseVideo();
+        isPlayerPaused = true;
+      } else {
+        ytPlayer.playVideo();
+        isPlayerPaused = false;
+      }
+    });
 
-    // Load YouTube IFrame API script
+    btnSkip.addEventListener('click', async () => {
+      if (!currentSong || btnSkip.disabled) return;
+      btnSkip.disabled = true;
+      await notifyServerSkip(currentSong ? currentSong.id : null);
+      // The WebSocket 'skip' event will re-enable if another song is queued
+    });
+
+    btnPrev.addEventListener('click', () => {
+      if (!ytPlayer || !ytReady || !currentSong) return;
+      // Restart current song from beginning
+      try {
+        ytPlayer.seekTo(0, true);
+        ytPlayer.playVideo();
+        isPlayerPaused = false;
+      } catch (e) {
+        console.warn('[SongPlayer] Seek error:', e);
+      }
+    });
+
+    /* ─── YouTube IFrame API ─────────────────────────────────────────────────── */
     (function loadYTAPI() {
-      const tag    = document.createElement('script');
-      tag.src      = 'https://www.youtube.com/iframe_api';
-      const first  = document.getElementsByTagName('script')[0];
+      const tag   = document.createElement('script');
+      tag.src     = 'https://www.youtube.com/iframe_api';
+      const first = document.getElementsByTagName('script')[0];
       first.parentNode.insertBefore(tag, first);
     })();
 
-    // Called by YouTube API when ready
     window.onYouTubeIframeAPIReady = function() {
       log('YouTube IFrame API ready');
       ytPlayer = new YT.Player('yt-player', {
         width:  '1',
         height: '1',
         playerVars: {
-          autoplay:        1,
-          controls:        0,
-          disablekb:       1,
-          fs:              0,
-          iv_load_policy:  3,
-          modestbranding:  1,
-          rel:             0,
-          showinfo:        0,
-          origin:          window.location.origin
+          autoplay:       1,
+          controls:       0,
+          disablekb:      1,
+          fs:             0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          rel:            0,
+          showinfo:       0,
+          origin:         window.location.origin
         },
         events: {
           onReady:       onPlayerReady,
@@ -651,15 +985,11 @@
       ytReady = true;
       dbg('yt-state', 'Ready');
 
-      // Unmute and set volume (full volume — OBS controls stream audio)
       event.target.unMute();
       event.target.setVolume(100);
 
-      // If a play was queued before the player was ready, start now.
-      // Reset loadingSongId first: the pre-ready call already set it, but the
-      // player wasn't actually loaded yet, so we must allow the real load through.
       if (pendingPlay && localQueue.length > 0) {
-        pendingPlay = false;
+        pendingPlay   = false;
         loadingSongId = null;
         playSong(localQueue[0]);
       }
@@ -681,13 +1011,22 @@
 
       if (stateCode === YT.PlayerState.PLAYING) {
         card.classList.add('playing');
+        wrapper.classList.add('playing');
+        btnPrev.disabled = false;
+        setPlayIcon(true);
         startProgressTimer();
-      } else if (stateCode === YT.PlayerState.PAUSED ||
-                 stateCode === YT.PlayerState.BUFFERING) {
+      } else if (stateCode === YT.PlayerState.PAUSED) {
         card.classList.remove('playing');
+        setPlayIcon(false);
         stopProgressTimer();
+      } else if (stateCode === YT.PlayerState.BUFFERING) {
+        // Keep play icon as playing during buffering
+        card.classList.add('playing');
+        wrapper.classList.add('playing');
       } else if (stateCode === YT.PlayerState.ENDED) {
         card.classList.remove('playing');
+        wrapper.classList.remove('playing');
+        setPlayIcon(false);
         stopProgressTimer();
         handleSongEnded();
       }
@@ -696,7 +1035,6 @@
     function onPlayerError(event) {
       console.warn('[SongPlayer] YT error code:', event.data);
       dbg('yt-state', `Error: ${event.data}`);
-      // Skip on any YT error (video unavailable, region-blocked, etc.)
       handleSongEnded();
     }
 
@@ -704,11 +1042,6 @@
     function playSong(song) {
       if (!song) return;
 
-      // Double-load guard: ignore if this queue entry is already loading/playing.
-      // Uses song.id (not videoId) so that two consecutive queue entries for the
-      // same YouTube video are both correctly played as separate requests.
-      // This prevents the race where handleSongEnded() calls playSong() directly
-      // and the resulting WebSocket 'skip' event calls it again a moment later.
       if (song.id && song.id === loadingSongId) {
         log('Ignoring duplicate playSong() for already-loading queue entry:', song.id);
         return;
@@ -716,21 +1049,20 @@
 
       if (!ytReady) {
         log('YT not ready yet, queuing play for', song.title);
-        pendingPlay = true;
+        pendingPlay   = true;
         loadingSongId = song.id;
         showCard(song);
         return;
       }
 
       log('Playing:', song.title, '(', song.videoId, ')');
-      loadingSongId = song.id;
+      loadingSongId  = song.id;
+      isPlayerPaused = false;
       showCard(song);
+      setPlayIcon(true);
 
       try {
-        ytPlayer.loadVideoById({
-          videoId:      song.videoId,
-          startSeconds: 0
-        });
+        ytPlayer.loadVideoById({ videoId: song.videoId, startSeconds: 0 });
       } catch (e) {
         console.error('[SongPlayer] loadVideoById failed:', e);
         loadingSongId = null;
@@ -738,9 +1070,6 @@
       }
     }
 
-    // Notify the server that the current song ended (called from overlay when YT fires ENDED).
-    // Sends the current song's id so the server can ignore stale/duplicate calls.
-    // Retries once on transient failure.
     async function notifyServerSkip(songId) {
       if (skipNotifyInFlight) {
         log('Skip notify already in flight, skipping duplicate call');
@@ -749,8 +1078,8 @@
       skipNotifyInFlight = true;
       dbg('status', 'Syncing skip to server…');
 
-      const body = JSON.stringify(songId ? { songId } : {});
-      let attempt = 0;
+      const body    = JSON.stringify(songId ? { songId } : {});
+      let   attempt = 0;
 
       while (attempt < 2) {
         attempt++;
@@ -763,7 +1092,6 @@
           if (res.ok) {
             const json = await res.json();
             if (json.success === false && json.error === 'Song already skipped.') {
-              // Another instance already sent the skip — that's fine, not an error
               log('Server: song was already skipped by another instance');
             } else {
               log('Server skip confirmed');
@@ -771,12 +1099,9 @@
             }
             break;
           }
-          // Non-ok HTTP status — log and maybe retry
           console.warn(`[SongPlayer] skip API returned ${res.status} (attempt ${attempt})`);
-          dbg('status', `Skip sync failed (${res.status}) – retrying`);
         } catch (err) {
           console.warn(`[SongPlayer] skip API error (attempt ${attempt}):`, err);
-          dbg('status', `Skip sync error – retrying`);
         }
         if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
       }
@@ -789,19 +1114,11 @@
 
       const endedSong = localQueue.length > 0 ? localQueue[0] : null;
 
-      // Remove current song from local queue
-      if (localQueue.length > 0) {
-        localQueue.shift();
-      }
-
-      // Reset loading guard so the next song's id is not blocked
+      if (localQueue.length > 0) localQueue.shift();
       loadingSongId = null;
 
-      // Tell server to skip (keep server state in sync).
-      // We pass the ended song's id so the server can reject stale duplicate calls.
       notifyServerSkip(endedSong ? endedSong.id : null);
 
-      // Play next song or hide card
       if (localQueue.length > 0) {
         playSong(localQueue[0]);
       } else {
@@ -818,41 +1135,31 @@
 
       log('Queue update:', action, '| active songs:', active ? active.length : '?');
 
-      // Always sync local queue to the authoritative server state
       localQueue = active ? [...active] : [];
       dbg('queue', localQueue.length);
 
       switch (action) {
         case 'add':
           if (!currentSong && localQueue.length > 0) {
-            // Nothing was playing — start the first song
             playSong(localQueue[0]);
-          } else {
-            // Already playing — just update queue badge
-            if (currentSong) updateCardUI(currentSong);
+          } else if (currentSong) {
+            updateCardUI(currentSong);
           }
           break;
 
         case 'skip':
-          // Server already popped the first song; localQueue now starts with next.
-          // Do NOT reset loadingSongId here. If this event was triggered by
-          // handleSongEnded(), that function already called playSong(next) which set
-          // loadingSongId to the next song's id. The guard in playSong() will correctly
-          // ignore this duplicate call because the ids match.
-          // If the skip came from a mod !skip command, localQueue[0] will have a
-          // different song.id than loadingSongId, so the guard will allow it through.
           if (localQueue.length > 0) {
             playSong(localQueue[0]);
           } else {
             hideCard();
             if (ytPlayer && ytReady) ytPlayer.stopVideo();
           }
+          // Re-enable skip button for next song
+          btnSkip.disabled = localQueue.length === 0;
           break;
 
         case 'remove':
-          // A song was removed from the queue (not necessarily the current one)
           if (currentSong && data.removedSong && data.removedSong.id === currentSong.id) {
-            // Current song was removed — clear guard and skip to next
             loadingSongId = null;
             if (localQueue.length > 0) {
               playSong(localQueue[0]);
@@ -861,13 +1168,12 @@
               if (ytPlayer && ytReady) ytPlayer.stopVideo();
             }
           } else if (currentSong) {
-            // A queued (not current) song was removed — refresh badge
             updateCardUI(currentSong);
           }
           break;
 
         case 'clear':
-          localQueue = [];
+          localQueue    = [];
           loadingSongId = null;
           hideCard();
           if (ytPlayer && ytReady) ytPlayer.stopVideo();
@@ -884,7 +1190,7 @@
       try {
         const res  = await fetch('/api/song-queue');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = await res.json();
+        const body  = await res.json();
         const queue = body.active || (Array.isArray(body) ? body : []);
 
         log('Initial queue fetched:', queue.length, 'songs');
@@ -909,8 +1215,7 @@
     client.on('connected', () => {
       log('WebSocket connected');
       dbg('connection', 'Connected ✓');
-      dbg('status', 'Connected – listening');
-      // Re-fetch queue on reconnect to catch any changes missed while disconnected
+      dbg('status',     'Connected – listening');
       fetchInitialQueue();
     });
 
@@ -931,12 +1236,9 @@
       if (audioUnlocked) return;
 
       try {
-        // For YouTube IFrame: the player itself handles audio once loaded;
-        // this interaction just satisfies the browser gesture requirement.
         if (ytPlayer && ytReady) {
           ytPlayer.unMute();
           ytPlayer.setVolume(100);
-          // If a song is loaded and paused/cued, try playing it
           const state = ytPlayer.getPlayerState();
           if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
             ytPlayer.playVideo();
@@ -953,7 +1255,6 @@
       }
     }
 
-    // Show unlock button briefly on load
     if (unlockBtn) {
       const isOBS = typeof window.obsstudio !== 'undefined';
 
@@ -961,7 +1262,6 @@
         unlockBtn.classList.remove('hidden');
 
         if (isOBS) {
-          // Auto-hide in OBS after a few seconds; user can use "Interact" button
           setTimeout(() => {
             if (!audioUnlocked) {
               unlockBtn.classList.add('hidden');
@@ -981,7 +1281,11 @@
     setupThumbnailFallback();
     dbg('status', 'Initialized');
 
-    // Fetch on load; WebSocket 'connected' event will also trigger a fetch
+    /* Buttons start disabled until a song loads */
+    btnPlayPause.disabled = true;
+    btnSkip.disabled      = true;
+    btnPrev.disabled      = true;
+
     fetchInitialQueue();
 
     /* ─── Debug helpers exposed to console ──────────────────────────────────── */
