@@ -380,10 +380,13 @@ async function startAnnouncements() {
       const msg = ANNOUNCEMENTS[idx % ANNOUNCEMENTS.length];
       idx++;
       for (const channel of config.channels) {
-        // Use chat announcement if available, else regular say
-        try {
-          await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
-        } catch {
+        // Use chat announcement if scope is available, else fall back to regular say
+        if (hasScope(config.scopes, 'moderator:manage:announcements')) {
+          const result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+          if (!result.success) {
+            sendChatMessage(channel, msg);
+          }
+        } else {
           sendChatMessage(channel, msg);
         }
       }
