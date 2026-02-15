@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Song Request Player</title>
+  <link rel="stylesheet" href="../css/overlay-base.css">
+  <style>
+    /* ─── Reset & base ─────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ─── Theme variables ──────────────────────────────────────────────────────── */
+    :root {
+      --accent:        #9147ff;
+      --accent-glow:   rgba(145, 71, 255, 0.55);
+      --accent-light:  #b57bff;
+      --accent-dark:   #6320d4;
+      --card-bg:       rgba(12, 10, 22, 0.92);
+      --text-primary:  #ffffff;
+      --text-secondary: rgba(255, 255, 255, 0.65);
+      --border:        rgba(145, 71, 255, 0.35);
+      --progress-track: rgba(255, 255, 255, 0.12);
+    }
+
+    body.theme-blue {
+      --accent:        #0ea5e9;
+      --accent-glow:   rgba(14, 165, 233, 0.55);
+      --accent-light:  #38bdf8;
+      --accent-dark:   #0284c7;
+      --border:        rgba(14, 165, 233, 0.35);
+    }
+
+    body.theme-green {
+      --accent:        #22c55e;
+      --accent-glow:   rgba(34, 197, 94, 0.55);
+      --accent-light:  #4ade80;
+      --accent-dark:   #16a34a;
+      --border:        rgba(34, 197, 94, 0.35);
+    }
+
+    /* ─── Card positioning ─────────────────────────────────────────────────────── */
+    .player-anchor {
+      position: fixed;
+      padding: 20px;
+      z-index: 100;
+    }
+
+    .player-anchor.bottom-left  { bottom: 0; left:  0; }
+    .player-anchor.bottom-right { bottom: 0; right: 0; }
+    .player-anchor.top-left     { top:    0; left:  0; }
+    .player-anchor.top-right    { top:    0; right: 0; }
+
+    /* ─── Now-playing card ─────────────────────────────────────────────────────── */
+    .now-playing-card {
+      position: relative;
+      width: 360px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px 10px;
+      box-shadow:
+        0 8px 40px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+        0 2px 32px var(--accent-glow);
+      backdrop-filter: blur(18px) saturate(1.4);
+      -webkit-backdrop-filter: blur(18px) saturate(1.4);
+
+      /* Hidden by default */
+      opacity: 0;
+      transform: translateY(32px);
+      pointer-events: none;
+      transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .now-playing-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Entry animation from bottom */
+    .player-anchor.bottom-left  .now-playing-card,
+    .player-anchor.bottom-right .now-playing-card {
+      transform-origin: bottom center;
+    }
+
+    .player-anchor.top-left  .now-playing-card,
+    .player-anchor.top-right .now-playing-card {
+      transform: translateY(-32px);
+    }
+    .player-anchor.top-left  .now-playing-card.visible,
+    .player-anchor.top-right .now-playing-card.visible {
+      transform: translateY(0);
+    }
+
+    /* ─── Top strip: label + equalizer ────────────────────────────────────────── */
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .now-playing-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent-light);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .now-playing-label::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse-dot 1.8s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.75); }
+    }
+
+    /* ─── Equalizer bars ───────────────────────────────────────────────────────── */
+    .eq-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 18px;
+    }
+
+    .eq-bar {
+      width: 3px;
+      background: linear-gradient(to top, var(--accent), var(--accent-light));
+      border-radius: 2px;
+      min-height: 3px;
+    }
+
+    /* Paused state – all bars at resting height */
+    .eq-bar { height: 6px; transition: height 0.2s ease; }
+
+    /* Animated state when playing */
+    .now-playing-card.playing .eq-bar:nth-child(1) { animation: eq1 0.9s ease-in-out infinite; }
+    .now-playing-card.playing .eq-bar:nth-child(2) { animation: eq2 0.7s ease-in-out infinite 0.1s; }
+    .now-playing-card.playing .eq-bar:nth-child(3) { animation: eq3 1.1s ease-in-out infinite 0.2s; }
+    .now-playing-card.playing .eq-bar:nth-child(4) { animation: eq4 0.8s ease-in-out infinite 0.05s; }
+    .now-playing-card.playing .eq-bar:nth-child(5) { animation: eq5 1.0s ease-in-out infinite 0.15s; }
+
+    @keyframes eq1 { 0%,100%{height:4px}  50%{height:16px} }
+    @keyframes eq2 { 0%,100%{height:10px} 50%{height:5px}  }
+    @keyframes eq3 { 0%,100%{height:6px}  50%{height:18px} }
+    @keyframes eq4 { 0%,100%{height:14px} 50%{height:4px}  }
+    @keyframes eq5 { 0%,100%{height:8px}  50%{height:12px} }
+
+    /* ─── Main content row ─────────────────────────────────────────────────────── */
+    .card-body {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    /* ─── Thumbnail ────────────────────────────────────────────────────────────── */
+    .thumbnail-wrap {
+      position: relative;
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
+    }
+
+    .thumbnail-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Subtle shimmer loading placeholder */
+    .thumbnail-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255,255,255,0.06) 50%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .thumbnail-wrap.loading::after { opacity: 1; }
+
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* ─── Song info ────────────────────────────────────────────────────────────── */
+    .song-info {
+      flex: 1;
+      min-width: 0; /* allow text truncation */
+    }
+
+    .song-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+      margin-bottom: 2px;
+    }
+
+    .song-channel {
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 5px;
+    }
+
+    .song-requester {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .song-requester .requester-name {
+      color: var(--accent-light);
+      font-weight: 600;
+    }
+
+    .song-duration {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-top: 3px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── Progress bar ─────────────────────────────────────────────────────────── */
+    .progress-wrap {
+      margin-top: 10px;
+      background: var(--progress-track);
+      border-radius: 4px;
+      height: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-light));
+      border-radius: 4px;
+      box-shadow: 0 0 6px var(--accent-glow);
+      transition: width 0.8s linear;
+    }
+
+    .progress-times {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .progress-times span {
+      font-size: 9px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Queue counter badge ──────────────────────────────────────────────────── */
+    .queue-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: var(--accent);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 1px 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      display: none;
+    }
+
+    .now-playing-card.has-queue .queue-badge { display: block; }
+
+    /* ─── Hidden YouTube iframe ────────────────────────────────────────────────── */
+    #yt-player-container {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      top: -9999px;
+      left: -9999px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* ─── Audio unlock button ──────────────────────────────────────────────────── */
+    .audio-unlock-button {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 18px 36px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-radius: 14px;
+      color: white;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px var(--accent-glow);
+      backdrop-filter: blur(10px);
+      transition: all 0.25s ease;
+      z-index: 9999;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .audio-unlock-button:hover {
+      transform: translate(-50%, -50%) scale(1.04);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 36px var(--accent-glow);
+    }
+
+    .audio-unlock-button.hidden { display: none; }
+
+    /* ─── Debug panel ──────────────────────────────────────────────────────────── */
+    .debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.88);
+      color: #00ff88;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      display: none;
+      z-index: 10000;
+      min-width: 220px;
+      border: 1px solid rgba(0, 255, 136, 0.25);
+      line-height: 1.6;
+    }
+
+    .debug-panel.visible { display: block; }
+    .debug-panel strong  { color: #fff; }
+    .debug-panel p       { margin: 2px 0; }
+  </style>
+</head>
+<body>
+
+  <!-- Hidden YouTube player container -->
+  <div id="yt-player-container">
+    <div id="yt-player"></div>
+  </div>
+
+  <!-- Audio unlock button (shown on first load in OBS) -->
+  <button class="audio-unlock-button hidden" id="audio-unlock-btn">
+    &#9654; Click to Enable Audio
+  </button>
+
+  <!-- Debug panel -->
+  <div class="debug-panel" id="debug-panel">
+    <p><strong>Song Player Debug</strong></p>
+    <p>Status: <span id="dbg-status">Initializing…</span></p>
+    <p>Connection: <span id="dbg-connection">Disconnected</span></p>
+    <p>Queue length: <span id="dbg-queue">0</span></p>
+    <p>Current song: <span id="dbg-song">None</span></p>
+    <p>YT State: <span id="dbg-yt-state">—</span></p>
+    <p>Audio: <span id="dbg-audio">Locked</span></p>
+  </div>
+
+  <!-- Player anchor (position set by JS) -->
+  <div class="player-anchor bottom-left" id="player-anchor">
+    <div class="now-playing-card" id="now-playing-card">
+      <!-- Badge showing how many songs are queued behind current -->
+      <div class="queue-badge" id="queue-badge">+1</div>
+
+      <!-- Header: label + equalizer -->
+      <div class="card-header">
+        <span class="now-playing-label">Now Playing</span>
+        <div class="eq-bars" aria-hidden="true">
+          <div class="eq-bar"></div>
+          <div class="eq-bar"></div>
+          <div class="eq-bar"></div>
+          <div class="eq-bar"></div>
+          <div class="eq-bar"></div>
+        </div>
+      </div>
+
+      <!-- Thumbnail + song info -->
+      <div class="card-body">
+        <div class="thumbnail-wrap loading" id="thumbnail-wrap">
+          <img
+            class="thumbnail-img"
+            id="song-thumbnail"
+            src=""
+            alt="Song thumbnail"
+            crossorigin="anonymous"
+          >
+        </div>
+        <div class="song-info">
+          <div class="song-title"    id="song-title">Loading…</div>
+          <div class="song-channel"  id="song-channel"></div>
+          <div class="song-requester">
+            Requested by <span class="requester-name" id="song-requester"></span>
+          </div>
+          <div class="song-duration" id="song-duration"></div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-wrap">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-times">
+        <span id="time-current">0:00</span>
+        <span id="time-total">0:00</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/overlay-client.js"></script>
+  <script>
+    'use strict';
+
+    /* ─── URL parameter parsing ──────────────────────────────────────────────── */
+    const urlParams   = new URLSearchParams(window.location.search);
+    const debugMode   = urlParams.get('debug') === 'true';
+    const positionParam = (urlParams.get('position') || 'bottom-left').toLowerCase();
+    const themeParam    = (urlParams.get('theme')    || 'purple').toLowerCase();
+
+    const VALID_POSITIONS = ['bottom-left', 'bottom-right', 'top-left', 'top-right'];
+    const VALID_THEMES    = ['purple', 'blue', 'green'];
+
+    const position = VALID_POSITIONS.includes(positionParam) ? positionParam : 'bottom-left';
+    const theme    = VALID_THEMES.includes(themeParam)       ? themeParam    : 'purple';
+
+    /* Apply position and theme */
+    document.getElementById('player-anchor').className = `player-anchor ${position}`;
+    if (theme !== 'purple') document.body.classList.add(`theme-${theme}`);
+
+    /* ─── Debug helpers ──────────────────────────────────────────────────────── */
+    if (debugMode) {
+      document.getElementById('debug-panel').classList.add('visible');
+    }
+
+    function dbg(key, value) {
+      if (!debugMode) return;
+      const el = document.getElementById(`dbg-${key}`);
+      if (el) el.textContent = value;
+    }
+
+    function log(...args) {
+      if (debugMode) console.log('[SongPlayer]', ...args);
+    }
+
+    /* ─── State ──────────────────────────────────────────────────────────────── */
+    let localQueue        = [];   // mirror of server queue
+    let currentSong       = null; // song currently loaded in YT player
+    let ytPlayer          = null; // YouTube IFrame Player instance
+    let ytReady           = false;
+    let progressTimer     = null;
+    let audioUnlocked     = false;
+    let pendingPlay       = false; // play requested before YT was ready
+    let loadingSongId     = null;  // song.id currently being loaded (double-load guard)
+    let skipNotifyInFlight = false; // prevents concurrent skip-notify calls
+
+    /* ─── DOM refs ───────────────────────────────────────────────────────────── */
+    const card          = document.getElementById('now-playing-card');
+    const queueBadge    = document.getElementById('queue-badge');
+    const thumbWrap     = document.getElementById('thumbnail-wrap');
+    const songThumb     = document.getElementById('song-thumbnail');
+    const songTitle     = document.getElementById('song-title');
+    const songChannel   = document.getElementById('song-channel');
+    const songRequester = document.getElementById('song-requester');
+    const songDuration  = document.getElementById('song-duration');
+    const progressFill  = document.getElementById('progress-fill');
+    const timeCurrent   = document.getElementById('time-current');
+    const timeTotal     = document.getElementById('time-total');
+
+    /* ─── Time formatter ─────────────────────────────────────────────────────── */
+    function formatTime(seconds) {
+      if (!isFinite(seconds) || seconds < 0) return '0:00';
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    /* ─── Thumbnail helpers ──────────────────────────────────────────────────── */
+    function getThumbnailUrl(song) {
+      // Prefer hqdefault (480×360), fallback handled by onerror
+      if (song.videoId) {
+        return `https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg`;
+      }
+      // If thumbnail field exists, try upgrading to hq
+      if (song.thumbnail) {
+        return song.thumbnail.replace(/\/(default|mqdefault|sddefault)\.jpg/, '/hqdefault.jpg');
+      }
+      return '';
+    }
+
+    function setupThumbnailFallback() {
+      songThumb.onerror = function() {
+        if (!currentSong) return;
+        const current = this.src;
+        if (current.includes('hqdefault')) {
+          this.src = current.replace('hqdefault', 'mqdefault');
+        } else if (current.includes('mqdefault')) {
+          this.src = current.replace('mqdefault', 'default');
+        }
+        // If all fallbacks fail, keep the broken image hidden gracefully
+      };
+    }
+
+    /* ─── Card UI updates ────────────────────────────────────────────────────── */
+    function updateCardUI(song) {
+      songTitle.textContent     = song.title       || 'Unknown Title';
+      songChannel.textContent   = song.channelTitle || '';
+      songRequester.textContent = song.requesterDisplayName || song.requester || 'Unknown';
+      songDuration.textContent  = song.durationFormatted ? `Duration: ${song.durationFormatted}` : '';
+      timeTotal.textContent     = song.durationFormatted || '0:00';
+
+      // Update thumbnail
+      thumbWrap.classList.add('loading');
+      const thumbUrl = getThumbnailUrl(song);
+      if (thumbUrl) {
+        songThumb.addEventListener('load', () => {
+          thumbWrap.classList.remove('loading');
+        }, { once: true });
+        songThumb.src = thumbUrl;
+      }
+
+      // Update queue badge
+      const queued = localQueue.length - 1; // songs after current
+      if (queued > 0) {
+        queueBadge.textContent = `+${queued}`;
+        card.classList.add('has-queue');
+      } else {
+        card.classList.remove('has-queue');
+      }
+
+      dbg('song', song.title ? song.title.substring(0, 30) : '—');
+      dbg('queue', localQueue.length);
+    }
+
+    function showCard(song) {
+      currentSong = song;
+      updateCardUI(song);
+      card.classList.add('visible', 'playing');
+    }
+
+    function hideCard() {
+      card.classList.remove('visible', 'playing');
+      stopProgressTimer();
+      currentSong = null;
+      progressFill.style.width = '0%';
+      timeCurrent.textContent = '0:00';
+    }
+
+    /* ─── Progress bar ticker ────────────────────────────────────────────────── */
+    function startProgressTimer() {
+      stopProgressTimer();
+      progressTimer = setInterval(() => {
+        if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+        try {
+          const cur  = ytPlayer.getCurrentTime();
+          const dur  = ytPlayer.getDuration();
+          if (dur > 0) {
+            const pct = Math.min((cur / dur) * 100, 100);
+            progressFill.style.width   = `${pct}%`;
+            timeCurrent.textContent    = formatTime(cur);
+            timeTotal.textContent      = formatTime(dur);
+            // Also update the transition to be smoother between ticks
+            progressFill.style.transition = 'width 1s linear';
+          }
+        } catch (e) {
+          // YT player may not be ready
+        }
+      }, 1000);
+    }
+
+    function stopProgressTimer() {
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
+    }
+
+    /* ─── YouTube IFrame API ─────────────────────────────────────────────────── */
+
+    // Load YouTube IFrame API script
+    (function loadYTAPI() {
+      const tag    = document.createElement('script');
+      tag.src      = 'https://www.youtube.com/iframe_api';
+      const first  = document.getElementsByTagName('script')[0];
+      first.parentNode.insertBefore(tag, first);
+    })();
+
+    // Called by YouTube API when ready
+    window.onYouTubeIframeAPIReady = function() {
+      log('YouTube IFrame API ready');
+      ytPlayer = new YT.Player('yt-player', {
+        width:  '1',
+        height: '1',
+        playerVars: {
+          autoplay:        1,
+          controls:        0,
+          disablekb:       1,
+          fs:              0,
+          iv_load_policy:  3,
+          modestbranding:  1,
+          rel:             0,
+          showinfo:        0,
+          origin:          window.location.origin
+        },
+        events: {
+          onReady:       onPlayerReady,
+          onStateChange: onPlayerStateChange,
+          onError:       onPlayerError
+        }
+      });
+    };
+
+    function onPlayerReady(event) {
+      log('YT player ready');
+      ytReady = true;
+      dbg('yt-state', 'Ready');
+
+      // Unmute and set volume (full volume — OBS controls stream audio)
+      event.target.unMute();
+      event.target.setVolume(100);
+
+      // If a play was queued before the player was ready, start now.
+      // Reset loadingSongId first: the pre-ready call already set it, but the
+      // player wasn't actually loaded yet, so we must allow the real load through.
+      if (pendingPlay && localQueue.length > 0) {
+        pendingPlay = false;
+        loadingSongId = null;
+        playSong(localQueue[0]);
+      }
+    }
+
+    const YT_STATE_NAMES = {
+      '-1': 'Unstarted',
+       '0': 'Ended',
+       '1': 'Playing',
+       '2': 'Paused',
+       '3': 'Buffering',
+       '5': 'Cued'
+    };
+
+    function onPlayerStateChange(event) {
+      const stateCode = event.data;
+      dbg('yt-state', YT_STATE_NAMES[String(stateCode)] || String(stateCode));
+      log('YT state:', stateCode);
+
+      if (stateCode === YT.PlayerState.PLAYING) {
+        card.classList.add('playing');
+        startProgressTimer();
+      } else if (stateCode === YT.PlayerState.PAUSED ||
+                 stateCode === YT.PlayerState.BUFFERING) {
+        card.classList.remove('playing');
+        stopProgressTimer();
+      } else if (stateCode === YT.PlayerState.ENDED) {
+        card.classList.remove('playing');
+        stopProgressTimer();
+        handleSongEnded();
+      }
+    }
+
+    function onPlayerError(event) {
+      console.warn('[SongPlayer] YT error code:', event.data);
+      dbg('yt-state', `Error: ${event.data}`);
+      // Skip on any YT error (video unavailable, region-blocked, etc.)
+      handleSongEnded();
+    }
+
+    /* ─── Playback control ───────────────────────────────────────────────────── */
+    function playSong(song) {
+      if (!song) return;
+
+      // Double-load guard: ignore if this queue entry is already loading/playing.
+      // Uses song.id (not videoId) so that two consecutive queue entries for the
+      // same YouTube video are both correctly played as separate requests.
+      // This prevents the race where handleSongEnded() calls playSong() directly
+      // and the resulting WebSocket 'skip' event calls it again a moment later.
+      if (song.id && song.id === loadingSongId) {
+        log('Ignoring duplicate playSong() for already-loading queue entry:', song.id);
+        return;
+      }
+
+      if (!ytReady) {
+        log('YT not ready yet, queuing play for', song.title);
+        pendingPlay = true;
+        loadingSongId = song.id;
+        showCard(song);
+        return;
+      }
+
+      log('Playing:', song.title, '(', song.videoId, ')');
+      loadingSongId = song.id;
+      showCard(song);
+
+      try {
+        ytPlayer.loadVideoById({
+          videoId:      song.videoId,
+          startSeconds: 0
+        });
+      } catch (e) {
+        console.error('[SongPlayer] loadVideoById failed:', e);
+        loadingSongId = null;
+        handleSongEnded();
+      }
+    }
+
+    // Notify the server that the current song ended (called from overlay when YT fires ENDED).
+    // Sends the current song's id so the server can ignore stale/duplicate calls.
+    // Retries once on transient failure.
+    async function notifyServerSkip(songId) {
+      if (skipNotifyInFlight) {
+        log('Skip notify already in flight, skipping duplicate call');
+        return;
+      }
+      skipNotifyInFlight = true;
+      dbg('status', 'Syncing skip to server…');
+
+      const body = JSON.stringify(songId ? { songId } : {});
+      let attempt = 0;
+
+      while (attempt < 2) {
+        attempt++;
+        try {
+          const res = await fetch('/api/song-queue/skip', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success === false && json.error === 'Song already skipped.') {
+              // Another instance already sent the skip — that's fine, not an error
+              log('Server: song was already skipped by another instance');
+            } else {
+              log('Server skip confirmed');
+              dbg('status', 'Playing');
+            }
+            break;
+          }
+          // Non-ok HTTP status — log and maybe retry
+          console.warn(`[SongPlayer] skip API returned ${res.status} (attempt ${attempt})`);
+          dbg('status', `Skip sync failed (${res.status}) – retrying`);
+        } catch (err) {
+          console.warn(`[SongPlayer] skip API error (attempt ${attempt}):`, err);
+          dbg('status', `Skip sync error – retrying`);
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
+      }
+
+      skipNotifyInFlight = false;
+    }
+
+    function handleSongEnded() {
+      log('Song ended, shifting local queue');
+
+      const endedSong = localQueue.length > 0 ? localQueue[0] : null;
+
+      // Remove current song from local queue
+      if (localQueue.length > 0) {
+        localQueue.shift();
+      }
+
+      // Reset loading guard so the next song's id is not blocked
+      loadingSongId = null;
+
+      // Tell server to skip (keep server state in sync).
+      // We pass the ended song's id so the server can reject stale duplicate calls.
+      notifyServerSkip(endedSong ? endedSong.id : null);
+
+      // Play next song or hide card
+      if (localQueue.length > 0) {
+        playSong(localQueue[0]);
+      } else {
+        hideCard();
+        if (ytPlayer && ytReady) ytPlayer.stopVideo();
+        dbg('status', 'Queue empty – waiting');
+        dbg('yt-state', 'Stopped');
+      }
+    }
+
+    /* ─── Queue state management ─────────────────────────────────────────────── */
+    function handleQueueUpdate(data) {
+      const { action, active } = data;
+
+      log('Queue update:', action, '| active songs:', active ? active.length : '?');
+
+      // Always sync local queue to the authoritative server state
+      localQueue = active ? [...active] : [];
+      dbg('queue', localQueue.length);
+
+      switch (action) {
+        case 'add':
+          if (!currentSong && localQueue.length > 0) {
+            // Nothing was playing — start the first song
+            playSong(localQueue[0]);
+          } else {
+            // Already playing — just update queue badge
+            if (currentSong) updateCardUI(currentSong);
+          }
+          break;
+
+        case 'skip':
+          // Server already popped the first song; localQueue now starts with next.
+          // Do NOT reset loadingSongId here. If this event was triggered by
+          // handleSongEnded(), that function already called playSong(next) which set
+          // loadingSongId to the next song's id. The guard in playSong() will correctly
+          // ignore this duplicate call because the ids match.
+          // If the skip came from a mod !skip command, localQueue[0] will have a
+          // different song.id than loadingSongId, so the guard will allow it through.
+          if (localQueue.length > 0) {
+            playSong(localQueue[0]);
+          } else {
+            hideCard();
+            if (ytPlayer && ytReady) ytPlayer.stopVideo();
+          }
+          break;
+
+        case 'remove':
+          // A song was removed from the queue (not necessarily the current one)
+          if (currentSong && data.removedSong && data.removedSong.id === currentSong.id) {
+            // Current song was removed — clear guard and skip to next
+            loadingSongId = null;
+            if (localQueue.length > 0) {
+              playSong(localQueue[0]);
+            } else {
+              hideCard();
+              if (ytPlayer && ytReady) ytPlayer.stopVideo();
+            }
+          } else if (currentSong) {
+            // A queued (not current) song was removed — refresh badge
+            updateCardUI(currentSong);
+          }
+          break;
+
+        case 'clear':
+          localQueue = [];
+          loadingSongId = null;
+          hideCard();
+          if (ytPlayer && ytReady) ytPlayer.stopVideo();
+          dbg('status', 'Queue cleared');
+          break;
+
+        default:
+          log('Unknown action:', action);
+      }
+    }
+
+    /* ─── Initial state fetch ────────────────────────────────────────────────── */
+    async function fetchInitialQueue() {
+      try {
+        const res  = await fetch('/api/song-queue');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        const queue = body.active || (Array.isArray(body) ? body : []);
+
+        log('Initial queue fetched:', queue.length, 'songs');
+        localQueue = [...queue];
+        dbg('queue', localQueue.length);
+
+        if (localQueue.length > 0) {
+          playSong(localQueue[0]);
+          dbg('status', 'Resuming queue from server state');
+        } else {
+          dbg('status', 'Queue empty – waiting for songs');
+        }
+      } catch (err) {
+        console.warn('[SongPlayer] Failed to fetch initial queue:', err);
+        dbg('status', 'Failed to fetch queue');
+      }
+    }
+
+    /* ─── WebSocket ──────────────────────────────────────────────────────────── */
+    const client = new OverlayClient();
+
+    client.on('connected', () => {
+      log('WebSocket connected');
+      dbg('connection', 'Connected ✓');
+      dbg('status', 'Connected – listening');
+      // Re-fetch queue on reconnect to catch any changes missed while disconnected
+      fetchInitialQueue();
+    });
+
+    client.on('disconnected', () => {
+      log('WebSocket disconnected');
+      dbg('connection', 'Reconnecting…');
+    });
+
+    client.on('song-queue-update', (data) => {
+      log('Received song-queue-update:', data);
+      handleQueueUpdate(data);
+    });
+
+    /* ─── Audio unlock (OBS Chromium autoplay policy) ────────────────────────── */
+    const unlockBtn = document.getElementById('audio-unlock-btn');
+
+    function unlockAudio() {
+      if (audioUnlocked) return;
+
+      try {
+        // For YouTube IFrame: the player itself handles audio once loaded;
+        // this interaction just satisfies the browser gesture requirement.
+        if (ytPlayer && ytReady) {
+          ytPlayer.unMute();
+          ytPlayer.setVolume(100);
+          // If a song is loaded and paused/cued, try playing it
+          const state = ytPlayer.getPlayerState();
+          if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
+            ytPlayer.playVideo();
+          }
+        }
+
+        audioUnlocked = true;
+        dbg('audio', 'Unlocked ✓');
+        log('Audio unlocked via user interaction');
+
+        if (unlockBtn) unlockBtn.classList.add('hidden');
+      } catch (e) {
+        console.warn('[SongPlayer] Audio unlock error:', e);
+      }
+    }
+
+    // Show unlock button briefly on load
+    if (unlockBtn) {
+      const isOBS = typeof window.obsstudio !== 'undefined';
+
+      setTimeout(() => {
+        unlockBtn.classList.remove('hidden');
+
+        if (isOBS) {
+          // Auto-hide in OBS after a few seconds; user can use "Interact" button
+          setTimeout(() => {
+            if (!audioUnlocked) {
+              unlockBtn.classList.add('hidden');
+              unlockAudio();
+            }
+          }, 5000);
+        }
+      }, 600);
+
+      unlockBtn.addEventListener('click', unlockAudio);
+    }
+
+    document.addEventListener('click',      unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+
+    /* ─── Init ───────────────────────────────────────────────────────────────── */
+    setupThumbnailFallback();
+    dbg('status', 'Initialized');
+
+    // Fetch on load; WebSocket 'connected' event will also trigger a fetch
+    fetchInitialQueue();
+
+    /* ─── Debug helpers exposed to console ──────────────────────────────────── */
+    if (debugMode) {
+      window.testSong = function(overrides = {}) {
+        const song = {
+          id:                   'test-001',
+          videoId:              'dQw4w9WgXcQ',
+          title:                'Never Gonna Give You Up',
+          channelTitle:         'Rick Astley',
+          durationSeconds:      213,
+          durationFormatted:    '3:33',
+          requester:            'testuser',
+          requesterDisplayName: 'TestUser',
+          ...overrides
+        };
+        localQueue = [song];
+        playSong(song);
+      };
+
+      console.log('[SongPlayer] Debug mode active. Use testSong() to preview the card.');
+    }
+  </script>
+</body>
+</html>
