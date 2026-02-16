@@ -515,8 +515,11 @@ async function setupBroadcasterEventSub() {
     return;
   }
 
-  // Check broadcaster token scopes
-  const broadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
+  // Validate broadcaster token and use actual scopes from Twitch (not just env var)
+  await validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster');
+  const broadcasterScopes = cachedTokenValidation.broadcaster.scopes.length > 0
+    ? cachedTokenValidation.broadcaster.scopes
+    : (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
   const hasFollowersScope = hasScope(broadcasterScopes, 'moderator:read:followers');
   const hasRedemptionsScope = hasScope(broadcasterScopes, 'channel:read:redemptions');
   const hasSubscriptionsScope = hasScope(broadcasterScopes, 'channel:read:subscriptions');
@@ -598,7 +601,9 @@ async function setupBroadcasterEventSub() {
 
           if (isTTSRedemption && input) {
             // Process as TTS (bypasses per-user cooldown but respects global cooldown)
-            const channel = config.channels[0]; // Use first channel
+            const channel = ev.broadcasterUserLogin
+              ? `#${ev.broadcasterUserLogin}`
+              : config.channels[0];
             const args = input.split(' ');
             await handleTTS(channel, user, args, null, true);
           } else {
@@ -2056,9 +2061,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   const timeSinceLastGlobalTTS = now - lastGlobalTTSTime;
   if (timeSinceLastGlobalTTS < TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000) {
     const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000 - timeSinceLastGlobalTTS) / 1000));
-    if (!isRedemption) {
-      sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
-    }
+    sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
     return false; // Don't apply user cooldown
   }
 
