@@ -112,10 +112,12 @@ let broadcasterEventSub = null;
 
 // Token validation caching (avoid repeated HTTP calls)
 let cachedTokenValidation = {
-  bot: { lastCheck: 0, isValid: false, expiresAt: 0 },
-  broadcaster: { lastCheck: 0, isValid: false, expiresAt: 0 }
+  bot: { lastCheck: 0, isValid: false, expiresAt: 0, scopes: [] },
+  broadcaster: { lastCheck: 0, isValid: false, expiresAt: 0, scopes: [] }
 };
 const TOKEN_CACHE_DURATION = 3600000; // 1 hour
+// How far ahead of expiry to treat a token as needing refresh (must match scheduleProactiveTokenRefresh)
+const TOKEN_EXPIRY_LEAD_MS = 5 * 60 * 1000; // 5 minutes
 
 // Scope validation caching
 let cachedScopeValidation = {};
@@ -370,6 +372,8 @@ function checkChatFiltersWithoutSideEffects(message) {
 const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 900000); // default 15m
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
 let announcementTimer = null;
+let tokenRefreshTimer = null;
+let tokenRefreshInProgress = false;
 
 async function startAnnouncements() {
   if (!ANNOUNCEMENTS.length || ANNOUNCEMENT_INTERVAL_MS < 60000) return;
@@ -380,9 +384,33 @@ async function startAnnouncements() {
       const msg = ANNOUNCEMENTS[idx % ANNOUNCEMENTS.length];
       idx++;
       for (const channel of config.channels) {
-        // Use chat announcement if scope is available, else fall back to regular say
-        if (hasScope(config.scopes, 'moderator:manage:announcements')) {
-          const result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+        // Use live scopes from last token validation (falls back to config if not yet populated)
+        const liveScopes = cachedTokenValidation.bot.scopes.length > 0
+          ? cachedTokenValidation.bot.scopes
+          : config.scopes;
+        if (hasScope(liveScopes, 'moderator:manage:announcements')) {
+          let result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+
+          // If the call fails with a token error, attempt a refresh and retry once
+          if (!result.success && result.status === 401 && !tokenRefreshInProgress) {
+            console.log('Announcement failed with 401 — refreshing token and retrying...');
+            tokenRefreshInProgress = true;
+            cachedTokenValidation.bot.lastCheck = 0;
+            const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+            if (refreshed) {
+              config.accessToken = refreshed.accessToken;
+              config.refreshToken = refreshed.refreshToken;
+              process.env.TWITCH_ACCESS_TOKEN = refreshed.accessToken;
+              process.env.TWITCH_REFRESH_TOKEN = refreshed.refreshToken;
+              // Re-validate immediately to populate fresh expiresAt and scopes before scheduling
+              await validateTokenCached(config.accessToken, 'bot');
+              await recreateAuthProvider();
+              scheduleProactiveTokenRefresh();
+              result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+            }
+            tokenRefreshInProgress = false;
+          }
+
           if (!result.success) {
             sendChatMessage(channel, msg);
           }
@@ -882,7 +910,8 @@ async function validateAndRefreshTokens() {
       config.refreshToken = refreshedBot.refreshToken;
       process.env.TWITCH_ACCESS_TOKEN = refreshedBot.accessToken;
       process.env.TWITCH_REFRESH_TOKEN = refreshedBot.refreshToken;
-      cachedTokenValidation.bot.lastCheck = 0; // Clear cache to revalidate
+      // Re-validate immediately to populate fresh expiresAt and scopes in cache
+      await validateTokenCached(config.accessToken, 'bot');
       console.log('✓ Bot token refreshed successfully');
       tokensUpdated = true;
     } else {
@@ -906,7 +935,8 @@ async function validateAndRefreshTokens() {
       if (refreshedBroadcaster) {
         process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster.accessToken;
         process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = refreshedBroadcaster.refreshToken;
-        cachedTokenValidation.broadcaster.lastCheck = 0; // Clear cache to revalidate
+        // Re-validate immediately to populate fresh expiresAt and scopes in cache
+        await validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster');
         console.log('✓ Broadcaster token refreshed successfully');
         tokensUpdated = true;
       } else {
@@ -923,7 +953,10 @@ async function validateAndRefreshTokens() {
     console.log('Recreating auth provider with refreshed tokens...');
     await recreateAuthProvider();
   }
-  
+
+  // Schedule next proactive refresh based on known expiry time
+  scheduleProactiveTokenRefresh();
+
   console.log('');
 }
 
@@ -976,6 +1009,73 @@ async function recreateAuthProvider() {
   console.log('API clients recreated with new tokens');
 }
 
+// Schedule a proactive token refresh before the token(s) expire.
+// Covers both bot and broadcaster tokens; fires at whichever expires soonest.
+function scheduleProactiveTokenRefresh() {
+  // Clear any existing scheduled refresh
+  if (tokenRefreshTimer) {
+    clearTimeout(tokenRefreshTimer);
+    tokenRefreshTimer = null;
+  }
+
+  const now = Date.now();
+  const botExpiresAt = cachedTokenValidation.bot.expiresAt;
+  const broadcasterExpiresAt = cachedTokenValidation.broadcaster.expiresAt;
+
+  // Pick the soonest non-zero expiry across both tokens
+  const candidates = [botExpiresAt, broadcasterExpiresAt].filter(t => t > now);
+  if (candidates.length === 0) {
+    return;
+  }
+  const nextExpiresAt = Math.min(...candidates);
+
+  // Fire TOKEN_EXPIRY_LEAD_MS before the soonest expiry
+  const msUntilRefresh = Math.max(0, nextExpiresAt - now - TOKEN_EXPIRY_LEAD_MS);
+  const minutesUntilRefresh = Math.round(msUntilRefresh / 60000);
+
+  console.log(`Token refresh scheduled in ~${minutesUntilRefresh} minute(s)`);
+
+  tokenRefreshTimer = setTimeout(async () => {
+    tokenRefreshTimer = null;
+    if (tokenRefreshInProgress) return;
+    tokenRefreshInProgress = true;
+    console.log('\nProactively refreshing tokens before expiry...');
+    try {
+      // Force revalidation by clearing the cache
+      cachedTokenValidation.bot.lastCheck = 0;
+      if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+        cachedTokenValidation.broadcaster.lastCheck = 0;
+      }
+      await validateAndRefreshTokens();
+    } catch (err) {
+      console.error('Proactive token refresh failed:', err.message);
+      // Retry in 2 minutes so we still get a fresh token before full expiry
+      console.log('Scheduling retry in 2 minutes...');
+      if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        tokenRefreshTimer = null;
+      }
+      tokenRefreshTimer = setTimeout(async () => {
+        tokenRefreshTimer = null;
+        try {
+          cachedTokenValidation.bot.lastCheck = 0;
+          if (process.env.TWITCH_BROADCASTER_ACCESS_TOKEN) {
+            cachedTokenValidation.broadcaster.lastCheck = 0;
+          }
+          await validateAndRefreshTokens();
+        } catch (retryErr) {
+          console.error('Proactive token refresh retry also failed:', retryErr.message);
+        } finally {
+          tokenRefreshInProgress = false;
+        }
+      }, 2 * 60 * 1000);
+      return;
+    } finally {
+      if (!tokenRefreshTimer) tokenRefreshInProgress = false;
+    }
+  }, msUntilRefresh);
+}
+
 
 // Validate a token with Twitch
 // Check if a scope exists in the given scope list (cached)
@@ -994,35 +1094,37 @@ function hasScopeList(scopeList, targetScopes) {
 async function validateTokenCached(token, accountType = 'bot') {
   const now = Date.now();
   const cache = cachedTokenValidation[accountType];
-  
-  // Return cached result if still fresh
-  if (cache.lastCheck > 0 && now - cache.lastCheck < TOKEN_CACHE_DURATION && cache.expiresAt > now + 1800000) {
+
+  // Return cached result if still fresh and token won't expire within the lead window
+  if (cache.lastCheck > 0 && now - cache.lastCheck < TOKEN_CACHE_DURATION && cache.expiresAt > now + TOKEN_EXPIRY_LEAD_MS) {
     return cache.isValid;
   }
-  
+
   try {
     const response = await apiClient_axios.get(TWITCH_VALIDATE_URL, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    
+
     const tokenInfo = response.data;
     const expiresIn = tokenInfo.expires_in;
-    
+
     cache.lastCheck = now;
     cache.expiresAt = now + (expiresIn * 1000);
-    
-    if (expiresIn < 3600) {
+    // Store the live scopes returned by Twitch so runtime checks reflect actual permissions
+    cache.scopes = tokenInfo.scopes || [];
+
+    if (expiresIn * 1000 < TOKEN_EXPIRY_LEAD_MS) {
       console.log(`  Token expires in ${Math.floor(expiresIn / 60)} minutes`);
       cache.isValid = false;
       return false;
     }
-    
+
     cache.isValid = true;
     return true;
   } catch (error) {
     cache.lastCheck = now;
     cache.isValid = false;
-    
+
     if (error.response?.status === 401) {
       return false;
     }
