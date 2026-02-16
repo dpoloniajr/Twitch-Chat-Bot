@@ -1,3 +1,4 @@
+require('./lib/console-timestamp');
 // Replaced Twurple with direct Helix API, tmi.js for IRC, and native WebSocket for EventSub
 const TwitchHelixAPI = require('./lib/twitch-helix-api');
 const TwitchIRCClient = require('./lib/twitch-irc-client');
