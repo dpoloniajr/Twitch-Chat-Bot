@@ -389,9 +389,8 @@ async function startAnnouncements() {
             if (refreshed) {
               config.accessToken = refreshed.accessToken;
               config.refreshToken = refreshed.refreshToken;
-              process.env.TWITCH_ACCESS_TOKEN = refreshed.accessToken;
-              process.env.TWITCH_REFRESH_TOKEN = refreshed.refreshToken;
-              global.apiClient.setAccessToken(config.accessToken);
+              apiClient.setAccessToken(config.accessToken);
+              await chatClient.updateToken(config.accessToken);
               result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
             }
           }
@@ -1101,10 +1100,12 @@ async function refreshToken(accessToken, refreshToken, accountType) {
       }
     });
 
-    // Also update process.env for broadcaster tokens
+    // Update process.env for both account types
     if (accountType === 'broadcaster') {
+      process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = newAccessToken;
       process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = newRefreshToken;
     } else {
+      process.env.TWITCH_ACCESS_TOKEN = newAccessToken;
       process.env.TWITCH_REFRESH_TOKEN = newRefreshToken;
     }
 
