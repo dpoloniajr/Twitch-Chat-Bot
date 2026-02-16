@@ -91,6 +91,17 @@ global.apiClient = new TwitchHelixAPI({
   accessToken: config.accessToken
 });
 
+// Register token-refresh callback so the API client can auto-recover from 401s
+global.apiClient.setOnTokenRefresh(async () => {
+  const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+  if (refreshed) {
+    config.accessToken = refreshed.accessToken;
+    config.refreshToken = refreshed.refreshToken;
+    await chatClient.updateToken(config.accessToken);
+  }
+  return refreshed;
+});
+
 // Create Chat client using tmi.js wrapper
 // Note: username will be set during init() after token validation
 global.chatClient = new TwitchIRCClient({
@@ -1191,10 +1202,12 @@ async function refreshToken(accessToken, refreshToken, accountType) {
       }
     });
 
-    // Also update process.env for broadcaster tokens
+    // Update process.env for both account types
     if (accountType === 'broadcaster') {
+      process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = newAccessToken;
       process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = newRefreshToken;
     } else {
+      process.env.TWITCH_ACCESS_TOKEN = newAccessToken;
       process.env.TWITCH_REFRESH_TOKEN = newRefreshToken;
     }
 
@@ -1211,10 +1224,24 @@ async function init() {
     console.log(`Initializing... (broadcaster: ${config.broadcasterName})`);
 
     // Parallelize API calls for faster initialization
-    const [tokenInfo, user] = await Promise.all([
+    let [tokenInfo, user] = await Promise.all([
       apiClient.getTokenInfo(),
       apiClient.getUserByName(config.broadcasterName)
     ]);
+
+    // Token may be expired at startup — try refreshing once before giving up
+    if (!tokenInfo) {
+      console.log('⚠️  Bot token appears expired at startup. Attempting to refresh...');
+      const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+      if (refreshed) {
+        config.accessToken = refreshed.accessToken;
+        config.refreshToken = refreshed.refreshToken;
+        apiClient.setAccessToken(config.accessToken);
+        await chatClient.updateToken(config.accessToken);
+        tokenInfo = await apiClient.getTokenInfo();
+        console.log('✓ Bot token refreshed successfully at startup');
+      }
+    }
 
     tokenUserId = tokenInfo?.userId || null;
     if (!tokenUserId) {
