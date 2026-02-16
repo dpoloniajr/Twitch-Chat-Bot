@@ -400,6 +400,8 @@ async function startAnnouncements() {
               config.refreshToken = refreshed.refreshToken;
               process.env.TWITCH_ACCESS_TOKEN = refreshed.accessToken;
               process.env.TWITCH_REFRESH_TOKEN = refreshed.refreshToken;
+              // Re-validate immediately to populate fresh expiresAt and scopes before scheduling
+              await validateTokenCached(config.accessToken, 'bot');
               await recreateAuthProvider();
               scheduleProactiveTokenRefresh();
               result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
@@ -905,7 +907,8 @@ async function validateAndRefreshTokens() {
       config.refreshToken = refreshedBot.refreshToken;
       process.env.TWITCH_ACCESS_TOKEN = refreshedBot.accessToken;
       process.env.TWITCH_REFRESH_TOKEN = refreshedBot.refreshToken;
-      cachedTokenValidation.bot.lastCheck = 0; // Clear cache to revalidate
+      // Re-validate immediately to populate fresh expiresAt and scopes in cache
+      await validateTokenCached(config.accessToken, 'bot');
       console.log('✓ Bot token refreshed successfully');
       tokensUpdated = true;
     } else {
@@ -929,7 +932,8 @@ async function validateAndRefreshTokens() {
       if (refreshedBroadcaster) {
         process.env.TWITCH_BROADCASTER_ACCESS_TOKEN = refreshedBroadcaster.accessToken;
         process.env.TWITCH_BROADCASTER_REFRESH_TOKEN = refreshedBroadcaster.refreshToken;
-        cachedTokenValidation.broadcaster.lastCheck = 0; // Clear cache to revalidate
+        // Re-validate immediately to populate fresh expiresAt and scopes in cache
+        await validateTokenCached(process.env.TWITCH_BROADCASTER_ACCESS_TOKEN, 'broadcaster');
         console.log('✓ Broadcaster token refreshed successfully');
         tokensUpdated = true;
       } else {
