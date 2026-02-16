@@ -373,6 +373,7 @@ const ANNOUNCEMENT_INTERVAL_MS = Number(process.env.ANNOUNCEMENT_INTERVAL_MS || 
 const ANNOUNCEMENTS = (process.env.ANNOUNCEMENTS || '').split('|').map(s => s.trim()).filter(Boolean);
 let announcementTimer = null;
 let tokenRefreshTimer = null;
+let tokenRefreshInProgress = false;
 
 async function startAnnouncements() {
   if (!ANNOUNCEMENTS.length || ANNOUNCEMENT_INTERVAL_MS < 60000) return;
@@ -391,8 +392,9 @@ async function startAnnouncements() {
           let result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
 
           // If the call fails with a token error, attempt a refresh and retry once
-          if (!result.success && result.status === 401) {
+          if (!result.success && result.status === 401 && !tokenRefreshInProgress) {
             console.log('Announcement failed with 401 — refreshing token and retrying...');
+            tokenRefreshInProgress = true;
             cachedTokenValidation.bot.lastCheck = 0;
             const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
             if (refreshed) {
@@ -406,6 +408,7 @@ async function startAnnouncements() {
               scheduleProactiveTokenRefresh();
               result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
             }
+            tokenRefreshInProgress = false;
           }
 
           if (!result.success) {
@@ -1034,6 +1037,8 @@ function scheduleProactiveTokenRefresh() {
 
   tokenRefreshTimer = setTimeout(async () => {
     tokenRefreshTimer = null;
+    if (tokenRefreshInProgress) return;
+    tokenRefreshInProgress = true;
     console.log('\nProactively refreshing tokens before expiry...');
     try {
       // Force revalidation by clearing the cache
@@ -1046,6 +1051,10 @@ function scheduleProactiveTokenRefresh() {
       console.error('Proactive token refresh failed:', err.message);
       // Retry in 2 minutes so we still get a fresh token before full expiry
       console.log('Scheduling retry in 2 minutes...');
+      if (tokenRefreshTimer) {
+        clearTimeout(tokenRefreshTimer);
+        tokenRefreshTimer = null;
+      }
       tokenRefreshTimer = setTimeout(async () => {
         tokenRefreshTimer = null;
         try {
@@ -1056,8 +1065,13 @@ function scheduleProactiveTokenRefresh() {
           await validateAndRefreshTokens();
         } catch (retryErr) {
           console.error('Proactive token refresh retry also failed:', retryErr.message);
+        } finally {
+          tokenRefreshInProgress = false;
         }
       }, 2 * 60 * 1000);
+      return;
+    } finally {
+      if (!tokenRefreshTimer) tokenRefreshInProgress = false;
     }
   }, msUntilRefresh);
 }
