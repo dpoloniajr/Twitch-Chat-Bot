@@ -382,7 +382,19 @@ async function startAnnouncements() {
       for (const channel of config.channels) {
         // Use chat announcement if scope is available, else fall back to regular say
         if (hasScope(config.scopes, 'moderator:manage:announcements')) {
-          const result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+          let result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+          if (!result.success && result.status === 401) {
+            // Token expired — refresh and retry once
+            const refreshed = await refreshToken(config.accessToken, config.refreshToken, 'bot');
+            if (refreshed) {
+              config.accessToken = refreshed.accessToken;
+              config.refreshToken = refreshed.refreshToken;
+              process.env.TWITCH_ACCESS_TOKEN = refreshed.accessToken;
+              process.env.TWITCH_REFRESH_TOKEN = refreshed.refreshToken;
+              global.apiClient.setAccessToken(config.accessToken);
+              result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
+            }
+          }
           if (!result.success) {
             sendChatMessage(channel, msg);
           }
