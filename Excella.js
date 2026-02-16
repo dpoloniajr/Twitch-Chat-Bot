@@ -605,10 +605,7 @@ async function setupBroadcasterEventSub() {
               ? `#${ev.broadcasterUserLogin}`
               : config.channels[0];
             const args = input.split(' ');
-            const ttsSuccess = await handleTTS(channel, user, args, null, true);
-            if (!ttsSuccess) {
-              sendChatMessage(channel, `@${user} Your TTS redemption could not be played (cooldown or filtered content).`);
-            }
+            await handleTTS(channel, user, args, null, true);
           } else {
             // Basic mapping: echo to chat for non-TTS redemptions
             config.channels.forEach(ch => sendChatMessage(ch, `${user} redeemed: ${reward}${input ? ' - ' + input : ''}`));
@@ -2064,9 +2061,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
   const timeSinceLastGlobalTTS = now - lastGlobalTTSTime;
   if (timeSinceLastGlobalTTS < TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000) {
     const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000 - timeSinceLastGlobalTTS) / 1000));
-    if (!isRedemption) {
-      sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
-    }
+    sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
     return false; // Don't apply user cooldown
   }
 
