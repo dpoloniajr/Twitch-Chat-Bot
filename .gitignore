@@ -153,3 +153,6 @@ accounts.encrypted.json
 /backups
 .claude/settings.local.json
 /dashboard/cache/tts
+/.claude
+/.codex
+/.cursor
