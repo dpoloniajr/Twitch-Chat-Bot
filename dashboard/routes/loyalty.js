@@ -6,6 +6,33 @@ const express = require('express');
 const path = require('path');
 const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, runGamba, runDuel, DEFAULT_DUEL_STAKE, GAMBA_MIN, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
 
+/**
+ * Middleware to handle common loyalty operation response patterns
+ * @param {object} result - Result object from loyalty-store functions
+ * @param {object} res - Express response object
+ * @param {object} successData - Additional data to include in successful response
+ * @returns {boolean} - True if handled, false if not
+ */
+function handleLoyaltyResult(result, res, successData = {}) {
+  if (result.notConfigured) {
+    res.status(503).json({ error: 'Loyalty system not configured' });
+    return true;
+  }
+  if (!result.success) {
+    if (result.code === 'USER_NOT_FOUND') {
+      res.status(404).json({ error: result.error });
+      return true;
+    }
+    res.status(400).json({
+      error: result.error,
+      ...(result.balance !== undefined && { balance: result.balance })
+    });
+    return true;
+  }
+  res.json({ success: true, ...successData });
+  return true;
+}
+
 module.exports = function(logsDir) {
   const router = express.Router();
   const loyaltyFile = path.join(logsDir, 'loyalty.json');
@@ -149,22 +176,7 @@ module.exports = function(logsDir) {
       }
 
       const result = await deductPoints(loyaltyFile, username, amount, reason);
-
-      if (result.notConfigured) {
-        return res.status(503).json({ error: 'Loyalty system not configured' });
-      }
-      if (!result.success) {
-        if (result.code === 'USER_NOT_FOUND') {
-          return res.status(404).json({ error: 'User not found' });
-        }
-        return res.status(400).json({
-          error: result.error,
-          balance: result.balance,
-          required: amount
-        });
-      }
-
-      res.json({ success: true, newBalance: result.newBalance });
+      handleLoyaltyResult(result, res, { newBalance: result.newBalance });
     } catch (error) {
       next(error);
     }
@@ -180,10 +192,7 @@ module.exports = function(logsDir) {
       }
 
       const result = await addPoints(loyaltyFile, username, amount, reason, 'bonus');
-      if (!result.success) {
-        return res.status(503).json({ error: result.error });
-      }
-      res.json({ success: true, newBalance: result.newBalance });
+      handleLoyaltyResult(result, res, { newBalance: result.newBalance });
     } catch (error) {
       next(error);
     }
@@ -197,10 +206,7 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'username (string) is required' });
       }
       const result = await awardMessagePoints(loyaltyFile, username.trim(), !!isSubscriber, !!isVip);
-      if (result.notConfigured) {
-        return res.status(503).json({ error: 'Loyalty system not configured' });
-      }
-      res.json({
+      handleLoyaltyResult(result, res, {
         pointsEarned: result.pointsEarned ?? 0,
         newBalance: result.newBalance ?? 0,
         onCooldown: result.onCooldown ?? false
@@ -225,17 +231,7 @@ module.exports = function(logsDir) {
         }
       }
       const result = await runGamba(loyaltyFile, username.trim(), bet);
-      if (result.notConfigured) {
-        return res.status(503).json({ error: 'Loyalty system not configured' });
-      }
-      if (!result.success) {
-        if (result.code === 'USER_NOT_FOUND') {
-          return res.status(404).json({ error: result.error });
-        }
-        return res.status(400).json({ error: result.error, balance: result.balance });
-      }
-      res.json({
-        success: true,
+      handleLoyaltyResult(result, res, {
         won: result.won,
         newBalance: result.newBalance,
         amountBet: result.amountBet,
@@ -258,14 +254,7 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'stake must be at least 1.' });
       }
       const result = await runDuel(loyaltyFile, challenger.trim(), opponent.trim(), amount);
-      if (result.notConfigured) {
-        return res.status(503).json({ error: 'Loyalty system not configured' });
-      }
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-      res.json({
-        success: true,
+      handleLoyaltyResult(result, res, {
         winner: result.winner,
         challengerBalance: result.challengerBalance,
         opponentBalance: result.opponentBalance

@@ -396,6 +396,87 @@ const GAMBA_MIN = 1;
 const GAMBA_MAX = 10000;
 
 /**
+ * Validates gamba bet amount before processing
+ * @param {number|string} amount - Bet amount or 'all'
+ * @returns {{ valid: boolean, error?: string, isAll: boolean }}
+ */
+function validateGambaBetAmount(amount) {
+  const isAll = amount === 'all' || String(amount).toLowerCase() === 'all';
+  if (isAll) {
+    return { valid: true, isAll: true };
+  }
+
+  const bet = Math.floor(Number(amount));
+  if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
+    return {
+      valid: false,
+      isAll: false,
+      error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.`
+    };
+  }
+
+  return { valid: true, isAll: false };
+}
+
+/**
+ * Validates user has sufficient balance for bet
+ * @param {object} userData - User loyalty data
+ * @param {number} bet - Bet amount
+ * @returns {{ valid: boolean, error?: string, code?: string, balance?: number }}
+ */
+function validateGambaBalance(userData, bet) {
+  if (!userData) {
+    return {
+      valid: false,
+      code: 'USER_NOT_FOUND',
+      error: 'You have no loyalty points yet.'
+    };
+  }
+
+  const balance = userData.points || 0;
+
+  if (bet < GAMBA_MIN) {
+    return {
+      valid: false,
+      code: 'INSUFFICIENT_POINTS',
+      balance,
+      error: 'You have no points to bet.'
+    };
+  }
+
+  if (balance < bet) {
+    return {
+      valid: false,
+      code: 'INSUFFICIENT_POINTS',
+      balance,
+      error: `Insufficient points. You have ${balance}.`
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Processes gamba win logic
+ * @param {object} data - Loyalty data
+ * @param {object} userData - User loyalty data
+ * @param {string} normalizedUsername - Username (lowercase)
+ * @param {number} bet - Bet amount
+ */
+function processGambaWin(data, userData, normalizedUsername, bet) {
+  const winnings = bet * 2;
+  userData.points += winnings;
+  userData.totalEarned = (userData.totalEarned || 0) + winnings;
+  appendTransaction(data, {
+    username: normalizedUsername,
+    amount: winnings,
+    type: 'bonus',
+    reason: 'Gamba win',
+    balance: userData.points
+  });
+}
+
+/**
  * Run a single-user gamble: deduct amount, 50% chance to double (2x return).
  * All under one lock so balance is consistent.
  *
@@ -405,31 +486,30 @@ const GAMBA_MAX = 10000;
  * @returns {{ success: boolean, notConfigured?: boolean, error?: string, code?: string, won?: boolean, newBalance?: number, amountBet?: number, winnings?: number }}
  */
 async function runGamba(loyaltyFile, username, amount) {
-  const isAll = amount === 'all' || String(amount).toLowerCase() === 'all';
-  if (!isAll) {
-    const bet = Math.floor(Number(amount));
-    if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
-      return { success: false, error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.` };
-    }
+  const validation = validateGambaBetAmount(amount);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
   }
+
   return withCrossProcessLock(loyaltyFile, async () => {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, notConfigured: true };
 
     const normalizedUsername = username.toLowerCase();
     const userData = data.users?.[normalizedUsername];
-    if (!userData) {
-      return { success: false, code: 'USER_NOT_FOUND', error: 'You have no loyalty points yet.' };
-    }
-    const balance = userData.points || 0;
-    const bet = isAll
+    const balance = userData?.points || 0;
+    const bet = validation.isAll
       ? Math.min(Math.floor(balance), GAMBA_MAX)
       : Math.floor(Number(amount));
-    if (bet < GAMBA_MIN) {
-      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: 'You have no points to bet.' };
-    }
-    if (balance < bet) {
-      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: `Insufficient points. You have ${balance}.` };
+
+    const balanceValidation = validateGambaBalance(userData, bet);
+    if (!balanceValidation.valid) {
+      return {
+        success: false,
+        code: balanceValidation.code,
+        balance: balanceValidation.balance,
+        error: balanceValidation.error
+      };
     }
 
     userData.points -= bet;
@@ -444,16 +524,7 @@ async function runGamba(loyaltyFile, username, amount) {
 
     const won = Math.random() < 0.5;
     if (won) {
-      const winnings = bet * 2;
-      userData.points += winnings;
-      userData.totalEarned = (userData.totalEarned || 0) + winnings;
-      appendTransaction(data, {
-        username: normalizedUsername,
-        amount: winnings,
-        type: 'bonus',
-        reason: 'Gamba win',
-        balance: userData.points
-      });
+      processGambaWin(data, userData, normalizedUsername, bet);
     }
 
     await writeLoyaltyData(loyaltyFile, data);
