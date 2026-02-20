@@ -266,6 +266,72 @@ function sendAlert(alertType, alertData) {
   });
 }
 
+// ==================== CHAT HYPE (ORIGINAL FEATURE) ====================
+// Tracks chat activity and triggers a "hype" moment when message rate crosses a threshold.
+
+const HYPE_WINDOW_MS = (Number(process.env.HYPE_WINDOW_SEC) || 60) * 1000;
+const hypeActivityByChannel = new Map(); // channel -> { timestamps: number[] }
+const lastHypeTriggerByChannel = new Map(); // channel -> timestamp (ms)
+
+const hypeConfig = {
+  enabled: process.env.HYPE_ENABLED !== 'false' && process.env.HYPE_ENABLED !== '0',
+  minMessages: Math.max(5, parseInt(process.env.HYPE_MIN_MESSAGES, 10) || 15),
+  windowSec: Number(process.env.HYPE_WINDOW_SEC) || 60,
+  cooldownSec: Math.max(30, parseInt(process.env.HYPE_COOLDOWN_SEC, 10) || 120),
+  message: (process.env.HYPE_MESSAGE || 'Chat is HYPED! 🔥').trim()
+};
+
+function getHypeConfig() {
+  return { ...hypeConfig };
+}
+
+function recordChatForHype(channel) {
+  const key = channel.toLowerCase();
+  const now = Date.now();
+  const cutoff = now - HYPE_WINDOW_MS;
+
+  if (!hypeActivityByChannel.has(key)) {
+    hypeActivityByChannel.set(key, { timestamps: [] });
+  }
+  const entry = hypeActivityByChannel.get(key);
+  entry.timestamps.push(now);
+  while (entry.timestamps.length > 0 && entry.timestamps[0] < cutoff) {
+    entry.timestamps.shift();
+  }
+  return entry.timestamps.length;
+}
+
+function getHypeCount(channel) {
+  const key = channel.toLowerCase();
+  const entry = hypeActivityByChannel.get(key);
+  if (!entry) return 0;
+  const cutoff = Date.now() - HYPE_WINDOW_MS;
+  const valid = entry.timestamps.filter(t => t >= cutoff);
+  return valid.length;
+}
+
+function tryTriggerHype(channel) {
+  if (!hypeConfig.enabled) return;
+  const count = getHypeCount(channel);
+  if (count < hypeConfig.minMessages) return;
+
+  const key = channel.toLowerCase();
+  const last = lastHypeTriggerByChannel.get(key) || 0;
+  const cooldownMs = hypeConfig.cooldownSec * 1000;
+  if (Date.now() - last < cooldownMs) return;
+
+  lastHypeTriggerByChannel.set(key, Date.now());
+  sendChatMessage(channel, hypeConfig.message);
+  apiClient_axios.post(`${dashboardBaseUrl}/api/hype/trigger`, {
+    channel,
+    count,
+    threshold: hypeConfig.minMessages,
+    windowSec: hypeConfig.windowSec
+  }).catch(err => {
+    console.error('[Hype] Failed to broadcast hype:', err.message);
+  });
+}
+
 // Log EventSub event to dashboard
 function logEventSubEvent(eventType, eventData) {
   apiClient_axios.post(`${dashboardBaseUrl}/api/eventsub-events`, {
@@ -3385,9 +3451,8 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
 
     // Chat Hype: record message and trigger hype if threshold reached
-    // TODO: Incomplete feature - function implementations missing (see commit 8d74478)
-    // recordChatForHype(channel);
-    // tryTriggerHype(channel);
+    recordChatForHype(channel);
+    tryTriggerHype(channel);
 
     // First-time chatter welcome (Twitch IRC tag first-msg; isFirst is on msg, not msg.userInfo)
     const isFirstChatter = msg.isFirst === true;

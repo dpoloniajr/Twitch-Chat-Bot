@@ -1,62 +1,56 @@
 /**
- * Regression test for message handler bug
+ * Regression test for message handler and Chat Hype feature
  *
- * Bug: recordChatForHype and tryTriggerHype were called but not defined,
- * causing ReferenceError and preventing all chat commands from executing.
+ * Previously: recordChatForHype and tryTriggerHype were called but not defined,
+ * causing ReferenceError. They were commented out with a TODO.
  *
- * Fix: Commented out the undefined function calls (Excella.js:3388-3390)
- *
- * This test ensures the message handler doesn't throw ReferenceError
- * when processing chat messages.
+ * Now: Chat Hype is fully implemented. This test verifies:
+ * 1. recordChatForHype and tryTriggerHype are defined in Excella.js
+ * 2. They are called (not commented out) in the message handler
  */
 
+const fs = require('fs');
+const path = require('path');
+
+const excellaPath = path.join(__dirname, '../../Excella.js');
+
 describe('Message Handler - Regression Tests', () => {
-  describe('undefined function calls bug', () => {
-    it('should not throw ReferenceError for recordChatForHype', () => {
-      // This test validates that the message handler code doesn't reference
-      // undefined functions that would cause a ReferenceError
+  let excellaContent: string;
 
-      // Since Excella.js is the main bot file and not easily testable in isolation,
-      // this test verifies the fix by checking that the problematic function names
-      // are only present as comments (not active code)
+  beforeAll(() => {
+    excellaContent = fs.readFileSync(excellaPath, 'utf-8');
+  });
 
-      const fs = require('fs');
-      const path = require('path');
-      const excellaPath = path.join(__dirname, '../../Excella.js');
-      const excellaContent = fs.readFileSync(excellaPath, 'utf-8');
-
-      // Find all occurrences of recordChatForHype
-      const lines = excellaContent.split('\n');
-      const recordChatForHypeLines = lines
-        .map((line: string, idx: number) => ({ line, lineNum: idx + 1 }))
-        .filter(({ line }: { line: string }) => line.includes('recordChatForHype'));
-
-      // All occurrences should be in comments (starting with // or inside /* */)
-      recordChatForHypeLines.forEach(({ line, lineNum }: { line: string; lineNum: number }) => {
-        const trimmed = line.trim();
-        expect(trimmed.startsWith('//')).toBe(true);
-      });
-
-      // Same check for tryTriggerHype
-      const tryTriggerHypeLines = lines
-        .map((line: string, idx: number) => ({ line, lineNum: idx + 1 }))
-        .filter(({ line }: { line: string }) => line.includes('tryTriggerHype'));
-
-      tryTriggerHypeLines.forEach(({ line, lineNum }: { line: string; lineNum: number }) => {
-        const trimmed = line.trim();
-        expect(trimmed.startsWith('//')).toBe(true);
-      });
+  describe('Chat Hype - full implementation', () => {
+    it('should define recordChatForHype', () => {
+      // Function must be defined (not only referenced in comments)
+      expect(excellaContent).toMatch(/\bfunction\s+recordChatForHype\s*\(/);
     });
 
-    it('should have TODO comment documenting the incomplete feature', () => {
-      const fs = require('fs');
-      const path = require('path');
-      const excellaPath = path.join(__dirname, '../../Excella.js');
-      const excellaContent = fs.readFileSync(excellaPath, 'utf-8');
+    it('should define tryTriggerHype', () => {
+      expect(excellaContent).toMatch(/\bfunction\s+tryTriggerHype\s*\(/);
+    });
 
-      // Verify that the fix includes a TODO comment explaining why the functions are commented out
-      expect(excellaContent).toContain('TODO: Incomplete feature');
-      expect(excellaContent).toContain('function implementations missing');
+    it('should call recordChatForHype(channel) in message handler (not commented)', () => {
+      const lines = excellaContent.split('\n');
+      const callLine = lines.find(
+        (line) => line.includes('recordChatForHype(channel)') && !line.trim().startsWith('//')
+      );
+      expect(callLine).toBeDefined();
+      expect(callLine!.trim()).toContain('recordChatForHype(channel)');
+    });
+
+    it('should call tryTriggerHype(channel) in message handler (not commented)', () => {
+      const lines = excellaContent.split('\n');
+      const callLine = lines.find(
+        (line) => line.includes('tryTriggerHype(channel)') && !line.trim().startsWith('//')
+      );
+      expect(callLine).toBeDefined();
+      expect(callLine!.trim()).toContain('tryTriggerHype(channel)');
+    });
+
+    it('should not have TODO for incomplete hype feature', () => {
+      expect(excellaContent).not.toContain('TODO: Incomplete feature - function implementations missing');
     });
   });
 });

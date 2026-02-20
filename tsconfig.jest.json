@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "commonjs",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "@config/*": ["src/config/*"],
+      "@commands/*": ["src/commands/*"],
+      "@services/*": ["src/services/*"],
+      "@filters/*": ["src/filters/*"],
+      "@utils/*": ["src/utils/*"],
+      "@types/*": ["src/types/*"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}
