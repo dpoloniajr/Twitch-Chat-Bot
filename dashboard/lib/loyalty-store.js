@@ -8,6 +8,13 @@
 const fs = require('fs').promises;
 const { withCrossProcessLock } = require('../../lib/file-lock');
 
+/** Maximum number of transactions to keep in history */
+const TRANSACTION_HISTORY_MAX = 2000;
+/** Number of transactions to keep when trimming history */
+const TRANSACTION_HISTORY_TRIM_SIZE = 1000;
+/** Milliseconds per minute (used for watch time calculations) */
+const MILLISECONDS_PER_MINUTE = 60000;
+
 const DEFAULT_USER = () => ({
   points: 0,
   totalEarned: 0,
@@ -74,8 +81,8 @@ function appendTransaction(data, tx) {
     ...tx,
     timestamp: new Date().toISOString()
   });
-  if (data.transactions.length > 2000) {
-    data.transactions = data.transactions.slice(-1000);
+  if (data.transactions.length > TRANSACTION_HISTORY_MAX) {
+    data.transactions = data.transactions.slice(-TRANSACTION_HISTORY_TRIM_SIZE);
   }
 }
 
@@ -337,7 +344,7 @@ async function processWatchTimeAwards(loyaltyFile) {
         ? userData.lastWatchTimeAwardedAt
         : parseTimestampMs(userData.firstSeen) || lastSeenMs;
       const elapsedMs = now - lastAwardedMs;
-      const minutesToAward = Math.floor(elapsedMs / 60000);
+      const minutesToAward = Math.floor(elapsedMs / MILLISECONDS_PER_MINUTE);
       if (minutesToAward <= 0) continue;
 
       let points = minutesToAward * pointsPerMinute;
