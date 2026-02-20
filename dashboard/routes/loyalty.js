@@ -220,6 +220,9 @@ module.exports = function(logsDir) {
       if (!username || typeof username !== 'string') {
         return res.status(400).json({ error: 'username (string) is required' });
       }
+      if (amount === undefined || amount === null || amount === '') {
+        return res.status(400).json({ error: 'amount is required. Use a number or "all".' });
+      }
       let bet = amount;
       if (bet !== 'all' && String(bet).toLowerCase() !== 'all') {
         bet = parseInt(Number(bet), 10);

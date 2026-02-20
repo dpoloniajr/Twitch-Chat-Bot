@@ -2087,15 +2087,25 @@ async function handleCoinflip(channel, username) {
 
 async function handleGamba(channel, username, args) {
   const raw = (args[0] || '').toString().trim().toLowerCase();
-  const amount = raw === 'all' ? 'all' : parseInt(raw, 10);
-  if (raw && raw !== 'all' && (Number.isNaN(amount) || amount < 1)) {
+
+  // Require explicit amount
+  if (!raw) {
     sendChatMessage(channel, `@${username} Usage: !gamba <amount> or !gamba all — bet points (50% win = 2x, 50% lose).`);
     return false;
   }
+
+  const amount = raw === 'all' ? 'all' : parseInt(raw, 10);
+
+  // Validate numeric amounts
+  if (raw !== 'all' && (Number.isNaN(amount) || amount < 1)) {
+    sendChatMessage(channel, `@${username} Usage: !gamba <amount> or !gamba all — bet points (50% win = 2x, 50% lose).`);
+    return false;
+  }
+
   try {
     const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/loyalty/gamba`, {
       username: username.toLowerCase(),
-      amount: raw === 'all' ? 'all' : (amount || 1)
+      amount: raw === 'all' ? 'all' : amount
     }, { timeout: 5000 });
     const data = response.data;
     const config = await getLoyaltyConfig();
