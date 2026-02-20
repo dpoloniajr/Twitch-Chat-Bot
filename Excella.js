@@ -2085,6 +2085,71 @@ async function handleCoinflip(channel, username) {
   sendChatMessage(channel, `@${username} flipped a coin and got ${result}.`);
 }
 
+async function handleGamba(channel, username, args) {
+  const raw = (args[0] || '').toString().trim().toLowerCase();
+  const amount = raw === 'all' ? 'all' : parseInt(raw, 10);
+  if (raw && raw !== 'all' && (Number.isNaN(amount) || amount < 1)) {
+    sendChatMessage(channel, `@${username} Usage: !gamba <amount> or !gamba all — bet points (50% win = 2x, 50% lose).`);
+    return false;
+  }
+  try {
+    const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/loyalty/gamba`, {
+      username: username.toLowerCase(),
+      amount: raw === 'all' ? 'all' : (amount || 1)
+    }, { timeout: 5000 });
+    const data = response.data;
+    const config = await getLoyaltyConfig();
+    const currency = config.currencyNamePlural || 'points';
+    if (data.won) {
+      sendChatMessage(channel, `@${username} won ${data.winnings} ${currency}! New balance: ${data.newBalance}.`);
+    } else {
+      sendChatMessage(channel, `@${username} lost ${data.amountBet} ${currency}. New balance: ${data.newBalance}. Better luck next time!`);
+    }
+    logCommandExecution(username, '!gamba', args, true);
+    return true;
+  } catch (error) {
+    const errMsg = error.response?.data?.error || error.message;
+    sendChatMessage(channel, `@${username} ${errMsg}`);
+    logCommandExecution(username, '!gamba', args, false);
+    return true;
+  }
+}
+
+async function handleDuel(channel, username, args, msg) {
+  const opponentRaw = (args[0] || '').replace(/^@+/, '').trim();
+  const stakeRaw = args[1];
+  if (!opponentRaw) {
+    sendChatMessage(channel, `@${username} Usage: !duel @<user> [stake] — challenge someone (default stake 50 points).`);
+    return false;
+  }
+  const challenger = username.toLowerCase();
+  const opponent = opponentRaw.toLowerCase();
+  if (challenger === opponent) {
+    sendChatMessage(channel, `@${username} You cannot duel yourself.`);
+    return false;
+  }
+  const stake = stakeRaw ? parseInt(stakeRaw, 10) : 50;
+  const amount = Number.isFinite(stake) && stake >= 1 ? stake : 50;
+  try {
+    const response = await apiClient_axios.post(`${dashboardBaseUrl}/api/loyalty/duel`, {
+      challenger,
+      opponent,
+      stake: amount
+    }, { timeout: 5000 });
+    const data = response.data;
+    const config = await getLoyaltyConfig();
+    const currency = config.currencyNamePlural || 'points';
+    sendChatMessage(channel, `@${username} Duel! ${data.winner} wins ${amount * 2} ${currency}! ${challenger}: ${data.challengerBalance} | ${opponent}: ${data.opponentBalance}.`);
+    logCommandExecution(username, '!duel', args, true);
+    return true;
+  } catch (error) {
+    const errMsg = error.response?.data?.error || error.message;
+    sendChatMessage(channel, `@${username} ${errMsg}`);
+    logCommandExecution(username, '!duel', args, false);
+    return true;
+  }
+}
+
 // TTS configuration
 const TTS_CONFIG = {
   MAX_LENGTH: 200,
@@ -3051,7 +3116,7 @@ async function handleSongRequestConfig(channel, username, msg, args) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !hype | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !gamba <amount|all> | !duel @user [stake] | !quote | !counter <name> | !hype | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
 }
 
 function handleHype(channel, username, args, isMod) {
@@ -3276,6 +3341,28 @@ const commandRegistry = new Map([
     }
     await handleLeaderboard(channel, username);
     if (cooldownSeconds > 0) setCooldown('leaderboard');
+  }}],
+  ['!gamba', { perm: 'everyone', handler: async ({ channel, username, args }) => {
+    const cooldownSeconds = getCommandCooldown('!gamba');
+    if (isOnCooldown('gamba', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('gamba') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !gamba is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    const shouldCooldown = await handleGamba(channel, username, args);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('gamba');
+  }}],
+  ['!duel', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    const cooldownSeconds = getCommandCooldown('!duel');
+    if (isOnCooldown('duel', cooldownSeconds)) {
+      const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('duel') || 0));
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      sendChatMessage(channel, `@${username} !duel is on cooldown. Try again in ${remainingSec}s.`);
+      return;
+    }
+    const shouldCooldown = await handleDuel(channel, username, args, msg);
+    if (shouldCooldown && cooldownSeconds > 0) setCooldown('duel');
   }}],
   ['!quote', { perm: 'everyone', handler: async ({ channel, username }) => {
     const cooldownSeconds = getCommandCooldown('!quote');
