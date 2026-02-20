@@ -585,3 +585,18 @@ When working on tasks involving these technologies, load the relevant skills as 
 | axios | Handles axios-based Helix API and HTTP calls |
 | elevenlabs | Manages ElevenLabs TTS generation, voices, and caching |
 | web-speech-api | Implements browser Web Speech API speech synthesis controls |
+
+
+## Skill Usage Guide
+
+When working on tasks involving these technologies, load the relevant skills as needed:
+
+| Skill | Invoke When |
+|-------|-------------|
+| tmi.js | Controls Twitch IRC chat handling via tmi.js client |
+| ws | Manages ws WebSocket servers and broadcast patterns |
+| express | Implements Express routing, middleware, and API endpoints |
+| openai | Uses OpenAI TTS APIs with fallback handling |
+| axios | Handles axios-based Helix API and HTTP calls |
+| elevenlabs | Manages ElevenLabs TTS generation, voices, and caching |
+| web-speech-api | Implements browser Web Speech API speech synthesis controls |
