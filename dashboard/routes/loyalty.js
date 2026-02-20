@@ -4,7 +4,7 @@
 
 const express = require('express');
 const path = require('path');
-const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, runGamba, runDuel, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
+const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, runGamba, runDuel, DEFAULT_DUEL_STAKE, GAMBA_MIN, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir) {
   const router = express.Router();
@@ -220,7 +220,7 @@ module.exports = function(logsDir) {
       let bet = amount;
       if (bet !== 'all' && String(bet).toLowerCase() !== 'all') {
         bet = parseInt(Number(bet), 10);
-        if (!Number.isFinite(bet) || bet < 1) {
+        if (!Number.isFinite(bet) || bet < GAMBA_MIN) {
           return res.status(400).json({ error: 'amount must be a positive number or "all".' });
         }
       }
@@ -253,7 +253,7 @@ module.exports = function(logsDir) {
       if (!challenger || !opponent || typeof challenger !== 'string' || typeof opponent !== 'string') {
         return res.status(400).json({ error: 'challenger and opponent (strings) are required' });
       }
-      const amount = Math.floor(Number(stake)) || 50;
+      const amount = Math.floor(Number(stake)) || DEFAULT_DUEL_STAKE;
       if (amount < 1) {
         return res.status(400).json({ error: 'stake must be at least 1.' });
       }

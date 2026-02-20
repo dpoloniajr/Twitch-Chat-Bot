@@ -48,6 +48,21 @@ async function writeLoyaltyData(loyaltyFile, data) {
 }
 
 /**
+ * Ensures a user exists in the loyalty data. Mutates data.users in place.
+ * @param {object} data - Loyalty data object
+ * @param {string} username - Username to ensure exists
+ * @returns {string} Normalized username (lowercased)
+ */
+function ensureUserExists(data, username) {
+  const normalizedUsername = username.toLowerCase();
+  if (!data.users) data.users = {};
+  if (!data.users[normalizedUsername]) {
+    data.users[normalizedUsername] = DEFAULT_USER();
+  }
+  return normalizedUsername;
+}
+
+/**
  * Append a transaction entry and trim the history to at most 2 000 entries.
  * Mutates `data` in place; caller must persist afterward.
  * @param {object} data - Full loyalty data object
@@ -131,14 +146,9 @@ async function refundPoints(loyaltyFile, username, amount, reason) {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return;
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     userData.points = (userData.points || 0) + amount;
     // Reverse the spend without counting as a new earn
     userData.totalSpent = Math.max(0, (userData.totalSpent || 0) - amount);
@@ -170,14 +180,9 @@ async function addPoints(loyaltyFile, username, amount, reason, type = 'bonus') 
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, error: 'Loyalty system not configured' };
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     userData.points = (userData.points || 0) + amount;
     userData.totalEarned = (userData.totalEarned || 0) + amount;
 
@@ -209,14 +214,9 @@ async function setPoints(loyaltyFile, username, points, reason) {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, error: 'Loyalty system not configured' };
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     const oldPoints = userData.points || 0;
     userData.points = Math.max(0, points);
 
@@ -263,13 +263,9 @@ async function awardMessagePoints(loyaltyFile, username, isSubscriber, isVip) {
     const config = data.config || {};
     if (config.enabled === false) return { success: true, pointsEarned: 0 };
 
-    const normalizedUsername = username.toLowerCase();
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     const now = Date.now();
     const cooldownMs = (config.messageCooldownSeconds ?? 30) * 1000;
     const lastAt = parseTimestampMs(userData.lastMessagePointsAt);
@@ -383,13 +379,9 @@ async function touchUserPresence(loyaltyFile, username, badges = {}) {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return;
 
-    const normalizedUsername = username.toLowerCase();
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     userData.lastSeen = new Date().toISOString();
     if (badges.isSubscriber != null) userData.isSubscriber = !!badges.isSubscriber;
     if (badges.isVip != null) userData.isVip = !!badges.isVip;
@@ -502,6 +494,7 @@ async function runDuel(loyaltyFile, challenger, opponent, stake = DEFAULT_DUEL_S
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, notConfigured: true };
 
+    // Note: c and o are already lowercased from preprocessing above
     if (!data.users) data.users = {};
     if (!data.users[c]) data.users[c] = DEFAULT_USER();
     if (!data.users[o]) data.users[o] = DEFAULT_USER();
@@ -555,6 +548,8 @@ module.exports = {
   touchUserPresence,
   runGamba,
   runDuel,
+  DEFAULT_DUEL_STAKE,
+  GAMBA_MIN,
   GAMBA_MAX,
   WATCH_TIME_INTERVAL_MS
 };
