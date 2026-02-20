@@ -397,6 +397,142 @@ async function touchUserPresence(loyaltyFile, username, badges = {}) {
   });
 }
 
+/** Default duel stake (points) if not specified */
+const DEFAULT_DUEL_STAKE = 50;
+/** Min/max gamba bet (points) */
+const GAMBA_MIN = 1;
+const GAMBA_MAX = 10000;
+
+/**
+ * Run a single-user gamble: deduct amount, 50% chance to double (2x return).
+ * All under one lock so balance is consistent.
+ *
+ * @param {string} loyaltyFile
+ * @param {string} username
+ * @param {number} amount - Points to bet (must be >= GAMBA_MIN, <= GAMBA_MAX)
+ * @returns {{ success: boolean, notConfigured?: boolean, error?: string, code?: string, won?: boolean, newBalance?: number, amountBet?: number, winnings?: number }}
+ */
+async function runGamba(loyaltyFile, username, amount) {
+  const bet = Math.floor(Number(amount));
+  if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
+    return { success: false, error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.` };
+  }
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, notConfigured: true };
+
+    const normalizedUsername = username.toLowerCase();
+    const userData = data.users?.[normalizedUsername];
+    if (!userData) {
+      return { success: false, code: 'USER_NOT_FOUND', error: 'You have no loyalty points yet.' };
+    }
+    const balance = userData.points || 0;
+    if (balance < bet) {
+      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: `Insufficient points. You have ${balance}.` };
+    }
+
+    userData.points -= bet;
+    userData.totalSpent = (userData.totalSpent || 0) + bet;
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount: -bet,
+      type: 'spend',
+      reason: 'Gamba bet',
+      balance: userData.points
+    });
+
+    const won = Math.random() < 0.5;
+    if (won) {
+      const winnings = bet * 2;
+      userData.points += winnings;
+      userData.totalEarned = (userData.totalEarned || 0) + winnings;
+      appendTransaction(data, {
+        username: normalizedUsername,
+        amount: winnings,
+        type: 'bonus',
+        reason: 'Gamba win',
+        balance: userData.points
+      });
+    }
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return {
+      success: true,
+      won,
+      newBalance: userData.points,
+      amountBet: bet,
+      winnings: won ? bet * 2 : 0
+    };
+  });
+}
+
+/**
+ * Run a duel: both users pay stake, one random winner gets 2× stake. All under one lock.
+ *
+ * @param {string} loyaltyFile
+ * @param {string} challenger - Username of challenger
+ * @param {string} opponent - Username of opponent
+ * @param {number} stake - Points each must put up (default DEFAULT_DUEL_STAKE)
+ * @returns {{ success: boolean, notConfigured?: boolean, error?: string, code?: string, winner?: string, challengerBalance?: number, opponentBalance?: number }}
+ */
+async function runDuel(loyaltyFile, challenger, opponent, stake = DEFAULT_DUEL_STAKE) {
+  const amount = Math.floor(Number(stake)) || DEFAULT_DUEL_STAKE;
+  if (amount < 1) {
+    return { success: false, error: 'Stake must be at least 1 point.' };
+  }
+  const c = challenger.toLowerCase().replace(/^@+/, '').trim();
+  const o = opponent.toLowerCase().replace(/^@+/, '').trim();
+  if (!c || !o) {
+    return { success: false, error: 'Challenger and opponent usernames are required.' };
+  }
+  if (c === o) {
+    return { success: false, error: 'You cannot duel yourself.' };
+  }
+
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, notConfigured: true };
+
+    if (!data.users) data.users = {};
+    if (!data.users[c]) data.users[c] = DEFAULT_USER();
+    if (!data.users[o]) data.users[o] = DEFAULT_USER();
+
+    const challengerData = data.users[c];
+    const opponentData = data.users[o];
+    const cBalance = challengerData.points || 0;
+    const oBalance = opponentData.points || 0;
+
+    if (cBalance < amount) {
+      return { success: false, code: 'CHALLENGER_INSUFFICIENT', error: `${challenger} doesn't have enough points (${cBalance}). Need ${amount}.` };
+    }
+    if (oBalance < amount) {
+      return { success: false, code: 'OPPONENT_INSUFFICIENT', error: `${opponent} doesn't have enough points (${oBalance}). Need ${amount}.` };
+    }
+
+    challengerData.points -= amount;
+    challengerData.totalSpent = (challengerData.totalSpent || 0) + amount;
+    appendTransaction(data, { username: c, amount: -amount, type: 'spend', reason: 'Duel stake', balance: challengerData.points });
+    opponentData.points -= amount;
+    opponentData.totalSpent = (opponentData.totalSpent || 0) + amount;
+    appendTransaction(data, { username: o, amount: -amount, type: 'spend', reason: 'Duel stake', balance: opponentData.points });
+
+    const winner = Math.random() < 0.5 ? c : o;
+    const winnerData = data.users[winner];
+    const winnings = amount * 2;
+    winnerData.points += winnings;
+    winnerData.totalEarned = (winnerData.totalEarned || 0) + winnings;
+    appendTransaction(data, { username: winner, amount: winnings, type: 'bonus', reason: 'Duel win', balance: winnerData.points });
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return {
+      success: true,
+      winner,
+      challengerBalance: data.users[c].points,
+      opponentBalance: data.users[o].points
+    };
+  });
+}
+
 module.exports = {
   readLoyaltyData,
   writeLoyaltyData,
@@ -408,5 +544,7 @@ module.exports = {
   awardMessagePoints,
   processWatchTimeAwards,
   touchUserPresence,
+  runGamba,
+  runDuel,
   WATCH_TIME_INTERVAL_MS
 };

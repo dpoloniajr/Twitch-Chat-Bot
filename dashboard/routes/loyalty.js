@@ -4,7 +4,7 @@
 
 const express = require('express');
 const path = require('path');
-const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
+const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, runGamba, runDuel, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir) {
   const router = express.Router();
@@ -204,6 +204,78 @@ module.exports = function(logsDir) {
         pointsEarned: result.pointsEarned ?? 0,
         newBalance: result.newBalance ?? 0,
         onCooldown: result.onCooldown ?? false
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/loyalty/gamba - Gamble points (50% win = 2x, 50% lose)
+  router.post('/gamba', async (req, res, next) => {
+    try {
+      const { username, amount } = req.body;
+      if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'username (string) is required' });
+      }
+      let bet = amount;
+      if (bet === 'all' || String(bet).toLowerCase() === 'all') {
+        const data = await readData();
+        const userData = data.users?.[username.toLowerCase()];
+        if (!userData || (userData.points || 0) < 1) {
+          return res.status(400).json({ error: 'You have no points to bet.' });
+        }
+        bet = userData.points;
+      } else {
+        bet = parseInt(Number(bet), 10);
+        if (!Number.isFinite(bet) || bet < 1) {
+          return res.status(400).json({ error: 'amount must be a positive number or "all".' });
+        }
+      }
+      const result = await runGamba(loyaltyFile, username.trim(), bet);
+      if (result.notConfigured) {
+        return res.status(503).json({ error: 'Loyalty system not configured' });
+      }
+      if (!result.success) {
+        if (result.code === 'USER_NOT_FOUND') {
+          return res.status(404).json({ error: result.error });
+        }
+        return res.status(400).json({ error: result.error, balance: result.balance });
+      }
+      res.json({
+        success: true,
+        won: result.won,
+        newBalance: result.newBalance,
+        amountBet: result.amountBet,
+        winnings: result.winnings ?? 0
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/loyalty/duel - Duel two users; winner takes both stakes
+  router.post('/duel', async (req, res, next) => {
+    try {
+      const { challenger, opponent, stake } = req.body;
+      if (!challenger || !opponent || typeof challenger !== 'string' || typeof opponent !== 'string') {
+        return res.status(400).json({ error: 'challenger and opponent (strings) are required' });
+      }
+      const amount = Math.floor(Number(stake)) || 50;
+      if (amount < 1) {
+        return res.status(400).json({ error: 'stake must be at least 1.' });
+      }
+      const result = await runDuel(loyaltyFile, challenger.trim(), opponent.trim(), amount);
+      if (result.notConfigured) {
+        return res.status(503).json({ error: 'Loyalty system not configured' });
+      }
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+      res.json({
+        success: true,
+        winner: result.winner,
+        challengerBalance: result.challengerBalance,
+        opponentBalance: result.opponentBalance
       });
     } catch (error) {
       next(error);
