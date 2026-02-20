@@ -2115,7 +2115,7 @@ async function handleGamba(channel, username, args) {
   }
 }
 
-async function handleDuel(channel, username, args, msg) {
+async function handleDuel(channel, username, args) {
   const opponentRaw = (args[0] || '').replace(/^@+/, '').trim();
   const stakeRaw = args[1];
   if (!opponentRaw) {
@@ -3361,7 +3361,7 @@ const commandRegistry = new Map([
       sendChatMessage(channel, `@${username} !duel is on cooldown. Try again in ${remainingSec}s.`);
       return;
     }
-    const shouldCooldown = await handleDuel(channel, username, args, msg);
+    const shouldCooldown = await handleDuel(channel, username, args);
     if (shouldCooldown && cooldownSeconds > 0) setCooldown('duel');
   }}],
   ['!quote', { perm: 'everyone', handler: async ({ channel, username }) => {
