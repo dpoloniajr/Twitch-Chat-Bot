@@ -600,3 +600,12 @@ When working on tasks involving these technologies, load the relevant skills as 
 | axios | Handles axios-based Helix API and HTTP calls |
 | elevenlabs | Manages ElevenLabs TTS generation, voices, and caching |
 | web-speech-api | Implements browser Web Speech API speech synthesis controls |
+
+
+## Skill Usage Guide
+
+When working on tasks involving these technologies, load the relevant skills as needed:
+
+| Skill | Invoke When |
+|-------|-------------|
+| node | Runs server-side JavaScript, processes bots, and manages async flows |
