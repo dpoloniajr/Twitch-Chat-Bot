@@ -8,6 +8,13 @@
 const fs = require('fs').promises;
 const { withCrossProcessLock } = require('../../lib/file-lock');
 
+/** Maximum number of transactions to keep in history */
+const TRANSACTION_HISTORY_MAX = 2000;
+/** Number of transactions to keep when trimming history */
+const TRANSACTION_HISTORY_TRIM_SIZE = 1000;
+/** Milliseconds per minute (used for watch time calculations) */
+const MILLISECONDS_PER_MINUTE = 60000;
+
 const DEFAULT_USER = () => ({
   points: 0,
   totalEarned: 0,
@@ -48,6 +55,21 @@ async function writeLoyaltyData(loyaltyFile, data) {
 }
 
 /**
+ * Ensures a user exists in the loyalty data. Mutates data.users in place.
+ * @param {object} data - Loyalty data object
+ * @param {string} username - Username to ensure exists
+ * @returns {string} Normalized username (lowercased)
+ */
+function ensureUserExists(data, username) {
+  const normalizedUsername = username.toLowerCase();
+  if (!data.users) data.users = {};
+  if (!data.users[normalizedUsername]) {
+    data.users[normalizedUsername] = DEFAULT_USER();
+  }
+  return normalizedUsername;
+}
+
+/**
  * Append a transaction entry and trim the history to at most 2 000 entries.
  * Mutates `data` in place; caller must persist afterward.
  * @param {object} data - Full loyalty data object
@@ -59,8 +81,8 @@ function appendTransaction(data, tx) {
     ...tx,
     timestamp: new Date().toISOString()
   });
-  if (data.transactions.length > 2000) {
-    data.transactions = data.transactions.slice(-1000);
+  if (data.transactions.length > TRANSACTION_HISTORY_MAX) {
+    data.transactions = data.transactions.slice(-TRANSACTION_HISTORY_TRIM_SIZE);
   }
 }
 
@@ -131,14 +153,9 @@ async function refundPoints(loyaltyFile, username, amount, reason) {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return;
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     userData.points = (userData.points || 0) + amount;
     // Reverse the spend without counting as a new earn
     userData.totalSpent = Math.max(0, (userData.totalSpent || 0) - amount);
@@ -170,14 +187,9 @@ async function addPoints(loyaltyFile, username, amount, reason, type = 'bonus') 
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, notConfigured: true, error: 'Loyalty system not configured' };
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     userData.points = (userData.points || 0) + amount;
     userData.totalEarned = (userData.totalEarned || 0) + amount;
 
@@ -209,14 +221,9 @@ async function setPoints(loyaltyFile, username, points, reason) {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, error: 'Loyalty system not configured' };
 
-    const normalizedUsername = username.toLowerCase();
-
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     const oldPoints = userData.points || 0;
     userData.points = Math.max(0, points);
 
@@ -263,13 +270,9 @@ async function awardMessagePoints(loyaltyFile, username, isSubscriber, isVip) {
     const config = data.config || {};
     if (config.enabled === false) return { success: true, pointsEarned: 0 };
 
-    const normalizedUsername = username.toLowerCase();
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
+    const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
+
     const now = Date.now();
     const cooldownMs = (config.messageCooldownSeconds ?? 30) * 1000;
     const lastAt = parseTimestampMs(userData.lastMessagePointsAt);
@@ -341,7 +344,7 @@ async function processWatchTimeAwards(loyaltyFile) {
         ? userData.lastWatchTimeAwardedAt
         : parseTimestampMs(userData.firstSeen) || lastSeenMs;
       const elapsedMs = now - lastAwardedMs;
-      const minutesToAward = Math.floor(elapsedMs / 60000);
+      const minutesToAward = Math.floor(elapsedMs / MILLISECONDS_PER_MINUTE);
       if (minutesToAward <= 0) continue;
 
       let points = minutesToAward * pointsPerMinute;
@@ -370,38 +373,92 @@ async function processWatchTimeAwards(loyaltyFile) {
   });
 }
 
-/**
- * Update a user's lastSeen (and optionally sub/vip flags) so watch-time considers them present.
- * Call this when the user is "seen" (e.g. chatted). Does not award message points.
- *
- * @param {string} loyaltyFile
- * @param {string} username
- * @param {{ isSubscriber?: boolean, isVip?: boolean }} [badges]
- */
-async function touchUserPresence(loyaltyFile, username, badges = {}) {
-  return withCrossProcessLock(loyaltyFile, async () => {
-    const data = await readLoyaltyData(loyaltyFile);
-    if (!data) return;
-
-    const normalizedUsername = username.toLowerCase();
-    if (!data.users) data.users = {};
-    if (!data.users[normalizedUsername]) {
-      data.users[normalizedUsername] = DEFAULT_USER();
-    }
-
-    const userData = data.users[normalizedUsername];
-    userData.lastSeen = new Date().toISOString();
-    if (badges.isSubscriber != null) userData.isSubscriber = !!badges.isSubscriber;
-    if (badges.isVip != null) userData.isVip = !!badges.isVip;
-    await writeLoyaltyData(loyaltyFile, data);
-  });
-}
-
 /** Default duel stake (points) if not specified */
 const DEFAULT_DUEL_STAKE = 50;
 /** Min/max gamba bet (points) */
 const GAMBA_MIN = 1;
 const GAMBA_MAX = 10000;
+
+/**
+ * Validates gamba bet amount before processing
+ * @param {number|string} amount - Bet amount or 'all'
+ * @returns {{ valid: boolean, error?: string, isAll: boolean }}
+ */
+function validateGambaBetAmount(amount) {
+  const isAll = amount === 'all' || String(amount).toLowerCase() === 'all';
+  if (isAll) {
+    return { valid: true, isAll: true };
+  }
+
+  const bet = Math.floor(Number(amount));
+  if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
+    return {
+      valid: false,
+      isAll: false,
+      error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.`
+    };
+  }
+
+  return { valid: true, isAll: false };
+}
+
+/**
+ * Validates user has sufficient balance for bet
+ * @param {object} userData - User loyalty data
+ * @param {number} bet - Bet amount
+ * @returns {{ valid: boolean, error?: string, code?: string, balance?: number }}
+ */
+function validateGambaBalance(userData, bet) {
+  if (!userData) {
+    return {
+      valid: false,
+      code: 'USER_NOT_FOUND',
+      error: 'You have no loyalty points yet.'
+    };
+  }
+
+  const balance = userData.points || 0;
+
+  if (bet < GAMBA_MIN) {
+    return {
+      valid: false,
+      code: 'INSUFFICIENT_POINTS',
+      balance,
+      error: 'You have no points to bet.'
+    };
+  }
+
+  if (balance < bet) {
+    return {
+      valid: false,
+      code: 'INSUFFICIENT_POINTS',
+      balance,
+      error: `Insufficient points. You have ${balance}.`
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Processes gamba win logic
+ * @param {object} data - Loyalty data
+ * @param {object} userData - User loyalty data
+ * @param {string} normalizedUsername - Username (lowercase)
+ * @param {number} bet - Bet amount
+ */
+function processGambaWin(data, userData, normalizedUsername, bet) {
+  const winnings = bet * 2;
+  userData.points += winnings;
+  userData.totalEarned = (userData.totalEarned || 0) + winnings;
+  appendTransaction(data, {
+    username: normalizedUsername,
+    amount: winnings,
+    type: 'bonus',
+    reason: 'Gamba win',
+    balance: userData.points
+  });
+}
 
 /**
  * Run a single-user gamble: deduct amount, 50% chance to double (2x return).
@@ -413,31 +470,30 @@ const GAMBA_MAX = 10000;
  * @returns {{ success: boolean, notConfigured?: boolean, error?: string, code?: string, won?: boolean, newBalance?: number, amountBet?: number, winnings?: number }}
  */
 async function runGamba(loyaltyFile, username, amount) {
-  const isAll = amount === 'all' || String(amount).toLowerCase() === 'all';
-  if (!isAll) {
-    const bet = Math.floor(Number(amount));
-    if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
-      return { success: false, error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.` };
-    }
+  const validation = validateGambaBetAmount(amount);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
   }
+
   return withCrossProcessLock(loyaltyFile, async () => {
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, notConfigured: true };
 
     const normalizedUsername = username.toLowerCase();
     const userData = data.users?.[normalizedUsername];
-    if (!userData) {
-      return { success: false, code: 'USER_NOT_FOUND', error: 'You have no loyalty points yet.' };
-    }
-    const balance = userData.points || 0;
-    const bet = isAll
+    const balance = userData?.points || 0;
+    const bet = validation.isAll
       ? Math.min(Math.floor(balance), GAMBA_MAX)
       : Math.floor(Number(amount));
-    if (bet < GAMBA_MIN) {
-      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: 'You have no points to bet.' };
-    }
-    if (balance < bet) {
-      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: `Insufficient points. You have ${balance}.` };
+
+    const balanceValidation = validateGambaBalance(userData, bet);
+    if (!balanceValidation.valid) {
+      return {
+        success: false,
+        code: balanceValidation.code,
+        balance: balanceValidation.balance,
+        error: balanceValidation.error
+      };
     }
 
     userData.points -= bet;
@@ -452,16 +508,7 @@ async function runGamba(loyaltyFile, username, amount) {
 
     const won = Math.random() < 0.5;
     if (won) {
-      const winnings = bet * 2;
-      userData.points += winnings;
-      userData.totalEarned = (userData.totalEarned || 0) + winnings;
-      appendTransaction(data, {
-        username: normalizedUsername,
-        amount: winnings,
-        type: 'bonus',
-        reason: 'Gamba win',
-        balance: userData.points
-      });
+      processGambaWin(data, userData, normalizedUsername, bet);
     }
 
     await writeLoyaltyData(loyaltyFile, data);
@@ -502,6 +549,7 @@ async function runDuel(loyaltyFile, challenger, opponent, stake = DEFAULT_DUEL_S
     const data = await readLoyaltyData(loyaltyFile);
     if (!data) return { success: false, notConfigured: true };
 
+    // Note: c and o are already lowercased from preprocessing above
     if (!data.users) data.users = {};
     if (!data.users[c]) data.users[c] = DEFAULT_USER();
     if (!data.users[o]) data.users[o] = DEFAULT_USER();
@@ -552,9 +600,10 @@ module.exports = {
   setPoints,
   awardMessagePoints,
   processWatchTimeAwards,
-  touchUserPresence,
   runGamba,
   runDuel,
+  DEFAULT_DUEL_STAKE,
+  GAMBA_MIN,
   GAMBA_MAX,
   WATCH_TIME_INTERVAL_MS
 };
