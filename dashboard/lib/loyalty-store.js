@@ -409,13 +409,16 @@ const GAMBA_MAX = 10000;
  *
  * @param {string} loyaltyFile
  * @param {string} username
- * @param {number} amount - Points to bet (must be >= GAMBA_MIN, <= GAMBA_MAX)
+ * @param {number|string} amount - Points to bet (number >= GAMBA_MIN, <= GAMBA_MAX), or 'all' to bet full balance (resolved inside lock)
  * @returns {{ success: boolean, notConfigured?: boolean, error?: string, code?: string, won?: boolean, newBalance?: number, amountBet?: number, winnings?: number }}
  */
 async function runGamba(loyaltyFile, username, amount) {
-  const bet = Math.floor(Number(amount));
-  if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
-    return { success: false, error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.` };
+  const isAll = amount === 'all' || String(amount).toLowerCase() === 'all';
+  if (!isAll) {
+    const bet = Math.floor(Number(amount));
+    if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
+      return { success: false, error: `Bet must be between ${GAMBA_MIN} and ${GAMBA_MAX} points.` };
+    }
   }
   return withCrossProcessLock(loyaltyFile, async () => {
     const data = await readLoyaltyData(loyaltyFile);
@@ -427,6 +430,12 @@ async function runGamba(loyaltyFile, username, amount) {
       return { success: false, code: 'USER_NOT_FOUND', error: 'You have no loyalty points yet.' };
     }
     const balance = userData.points || 0;
+    const bet = isAll
+      ? Math.min(Math.floor(balance), GAMBA_MAX)
+      : Math.floor(Number(amount));
+    if (bet < GAMBA_MIN) {
+      return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: 'You have no points to bet.' };
+    }
     if (balance < bet) {
       return { success: false, code: 'INSUFFICIENT_POINTS', balance, error: `Insufficient points. You have ${balance}.` };
     }
@@ -546,5 +555,6 @@ module.exports = {
   touchUserPresence,
   runGamba,
   runDuel,
+  GAMBA_MAX,
   WATCH_TIME_INTERVAL_MS
 };

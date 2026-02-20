@@ -218,14 +218,7 @@ module.exports = function(logsDir) {
         return res.status(400).json({ error: 'username (string) is required' });
       }
       let bet = amount;
-      if (bet === 'all' || String(bet).toLowerCase() === 'all') {
-        const data = await readData();
-        const userData = data.users?.[username.toLowerCase()];
-        if (!userData || (userData.points || 0) < 1) {
-          return res.status(400).json({ error: 'You have no points to bet.' });
-        }
-        bet = userData.points;
-      } else {
+      if (bet !== 'all' && String(bet).toLowerCase() !== 'all') {
         bet = parseInt(Number(bet), 10);
         if (!Number.isFinite(bet) || bet < 1) {
           return res.status(400).json({ error: 'amount must be a positive number or "all".' });
