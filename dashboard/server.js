@@ -138,7 +138,8 @@ async function initLogs() {
       { name: '!removesong', cooldownSeconds: 0, description: 'Remove a song by position or keyword (refunds points)', permission: 'Moderator' },
       { name: '!clearqueue', cooldownSeconds: 0, description: 'Clear the entire song queue (refunds all points)', permission: 'Moderator' },
       { name: '!blocksong', cooldownSeconds: 0, description: 'Block a video, channel, or keyword from the queue', permission: 'Moderator' },
-      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' }
+      { name: '!unblocksong', cooldownSeconds: 0, description: 'Remove an entry from the song blocklist', permission: 'Moderator' },
+      { name: '!hype', cooldownSeconds: 15, description: 'Chat energy: messages in last 60s and hype threshold. Mods: !hype set N, !hype cooldown N, !hype toggle', permission: 'Everyone' }
     ]);
     await initFile(paths.obsConfigFile, {
       overlays: {

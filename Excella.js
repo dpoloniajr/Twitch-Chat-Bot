@@ -2981,7 +2981,43 @@ async function handleSongRequestConfig(channel, username, msg, args) {
 }
 
 async function handleCommands(channel) {
-  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+  sendChatMessage(channel, 'Commands: !commands | !clip | !followage [user] | !tts <message> | !sr <URL or query> | !song | !queue | !8ball | !dice [sides] | !coinflip | !balance [user] | !leaderboard | !quote | !counter <name> | !hype | !shoutout [user] / !so [user] (mods) | !poll | !prediction | !title (mods) | !game (mods) | !addfilter (mods) | !removefilter (mods) | !filters (mods)');
+}
+
+function handleHype(channel, username, args, isMod) {
+  const sub = (args[0] || '').toLowerCase();
+  const cfg = getHypeConfig();
+
+  if (sub === 'set' && args[1] != null && isMod) {
+    const n = parseInt(args[1], 10);
+    if (isNaN(n) || n < 5 || n > 200) {
+      sendChatMessage(channel, `@${username} Usage: !hype set <5-200>. Threshold must be between 5 and 200 messages.`);
+      return;
+    }
+    hypeConfig.minMessages = n;
+    sendChatMessage(channel, `@${username} Hype now triggers at ${n} messages in ${cfg.windowSec}s.`);
+    return;
+  }
+  if (sub === 'cooldown' && args[1] != null && isMod) {
+    const n = parseInt(args[1], 10);
+    if (isNaN(n) || n < 30 || n > 600) {
+      sendChatMessage(channel, `@${username} Cooldown must be between 30 and 600 seconds.`);
+      return;
+    }
+    hypeConfig.cooldownSec = n;
+    sendChatMessage(channel, `@${username} Hype cooldown set to ${n}s.`);
+    return;
+  }
+  if (sub === 'toggle' && isMod) {
+    hypeConfig.enabled = !hypeConfig.enabled;
+    sendChatMessage(channel, `@${username} Hype is now ${hypeConfig.enabled ? 'ON' : 'OFF'}.`);
+    return;
+  }
+
+  const count = getHypeCount(channel);
+  const threshold = cfg.minMessages;
+  const status = hypeConfig.enabled ? `${count} messages in the last ${cfg.windowSec}s. Hype triggers at ${threshold}. (Cooldown: ${cfg.cooldownSec}s)` : 'Hype is currently disabled.';
+  sendChatMessage(channel, `@${username} Chat energy: ${status}`);
 }
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
@@ -3190,6 +3226,19 @@ const commandRegistry = new Map([
     const shouldCooldown = await handleCounter(channel, username, args);
     if (shouldCooldown && cooldownSeconds > 0) setCooldown('counter');
   }}],
+  ['!hype', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
+    const cooldownSeconds = getCommandCooldown('!hype');
+    if (cooldownSeconds > 0 && !checkModPermission(msg, channel, username)) {
+      if (isOnCooldown('hype', cooldownSeconds)) {
+        const remainingMs = cooldownSeconds * 1000 - (Date.now() - (commandCooldowns.get('hype') || 0));
+        const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+        sendChatMessage(channel, `@${username} !hype is on cooldown. Try again in ${remainingSec}s.`);
+        return;
+      }
+      setCooldown('hype');
+    }
+    handleHype(channel, username, args, checkModPermission(msg, channel, username));
+  }}],
   ['!tts', { perm: 'everyone', handler: async ({ channel, username, args, msg }) => {
     await handleTTS(channel, username, args, msg, false);
   }}],
@@ -3320,6 +3369,10 @@ chatClient.onMessage(async (channel, user, message, msg) => {
 
     // Log chat to dashboard
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
+
+    // Chat Hype: record message and trigger hype if threshold reached
+    recordChatForHype(channel);
+    tryTriggerHype(channel);
 
     // First-time chatter welcome (Twitch IRC tag first-msg; isFirst is on msg, not msg.userInfo)
     const isFirstChatter = msg.isFirst === true;
