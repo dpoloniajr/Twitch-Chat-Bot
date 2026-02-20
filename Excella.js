@@ -3385,8 +3385,9 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
 
     // Chat Hype: record message and trigger hype if threshold reached
-    recordChatForHype(channel);
-    tryTriggerHype(channel);
+    // TODO: Incomplete feature - function implementations missing (see commit 8d74478)
+    // recordChatForHype(channel);
+    // tryTriggerHype(channel);
 
     // First-time chatter welcome (Twitch IRC tag first-msg; isFirst is on msg, not msg.userInfo)
     const isFirstChatter = msg.isFirst === true;
