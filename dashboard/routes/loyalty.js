@@ -4,7 +4,7 @@
 
 const express = require('express');
 const path = require('path');
-const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints } = require('../lib/loyalty-store');
+const { readLoyaltyData, writeLoyaltyData, deductPoints, addPoints, setPoints, awardMessagePoints, processWatchTimeAwards, WATCH_TIME_INTERVAL_MS } = require('../lib/loyalty-store');
 
 module.exports = function(logsDir) {
   const router = express.Router();
@@ -189,6 +189,27 @@ module.exports = function(logsDir) {
     }
   });
 
+  // POST /api/loyalty/award-message - Award points for a chat message (cooldown & config applied)
+  router.post('/award-message', async (req, res, next) => {
+    try {
+      const { username, isSubscriber, isVip } = req.body;
+      if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'username (string) is required' });
+      }
+      const result = await awardMessagePoints(loyaltyFile, username.trim(), !!isSubscriber, !!isVip);
+      if (result.notConfigured) {
+        return res.status(503).json({ error: 'Loyalty system not configured' });
+      }
+      res.json({
+        pointsEarned: result.pointsEarned ?? 0,
+        newBalance: result.newBalance ?? 0,
+        onCooldown: result.onCooldown ?? false
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // GET /api/loyalty/transactions - Get recent transactions
   router.get('/transactions', async (req, res, next) => {
     try {
@@ -232,6 +253,11 @@ module.exports = function(logsDir) {
       next(error);
     }
   });
+
+  // Run watch-time awards every minute for users considered "present" (lastSeen within 10 min)
+  setInterval(() => {
+    processWatchTimeAwards(loyaltyFile).catch(err => console.error('Loyalty watch-time award error:', err));
+  }, WATCH_TIME_INTERVAL_MS);
 
   return router;
 };

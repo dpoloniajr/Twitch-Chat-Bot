@@ -16,7 +16,9 @@ const DEFAULT_USER = () => ({
   messageCount: 0,
   lastSeen: new Date().toISOString(),
   firstSeen: new Date().toISOString(),
-  level: 1
+  level: 1,
+  lastMessagePointsAt: null,
+  lastWatchTimeAwardedAt: null
 });
 
 /**
@@ -231,4 +233,180 @@ async function setPoints(loyaltyFile, username, points, reason) {
   });
 }
 
-module.exports = { readLoyaltyData, writeLoyaltyData, appendTransaction, deductPoints, refundPoints, addPoints, setPoints };
+/**
+ * Parse a timestamp from user data (ISO string or ms number) to ms.
+ * @param {string|number|null} value
+ * @returns {number|null}
+ */
+function parseTimestampMs(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  const n = Date.parse(value);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Award points for a chat message. Applies cooldown, config amount, and sub/VIP multipliers.
+ * Updates lastSeen and lastMessagePointsAt. Creates user if not present.
+ *
+ * @param {string} loyaltyFile
+ * @param {string} username
+ * @param {boolean} isSubscriber
+ * @param {boolean} isVip
+ * @returns {{ success: boolean, notConfigured?: boolean, pointsEarned: number, newBalance?: number, onCooldown?: boolean }}
+ */
+async function awardMessagePoints(loyaltyFile, username, isSubscriber, isVip) {
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, notConfigured: true, pointsEarned: 0 };
+
+    const config = data.config || {};
+    if (config.enabled === false) return { success: true, pointsEarned: 0 };
+
+    const normalizedUsername = username.toLowerCase();
+    if (!data.users) data.users = {};
+    if (!data.users[normalizedUsername]) {
+      data.users[normalizedUsername] = DEFAULT_USER();
+    }
+
+    const userData = data.users[normalizedUsername];
+    const now = Date.now();
+    const cooldownMs = (config.messageCooldownSeconds ?? 30) * 1000;
+    const lastAt = parseTimestampMs(userData.lastMessagePointsAt);
+    if (lastAt != null && (now - lastAt) < cooldownMs) {
+      return { success: true, pointsEarned: 0, onCooldown: true };
+    }
+
+    let amount = config.pointsPerMessage ?? 5;
+    if (isSubscriber) amount *= config.subscriberMultiplier ?? 2;
+    else if (isVip) amount *= config.vipMultiplier ?? 1.5;
+    amount = Math.floor(amount);
+    amount = Math.min(amount, config.maxPointsPerMessage ?? 50);
+    if (amount <= 0) return { success: true, pointsEarned: 0 };
+
+    userData.points = (userData.points || 0) + amount;
+    userData.totalEarned = (userData.totalEarned || 0) + amount;
+    userData.lastMessagePointsAt = now;
+    userData.lastSeen = new Date().toISOString();
+    userData.isSubscriber = isSubscriber;
+    userData.isVip = isVip;
+
+    appendTransaction(data, {
+      username: normalizedUsername,
+      amount,
+      type: 'earn',
+      reason: 'Chat message',
+      balance: userData.points
+    });
+
+    await writeLoyaltyData(loyaltyFile, data);
+    return { success: true, pointsEarned: amount, newBalance: userData.points };
+  });
+}
+
+/** Default presence window: treat user as "watching" if lastSeen within this many ms */
+const WATCH_TIME_PRESENCE_MS = 10 * 60 * 1000; // 10 minutes
+/** How often to run the watch-time award pass (ms) */
+const WATCH_TIME_INTERVAL_MS = 60 * 1000; // 1 minute
+
+/**
+ * Process watch-time awards for all users considered "present" (lastSeen within presence window).
+ * Call under lock; mutates data and writes once.
+ *
+ * @param {string} loyaltyFile
+ * @returns {{ success: boolean, notConfigured?: boolean, awarded: number }}
+ */
+async function processWatchTimeAwards(loyaltyFile) {
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return { success: false, notConfigured: true, awarded: 0 };
+
+    const config = data.config || {};
+    if (config.enabled === false) return { success: true, awarded: 0 };
+
+    const now = Date.now();
+    const presenceMs = WATCH_TIME_PRESENCE_MS;
+    const pointsPerMinute = config.pointsPerMinute ?? 10;
+    const subscriberMultiplier = config.subscriberMultiplier ?? 2;
+    const vipMultiplier = config.vipMultiplier ?? 1.5;
+
+    let awarded = 0;
+    const users = data.users || {};
+
+    for (const [key, userData] of Object.entries(users)) {
+      const lastSeenMs = parseTimestampMs(userData.lastSeen);
+      if (lastSeenMs == null || (now - lastSeenMs) > presenceMs) continue;
+
+      const lastAwardedMs = userData.lastWatchTimeAwardedAt != null
+        ? userData.lastWatchTimeAwardedAt
+        : parseTimestampMs(userData.firstSeen) || lastSeenMs;
+      const elapsedMs = now - lastAwardedMs;
+      const minutesToAward = Math.floor(elapsedMs / 60000);
+      if (minutesToAward <= 0) continue;
+
+      let points = minutesToAward * pointsPerMinute;
+      if (userData.isSubscriber) points *= subscriberMultiplier;
+      else if (userData.isVip) points *= vipMultiplier;
+      points = Math.floor(points);
+      if (points <= 0) continue;
+
+      userData.points = (userData.points || 0) + points;
+      userData.totalEarned = (userData.totalEarned || 0) + points;
+      userData.watchTimeMinutes = (userData.watchTimeMinutes || 0) + minutesToAward;
+      userData.lastWatchTimeAwardedAt = now;
+
+      appendTransaction(data, {
+        username: key,
+        amount: points,
+        type: 'earn',
+        reason: 'Watch time',
+        balance: userData.points
+      });
+      awarded += 1;
+    }
+
+    if (awarded > 0) await writeLoyaltyData(loyaltyFile, data);
+    return { success: true, awarded };
+  });
+}
+
+/**
+ * Update a user's lastSeen (and optionally sub/vip flags) so watch-time considers them present.
+ * Call this when the user is "seen" (e.g. chatted). Does not award message points.
+ *
+ * @param {string} loyaltyFile
+ * @param {string} username
+ * @param {{ isSubscriber?: boolean, isVip?: boolean }} [badges]
+ */
+async function touchUserPresence(loyaltyFile, username, badges = {}) {
+  return withCrossProcessLock(loyaltyFile, async () => {
+    const data = await readLoyaltyData(loyaltyFile);
+    if (!data) return;
+
+    const normalizedUsername = username.toLowerCase();
+    if (!data.users) data.users = {};
+    if (!data.users[normalizedUsername]) {
+      data.users[normalizedUsername] = DEFAULT_USER();
+    }
+
+    const userData = data.users[normalizedUsername];
+    userData.lastSeen = new Date().toISOString();
+    if (badges.isSubscriber != null) userData.isSubscriber = !!badges.isSubscriber;
+    if (badges.isVip != null) userData.isVip = !!badges.isVip;
+    await writeLoyaltyData(loyaltyFile, data);
+  });
+}
+
+module.exports = {
+  readLoyaltyData,
+  writeLoyaltyData,
+  appendTransaction,
+  deductPoints,
+  refundPoints,
+  addPoints,
+  setPoints,
+  awardMessagePoints,
+  processWatchTimeAwards,
+  touchUserPresence,
+  WATCH_TIME_INTERVAL_MS
+};

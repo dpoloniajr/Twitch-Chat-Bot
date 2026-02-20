@@ -3450,6 +3450,13 @@ chatClient.onMessage(async (channel, user, message, msg) => {
     // Log chat to dashboard
     apiClient_axios.post(`${dashboardBaseUrl}/api/chat`, { channel, user: username, message }).catch(() => {});
 
+    // Loyalty: award points for chat message (cooldown and config applied by dashboard)
+    apiClient_axios.post(`${dashboardBaseUrl}/api/loyalty/award-message`, {
+      username,
+      isSubscriber: msg.userInfo?.isSubscriber ?? false,
+      isVip: msg.userInfo?.isVip ?? false
+    }, { timeout: 3000 }).catch(() => {});
+
     // Chat Hype: record message and trigger hype if threshold reached
     recordChatForHype(channel);
     tryTriggerHype(channel);
