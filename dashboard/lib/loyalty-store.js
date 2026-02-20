@@ -185,7 +185,7 @@ async function refundPoints(loyaltyFile, username, amount, reason) {
 async function addPoints(loyaltyFile, username, amount, reason, type = 'bonus') {
   return withCrossProcessLock(loyaltyFile, async () => {
     const data = await readLoyaltyData(loyaltyFile);
-    if (!data) return { success: false, error: 'Loyalty system not configured' };
+    if (!data) return { success: false, notConfigured: true, error: 'Loyalty system not configured' };
 
     const normalizedUsername = ensureUserExists(data, username);
     const userData = data.users[normalizedUsername];
