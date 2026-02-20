@@ -835,12 +835,16 @@ async function loadCustomCommands() {
     customCommands = res.data || [];
     customCommandsCache = customCommands;
     customCommandsCacheTime = Date.now();
+    console.log(`✓ Loaded ${customCommands.length} custom command(s)${customCommands.length > 0 ? ': ' + customCommands.map(c => c.name).join(', ') : ''}`);
   } catch (error) {
     // Use cached value if available, even if expired
     if (customCommandsCache !== null) {
       customCommands = customCommandsCache;
+      console.warn(`⚠️  Dashboard unreachable, using cached commands (${customCommands.length})`);
     } else {
       customCommands = [];
+      console.error(`✗ Failed to load custom commands: ${error.message}`);
+      console.error(`   Make sure dashboard is running: npm run dashboard`);
     }
   } finally {
     customCommandsLoadPending = false;
@@ -2986,7 +2990,10 @@ async function handleCommands(channel) {
 
 async function handleCustomCommand(channel, username, displayName, command, args) {
   const cmd = customCommands.find(c => c.name.toLowerCase() === command);
-  if (!cmd) return;
+  if (!cmd) {
+    console.log(`Custom command not found: ${command} (${customCommands.length} command(s) available: ${customCommands.map(c => c.name).join(', ') || 'none'})`);
+    return;
+  }
 
   const { rendered, error } = await renderCustomCommand(cmd, {
     user: username,
@@ -3259,6 +3266,13 @@ const commandRegistry = new Map([
   }}],
   ['!unblocksong', { perm: 'mod', handler: async ({ channel, username, args }) => {
     await handleUnblockSong(channel, username, args);
+  }}],
+  ['!reloadcommands', { perm: 'mod', handler: async ({ channel, username }) => {
+    const prevCount = customCommands.length;
+    customCommandsCache = null;  // Force fresh load
+    customCommandsCacheTime = 0;
+    await loadCustomCommands();
+    sendChatMessage(channel, `@${username} Reloaded custom commands (${prevCount} → ${customCommands.length})`);
   }}]
 ]);
 
