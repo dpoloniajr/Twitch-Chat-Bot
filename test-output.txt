@@ -1,0 +1,1611 @@
+
+> twitch-chat-bot@1.0.0 test
+> jest
+
+  console.log
+    [32m2026-02-20T21:18:07.187Z INFO [0m [Backup] Backup created {"includes":["customCommands","builtinCommands","announcements","filters","loyalty","quotes","quotesData","counters","alertConfig","obsConfig"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.266Z INFO [0m [Backup] Backup created {"includes":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.269Z INFO [0m [Backup] Backup created {"includes":["customCommands"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.272Z WARN [0m [Backup] Failed to read customCommands.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.276Z WARN [0m [Backup] Failed to read builtinCommands.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.213Z INFO [0m [Moderation] User banned {"username":"baduser","reason":"Being toxic"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.277Z WARN [0m [Backup] Failed to read announcements.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.279Z WARN [0m [Backup] Failed to read filters.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.280Z WARN [0m [Backup] Failed to read loyalty.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.281Z WARN [0m [Backup] Failed to read quotes.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.282Z WARN [0m [Backup] Failed to read counters.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.283Z WARN [0m [Backup] Failed to read alert-config.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.285Z WARN [0m [Backup] Failed to read obs-config.json {"error":"Unexpected token 'i', \"invalid json\" is not valid JSON"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.285Z INFO [0m [Backup] Backup created {"includes":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.285Z WARN [0m [Moderation] Ban failed {"username":"user","error":"API error"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.289Z INFO [0m [Moderation] User unbanned {"username":"user"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.289Z INFO [0m [Backup] Backup created {"includes":["customCommands","builtinCommands","announcements","filters","loyalty","quotes","quotesData","counters","alertConfig","obsConfig"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.292Z INFO [0m [Backup] Backup created {"includes":["customCommands","builtinCommands","announcements","filters","loyalty","loyaltyUsers","quotes","quotesData","counters","alertConfig","obsConfig"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.295Z INFO [0m [Backup] Backup restored {"restored":["customCommands","builtinCommands","filters"],"errors":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.297Z INFO [0m [Backup] Backup restored {"restored":["customCommands"],"errors":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [31m2026-02-20T21:18:07.299Z ERROR[0m [Backup] Failed to write customCommands.json {"error":"Write failed"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [31m2026-02-20T21:18:07.300Z ERROR[0m [Backup] Failed to write builtinCommands.json {"error":"Write failed"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [31m2026-02-20T21:18:07.302Z ERROR[0m [Backup] Failed to write filters.json {"error":"Write failed"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.303Z INFO [0m [Backup] Backup restored {"restored":[],"errors":["customCommands","builtinCommands","filters"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.305Z INFO [0m [Backup] Backup restored {"restored":["customCommands"],"errors":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.307Z INFO [0m [Backup] Backup restored {"restored":["loyalty"],"errors":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.312Z INFO [0m [Moderation] User timed out {"username":"user","duration":600,"reason":"Spamming"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.308Z INFO [0m [Backup] Backup restored {"restored":["quotes"],"errors":[]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.314Z INFO [0m [Backup] Backup saved to file {"path":"\\test\\backups\\backup-2026-02-20T21-18-07-314Z.json"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.316Z INFO [0m [Moderation] User timed out {"username":"user","duration":1209600}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.316Z INFO [0m [Backup] Backup saved to file {"path":"\\test\\backups\\backup-2026-02-20T21-18-07-316Z.json"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.318Z INFO [0m [Moderation] User timed out {"username":"user","duration":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.319Z INFO [0m [Backup] Backup saved to file {"path":"\\test\\backups\\custom-backup.json"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.321Z INFO [0m [Moderation] User timed out {"username":"user","duration":30}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.323Z INFO [0m [Moderation] User timed out {"username":"user","duration":300}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.324Z INFO [0m [Moderation] User timed out {"username":"user","duration":7200}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.325Z INFO [0m [Moderation] User timed out {"username":"user","duration":172800}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.328Z INFO [0m [Moderation] User unbanned {"username":"user"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.331Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":60000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.335Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":60000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.338Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":120000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.340Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":60000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.343Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.345Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":60000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.351Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":60000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.353Z INFO [0m [Moderation] Permit granted {"username":"user1","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.354Z INFO [0m [Moderation] Permit granted {"username":"user2","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.356Z INFO [0m [Moderation] Permit granted {"username":"user1","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.358Z INFO [0m [Moderation] Permit granted {"username":"user1","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.360Z INFO [0m [Moderation] Permit granted {"username":"user2","durationMs":3600000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.276Z INFO [0m [Analytics] Loaded analytics data
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.365Z INFO [0m [Moderation] Permit granted {"username":"user","durationMs":120000}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.382Z INFO [0m [Backup] Backup deleted {"filename":"backup.json"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.277Z INFO [0m [Counters] Counter created {"name":"kills","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.395Z INFO [0m [Analytics] Analytics config updated
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.396Z INFO [0m [Counters] Counter created {"name":"score","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.398Z INFO [0m [Analytics] Analytics config updated
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.402Z INFO [0m [Counters] Counter created {"name":"my_counter","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.407Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.408Z INFO [0m [Analytics] Analytics config updated
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.412Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.412Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.416Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.420Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.420Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.425Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.317Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.430Z INFO [0m [Counters] Counter created {"name":"mycounter","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.428Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.339Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.434Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.428Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.437Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.438Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.440Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.440Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.442Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.442Z INFO [0m [ChatFilter] Removed word from blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.442Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.440Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.444Z INFO [0m [Counters] Counter set {"name":"test","value":50,"modifiedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.444Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.445Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.447Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.447Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.449Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.450Z INFO [0m [Counters] Counter set {"name":"test","value":15,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.452Z INFO [0m [Quotes] Quotes config updated {"updates":["minLength"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.450Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.453Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.367Z INFO [0m [CommandRegistry] Loaded builtin command config {"count":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2024-01-01T10:00:00.000Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.456Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2024-01-01T12:00:00.000Z INFO [0m [Analytics] Ended stream session {"duration":120,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.455Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.457Z INFO [0m [Quotes] Quotes config updated {"updates":["maxLength"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.460Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.461Z INFO [0m [Counters] Counter set {"name":"test","value":11,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.461Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.459Z INFO [0m [CommandRegistry] Loaded builtin command config {"count":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.388Z INFO [0m [LoyaltyCommands] Mod added points {"mod":"moduser","target":"targetuser","amount":100}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.461Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.461Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.error
+    Error sending announcement: invalid color
+
+    [0m [90m 390 |[39m       [36mconst[39m msg [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mdata[33m?[39m[33m.[39mmessage [33m||[39m error[33m.[39mmessage[33m;[39m
+     [90m 391 |[39m       [36mconst[39m status [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mstatus[33m;[39m
+    [31m[1m>[22m[39m[90m 392 |[39m       console[33m.[39merror([32m'Error sending announcement:'[39m[33m,[39m msg)[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 393 |[39m       [36mreturn[39m { success[33m:[39m [36mfalse[39m[33m,[39m error[33m:[39m msg[33m,[39m status }[33m;[39m
+     [90m 394 |[39m     }
+     [90m 395 |[39m   }[0m
+
+      at TwitchHelixAPI.sendAnnouncement (lib/twitch-helix-api.js:392:15)
+      at Object.<anonymous> (tests/lib/twitch-helix-api.test.ts:33:20)
+
+  console.log
+    [32m2026-02-20T21:18:07.465Z INFO [0m [CommandRegistry] Loaded builtin command config {"count":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.461Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.464Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterAllCaps"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.465Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.470Z INFO [0m [LoyaltyCommands] Mod removed points {"mod":"moduser","target":"targetuser","amount":100}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.472Z INFO [0m [Counters] Counter set {"name":"test","value":7,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.472Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterAllCaps"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.474Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.471Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.475Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.473Z INFO [0m [LoyaltyCommands] Mod removed points {"mod":"moduser","target":"targetuser","amount":100}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.476Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterAllCaps"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.475Z INFO [0m [CommandRegistry] Loaded builtin command config {"count":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.471Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":150}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.478Z INFO [0m [Counters] Counter set {"name":"test","value":0,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.479Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterRepeatChars"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.error
+    Error sending announcement: Invalid OAuth token
+
+    [0m [90m 390 |[39m       [36mconst[39m msg [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mdata[33m?[39m[33m.[39mmessage [33m||[39m error[33m.[39mmessage[33m;[39m
+     [90m 391 |[39m       [36mconst[39m status [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mstatus[33m;[39m
+    [31m[1m>[22m[39m[90m 392 |[39m       console[33m.[39merror([32m'Error sending announcement:'[39m[33m,[39m msg)[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 393 |[39m       [36mreturn[39m { success[33m:[39m [36mfalse[39m[33m,[39m error[33m:[39m msg[33m,[39m status }[33m;[39m
+     [90m 394 |[39m     }
+     [90m 395 |[39m   }[0m
+
+      at TwitchHelixAPI.sendAnnouncement (lib/twitch-helix-api.js:392:15)
+      at Object.<anonymous> (tests/lib/twitch-helix-api.test.ts:45:20)
+
+  console.log
+    [32m2026-02-20T21:18:07.481Z INFO [0m [LoyaltyCommands] Mod set points {"mod":"moduser","target":"targetuser","amount":500}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [31m2026-02-20T21:18:07.479Z ERROR[0m [CommandRegistry] Command execution failed {"command":"!test","error":"Handler error"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.481Z INFO [0m [Quotes] Quotes config updated {"updates":["allowDuplicates"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.481Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterRepeatChars"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.483Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.483Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.483Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterRepeatChars"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.483Z INFO [0m [LoyaltyCommands] Mod set points {"mod":"moduser","target":"targetuser","amount":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.485Z INFO [0m [Counters] Counters config updated {"updates":["maxValue","minValue"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.485Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.485Z INFO [0m [Analytics] Started tracking stream session
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.487Z INFO [0m [Counters] Counter set {"name":"test","value":100,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.486Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterSpam"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.error
+    Error sending announcement: ECONNRESET
+
+    [0m [90m 390 |[39m       [36mconst[39m msg [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mdata[33m?[39m[33m.[39mmessage [33m||[39m error[33m.[39mmessage[33m;[39m
+     [90m 391 |[39m       [36mconst[39m status [33m=[39m error[33m?[39m[33m.[39mresponse[33m?[39m[33m.[39mstatus[33m;[39m
+    [31m[1m>[22m[39m[90m 392 |[39m       console[33m.[39merror([32m'Error sending announcement:'[39m[33m,[39m msg)[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 393 |[39m       [36mreturn[39m { success[33m:[39m [36mfalse[39m[33m,[39m error[33m:[39m msg[33m,[39m status }[33m;[39m
+     [90m 394 |[39m     }
+     [90m 395 |[39m   }[0m
+
+      at TwitchHelixAPI.sendAnnouncement (lib/twitch-helix-api.js:392:15)
+      at Object.<anonymous> (tests/lib/twitch-helix-api.test.ts:56:20)
+
+  console.log
+    [32m2026-02-20T21:18:07.488Z INFO [0m [Counters] Counter set {"name":"test","value":-10,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.485Z INFO [0m [Analytics] Ended stream session {"duration":0,"peakViewers":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.489Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.488Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterSpam"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.493Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.488Z INFO [0m [LoyaltyCommands] Registered loyalty commands {"count":7}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.495Z INFO [0m [CommandRegistry] Loaded builtin command config {"count":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.496Z INFO [0m [Counters] Counter set {"name":"test","value":11,"modifiedBy":"modifier"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.497Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterSpam"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.498Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.499Z INFO [0m [ChatFilter] Added word to blacklist {"word":"badword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.501Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.414Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerLevel"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.501Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls","filterAllCaps","filterRepeatChars"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.503Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.501Z INFO [0m [Counters] Counter created {"name":"todelete","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.503Z INFO [0m [ChatFilter] Added word to blacklist {"word":"test"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.508Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.507Z INFO [0m [Counters] Counter deleted {"name":"todelete"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.507Z INFO [0m [ChatFilter] Filter config updated {"updates":["filterUrls","filterAction","timeoutDurationSeconds"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.509Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.503Z INFO [0m [Loyalty] User leveled up {"username":"user1","newLevel":3}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.511Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.511Z INFO [0m [Analytics] Analytics config updated
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.511Z INFO [0m [ChatFilter] Added word to blacklist {"word":"newword"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.514Z INFO [0m [ChatFilter] Added word to blacklist {"word":"test"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.514Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerLevel"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.516Z INFO [0m [Counters] Counters config updated {"updates":["keepHistory"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.516Z INFO [0m [Loyalty] User leveled up {"username":"user1","newLevel":2}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.516Z INFO [0m [ChatFilter] Added word to blacklist {"word":"test"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.517Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.517Z INFO [0m [ChatFilter] Removed word from blacklist {"word":"test"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.519Z INFO [0m [Counters] Counter set {"name":"test","value":10,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.516Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.520Z INFO [0m [ChatFilter] Added word to blacklist {"word":"test"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.520Z INFO [0m [Counters] Counter set {"name":"test","value":5,"modifiedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.520Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerLevel"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.521Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.520Z INFO [0m [Analytics] Loaded analytics data
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.522Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.522Z INFO [0m [ChatFilter] Added word to blacklist {"word":"old"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.525Z INFO [0m [Counters] Counters config updated {"updates":["keepHistory"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.525Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerMinute"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.526Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.527Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.528Z INFO [0m [Counters] Counter set {"name":"test","value":1,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.529Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.529Z INFO [0m [Counters] Counter set {"name":"test","value":2,"modifiedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.529Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerMinute","subscriberMultiplier"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.531Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.531Z INFO [0m [Counters] Counter set {"name":"test","value":3,"modifiedBy":"user3"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.533Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerMinute","vipMultiplier"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.534Z INFO [0m [Counters] Counter created {"name":"test","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.535Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.537Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.538Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.539Z INFO [0m [Counters] Counter set {"name":"deaths","value":5,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.539Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerMessage"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.540Z INFO [0m [Counters] Counter set {"name":"wins","value":10,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.542Z INFO [0m [Counters] Counter set {"name":"losses","value":3,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.542Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.543Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.543Z INFO [0m [Loyalty] Loyalty config updated {"updates":["messageCooldownSeconds"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.545Z INFO [0m [Counters] Counter created {"name":"custom1","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.545Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.545Z INFO [0m [Counters] Counter created {"name":"custom2","createdBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.546Z INFO [0m [Loyalty] Loyalty config updated {"updates":["messageCooldownSeconds"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.548Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.549Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.550Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.549Z INFO [0m [Loyalty] Loyalty config updated {"updates":["pointsPerMessage","maxPointsPerMessage","subscriberMultiplier"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.550Z INFO [0m [Counters] Counter set {"name":"deaths","value":10,"modifiedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.552Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.553Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.554Z INFO [0m [Counters] Counters imported {"imported":1,"skipped":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.554Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.557Z INFO [0m [Counters] Counters imported {"imported":0,"skipped":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.558Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.559Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.561Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.562Z INFO [0m [Loyalty] Points transferred {"from":"user1","to":"user2","amount":30}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.563Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.564Z INFO [0m [Quotes] Quote deleted {"id":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.566Z INFO [0m [Loyalty] Points set by admin {"username":"user1","amount":500,"reason":"Admin set"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.568Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.568Z INFO [0m [Loyalty] Points set by admin {"username":"user1","amount":-100,"reason":"Admin set"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.569Z INFO [0m [Quotes] Quote edited {"id":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.571Z INFO [0m [Quotes] Quotes config updated {"updates":["minLength"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.502Z INFO [0m [Discord] Discord config updated
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.571Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.571Z INFO [0m [Loyalty] Loyalty config updated {"updates":["currencyName","currencyNamePlural"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.574Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.574Z INFO [0m [Loyalty] Loyalty config updated {"updates":["enabled"]}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.575Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.575Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.576Z INFO [0m [Quotes] Quote added {"id":4,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.577Z INFO [0m [Quotes] Quote added {"id":5,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.575Z WARN [0m [Discord] Webhook failed {"status":400,"body":"Bad Request"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.578Z INFO [0m [Quotes] Quote added {"id":6,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.579Z INFO [0m [Quotes] Quote added {"id":7,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.580Z INFO [0m [Quotes] Quote added {"id":8,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.580Z INFO [0m [Quotes] Quote added {"id":9,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [31m2026-02-20T21:18:07.579Z ERROR[0m [Discord] Webhook request error {"error":"Network error"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.581Z INFO [0m [Quotes] Quote added {"id":10,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.582Z INFO [0m [Quotes] Quote added {"id":11,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [33m2026-02-20T21:18:07.581Z WARN [0m [Discord] Rate limit exceeded {"requests":2}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.582Z INFO [0m [Quotes] Quote added {"id":12,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.583Z INFO [0m [Quotes] Quote added {"id":13,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.584Z INFO [0m [Quotes] Quote added {"id":14,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.584Z INFO [0m [Quotes] Quote added {"id":15,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.585Z INFO [0m [Quotes] Quote added {"id":16,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.586Z INFO [0m [Quotes] Quote added {"id":17,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.586Z INFO [0m [Quotes] Quote added {"id":18,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.587Z INFO [0m [Quotes] Quote added {"id":19,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.591Z INFO [0m [Quotes] Quote added {"id":20,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.592Z INFO [0m [Quotes] Quote added {"id":21,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.593Z INFO [0m [Quotes] Quote added {"id":22,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.594Z INFO [0m [Quotes] Quote added {"id":23,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.594Z INFO [0m [Quotes] Quote added {"id":24,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.595Z INFO [0m [Quotes] Quote added {"id":25,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.597Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.597Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.598Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.599Z INFO [0m [Quotes] Quote added {"id":4,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.599Z INFO [0m [Quotes] Quote added {"id":5,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.600Z INFO [0m [Quotes] Quote added {"id":6,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.600Z INFO [0m [Quotes] Quote added {"id":7,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.601Z INFO [0m [Quotes] Quote added {"id":8,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.601Z INFO [0m [Quotes] Quote added {"id":9,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.602Z INFO [0m [Quotes] Quote added {"id":10,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.603Z INFO [0m [Quotes] Quote added {"id":11,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.603Z INFO [0m [Quotes] Quote added {"id":12,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.604Z INFO [0m [Quotes] Quote added {"id":13,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.604Z INFO [0m [Quotes] Quote added {"id":14,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.605Z INFO [0m [Quotes] Quote added {"id":15,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.605Z INFO [0m [Quotes] Quote added {"id":16,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.606Z INFO [0m [Quotes] Quote added {"id":17,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.606Z INFO [0m [Quotes] Quote added {"id":18,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.607Z INFO [0m [Quotes] Quote added {"id":19,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.608Z INFO [0m [Quotes] Quote added {"id":20,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.608Z INFO [0m [Quotes] Quote added {"id":21,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.609Z INFO [0m [Quotes] Quote added {"id":22,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.609Z INFO [0m [Quotes] Quote added {"id":23,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.610Z INFO [0m [Quotes] Quote added {"id":24,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.610Z INFO [0m [Quotes] Quote added {"id":25,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.612Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.613Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.613Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.614Z INFO [0m [Quotes] Quote added {"id":4,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.614Z INFO [0m [Quotes] Quote added {"id":5,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.615Z INFO [0m [Quotes] Quote added {"id":6,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.616Z INFO [0m [Quotes] Quote added {"id":7,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.616Z INFO [0m [Quotes] Quote added {"id":8,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.617Z INFO [0m [Quotes] Quote added {"id":9,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.618Z INFO [0m [Quotes] Quote added {"id":10,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.619Z INFO [0m [Quotes] Quote added {"id":11,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.619Z INFO [0m [Quotes] Quote added {"id":12,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.620Z INFO [0m [Quotes] Quote added {"id":13,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.621Z INFO [0m [Quotes] Quote added {"id":14,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.621Z INFO [0m [Quotes] Quote added {"id":15,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.622Z INFO [0m [Quotes] Quote added {"id":16,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.622Z INFO [0m [Quotes] Quote added {"id":17,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.623Z INFO [0m [Quotes] Quote added {"id":18,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.624Z INFO [0m [Quotes] Quote added {"id":19,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.624Z INFO [0m [Quotes] Quote added {"id":20,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.628Z INFO [0m [Quotes] Quote added {"id":21,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.629Z INFO [0m [Quotes] Quote added {"id":22,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.629Z INFO [0m [Quotes] Quote added {"id":23,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.630Z INFO [0m [Quotes] Quote added {"id":24,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.631Z INFO [0m [Quotes] Quote added {"id":25,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.633Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.650Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.652Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.653Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user2"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.654Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.655Z INFO [0m [Quotes] Quotes imported {"imported":2,"skipped":0}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.657Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.658Z INFO [0m [Quotes] Quotes imported {"imported":0,"skipped":1}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.660Z INFO [0m [Quotes] Quote added {"id":1,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.661Z INFO [0m [Quotes] Quote added {"id":2,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
+  console.log
+    [32m2026-02-20T21:18:07.661Z INFO [0m [Quotes] Quote added {"id":3,"addedBy":"user1"}
+
+      at Logger.write (src/utils/logger.ts:117:15)
+
