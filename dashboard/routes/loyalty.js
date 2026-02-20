@@ -180,8 +180,11 @@ module.exports = function(logsDir) {
       }
 
       const result = await addPoints(loyaltyFile, username, amount, reason, 'bonus');
+      if (result.notConfigured) {
+        return res.status(503).json({ error: 'Loyalty system not configured' });
+      }
       if (!result.success) {
-        return res.status(503).json({ error: result.error });
+        return res.status(400).json({ error: result.error });
       }
       res.json({ success: true, newBalance: result.newBalance });
     } catch (error) {
