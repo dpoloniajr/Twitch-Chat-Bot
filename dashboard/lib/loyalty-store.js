@@ -373,29 +373,6 @@ async function processWatchTimeAwards(loyaltyFile) {
   });
 }
 
-/**
- * Update a user's lastSeen (and optionally sub/vip flags) so watch-time considers them present.
- * Call this when the user is "seen" (e.g. chatted). Does not award message points.
- *
- * @param {string} loyaltyFile
- * @param {string} username
- * @param {{ isSubscriber?: boolean, isVip?: boolean }} [badges]
- */
-async function touchUserPresence(loyaltyFile, username, badges = {}) {
-  return withCrossProcessLock(loyaltyFile, async () => {
-    const data = await readLoyaltyData(loyaltyFile);
-    if (!data) return;
-
-    const normalizedUsername = ensureUserExists(data, username);
-    const userData = data.users[normalizedUsername];
-
-    userData.lastSeen = new Date().toISOString();
-    if (badges.isSubscriber != null) userData.isSubscriber = !!badges.isSubscriber;
-    if (badges.isVip != null) userData.isVip = !!badges.isVip;
-    await writeLoyaltyData(loyaltyFile, data);
-  });
-}
-
 /** Default duel stake (points) if not specified */
 const DEFAULT_DUEL_STAKE = 50;
 /** Min/max gamba bet (points) */
@@ -623,7 +600,6 @@ module.exports = {
   setPoints,
   awardMessagePoints,
   processWatchTimeAwards,
-  touchUserPresence,
   runGamba,
   runDuel,
   DEFAULT_DUEL_STAKE,

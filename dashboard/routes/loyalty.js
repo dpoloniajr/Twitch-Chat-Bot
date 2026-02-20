@@ -176,6 +176,18 @@ module.exports = function(logsDir) {
       }
 
       const result = await deductPoints(loyaltyFile, username, amount, reason);
+
+      // Handle insufficient points case with 'required' field for API contract
+      // The 'required' field contains the amount that was requested to be deducted,
+      // allowing API consumers to show "You need X points but only have Y"
+      if (!result.success && result.code === 'INSUFFICIENT_POINTS') {
+        return res.status(400).json({
+          error: result.error,
+          balance: result.balance,
+          required: amount
+        });
+      }
+
       handleLoyaltyResult(result, res, { newBalance: result.newBalance });
     } catch (error) {
       next(error);
