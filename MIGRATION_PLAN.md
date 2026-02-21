@@ -606,16 +606,25 @@ is infrequently used but critical.
 
 ### 7c — Update tsconfig.json
 
-Remove `"allowJs": true` since all files are now TypeScript:
+Remove `"allowJs": true` since all files are now TypeScript, and update `"rootDir"` to cover
+the full project. The current `"rootDir": "./src"` will be rejected by `tsc` once TypeScript
+sources span `lib/`, `dashboard/`, and root-level files:
 
 ```json
 {
   "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
     "allowJs": false,
     "checkJs": false
-  }
+  },
+  "include": ["src/**/*", "lib/**/*.ts", "dashboard/**/*.ts", "*.ts", "token-generator-api/**/*.ts"]
 }
 ```
+
+Plan the `outDir` directory structure before this step — compiled output will mirror the source
+tree (`dist/src/`, `dist/lib/`, `dist/dashboard/`, `dist/bot.js`). Verify that all relative
+import paths in the compiled output remain valid before deleting the JS originals.
 
 ### 7d — Update CLAUDE.md
 
@@ -640,6 +649,7 @@ JS file locations.
 | Dashboard WebSocket clients losing events during switchover | Medium | Medium | Phase 6 keeps old JS dashboard running until new one is validated in parallel |
 | Breaking `dist/` import paths in Phase 4 | Medium | Low | All Phase 4 imports use `./dist/...` explicitly; revert is a single-line change |
 | Loyalty point data corruption during service migration | Low | High | `BackupManager` already implemented — take a backup before Phase 4 substitution |
+| Cross-process file lock missing from src/ managers | Medium | High | `LoyaltyManager`, `QuotesManager`, and `CountersManager` in `src/services/` do not currently use `withCrossProcessLock`. Both the bot (Phase 4) and dashboard write to the same JSON files concurrently. **Audit all three services before Phase 4e** and add `withCrossProcessLock` from `lib/file-lock.ts` where missing, or retain HTTP API calls to the dashboard for loyalty operations until Phase 6 unifies the write path. |
 | `token-generator-api/` OAuth flow regression | Low | High | Leave as JS until explicitly tested; OAuth flow is rarely run |
 
 ---
