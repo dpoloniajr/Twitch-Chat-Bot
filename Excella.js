@@ -2110,10 +2110,16 @@ async function handleGamba(channel, username, args) {
     const data = response.data;
     const config = await getLoyaltyConfig();
     const currency = config.currencyNamePlural || 'points';
+
+    // Format balance display with fallback for older API versions
+    const balanceDisplay = data.oldBalance !== undefined
+      ? `Balance: ${data.oldBalance} → ${data.newBalance}.`
+      : `New balance: ${data.newBalance}.`;
+
     if (data.won) {
-      sendChatMessage(channel, `@${username} won ${data.winnings} ${currency}! New balance: ${data.newBalance}.`);
+      sendChatMessage(channel, `@${username} won ${data.winnings} ${currency}! ${balanceDisplay}`);
     } else {
-      sendChatMessage(channel, `@${username} lost ${data.amountBet} ${currency}. New balance: ${data.newBalance}. Better luck next time!`);
+      sendChatMessage(channel, `@${username} lost ${data.amountBet} ${currency}. ${balanceDisplay} Better luck next time!`);
     }
     logCommandExecution(username, '!gamba', args, true);
     return true;

@@ -391,7 +391,7 @@ function validateGambaBetAmount(amount) {
   }
 
   const bet = Math.floor(Number(amount));
-  if (bet < GAMBA_MIN || bet > GAMBA_MAX) {
+  if (!Number.isFinite(bet) || bet < GAMBA_MIN || bet > GAMBA_MAX) {
     return {
       valid: false,
       isAll: false,
@@ -496,6 +496,7 @@ async function runGamba(loyaltyFile, username, amount) {
       };
     }
 
+    const oldBalance = userData.points;
     userData.points -= bet;
     userData.totalSpent = (userData.totalSpent || 0) + bet;
     appendTransaction(data, {
@@ -515,6 +516,7 @@ async function runGamba(loyaltyFile, username, amount) {
     return {
       success: true,
       won,
+      oldBalance,
       newBalance: userData.points,
       amountBet: bet,
       winnings: won ? bet * 2 : 0
