@@ -241,19 +241,26 @@ module.exports = function(logsDir) {
       if (!username || typeof username !== 'string') {
         return res.status(400).json({ error: 'username (string) is required' });
       }
-      if (amount === undefined || amount === null || amount === '') {
+      if (amount === undefined || amount === null || amount === '' ||
+          (typeof amount === 'number' && !Number.isFinite(amount))) {
         return res.status(400).json({ error: 'amount is required. Use a number or "all".' });
       }
       let bet = amount;
       if (bet !== 'all' && String(bet).toLowerCase() !== 'all') {
-        bet = parseInt(Number(bet), 10);
-        if (!Number.isFinite(bet) || bet < GAMBA_MIN) {
+        // Validate it's a valid number before parsing
+        const numValue = Number(bet);
+        if (!Number.isFinite(numValue)) {
+          return res.status(400).json({ error: 'amount must be a positive number or "all".' });
+        }
+        bet = parseInt(numValue, 10);
+        if (bet < GAMBA_MIN) {
           return res.status(400).json({ error: 'amount must be a positive number or "all".' });
         }
       }
       const result = await runGamba(loyaltyFile, username.trim(), bet);
       handleLoyaltyResult(result, res, {
         won: result.won,
+        oldBalance: result.oldBalance,
         newBalance: result.newBalance,
         amountBet: result.amountBet,
         winnings: result.winnings ?? 0

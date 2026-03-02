@@ -163,13 +163,72 @@ async function testBetAll() {
   }
 }
 
+async function testBalanceDisplay() {
+  log(colors.yellow, '\n--- Test 5: Balance Display in Response ---');
+
+  // Ensure user has enough points for this test
+  await axios.post(`${DASHBOARD_URL}/api/loyalty/add`, {
+    username: TEST_USERNAME,
+    amount: 500,
+    reason: 'Test balance display'
+  });
+
+  const initialBalance = await getBalance(TEST_USERNAME);
+  log(colors.yellow, `Initial balance: ${initialBalance}`);
+
+  try {
+    const response = await axios.post(`${DASHBOARD_URL}/api/loyalty/gamba`, {
+      username: TEST_USERNAME,
+      amount: 50
+    }, { timeout: 5000 });
+
+    if (response.data.success) {
+      const { oldBalance, newBalance, won, amountBet } = response.data;
+
+      // Check that oldBalance is returned
+      if (oldBalance === undefined) {
+        log(colors.red, `✗ FAIL: oldBalance not included in response`);
+        return false;
+      }
+
+      // Verify oldBalance matches what we expect
+      if (oldBalance !== initialBalance) {
+        log(colors.red, `✗ FAIL: oldBalance mismatch: ${oldBalance} (expected ${initialBalance})`);
+        return false;
+      }
+
+      // Verify the math is correct
+      const expectedNewBalance = won ? oldBalance + amountBet : oldBalance - amountBet;
+      if (newBalance !== expectedNewBalance) {
+        log(colors.red, `✗ FAIL: newBalance calculation incorrect: ${newBalance} (expected ${expectedNewBalance})`);
+        return false;
+      }
+
+      log(colors.green, `✓ oldBalance included in response: ${oldBalance}`);
+      log(colors.green, `✓ Balance transition correct: ${oldBalance} → ${newBalance} (${won ? 'WON' : 'LOST'})`);
+      return true;
+    } else {
+      log(colors.red, `✗ FAIL: Request failed: ${response.data.error}`);
+      return false;
+    }
+  } catch (err) {
+    log(colors.red, `✗ Request error: ${err.message}`);
+    return false;
+  }
+}
+
 async function testInvalidAmounts() {
   log(colors.yellow, '\n--- Test 4: Invalid Amounts Should Be Rejected ---');
 
   const testCases = [
     { value: 0, label: 'zero' },
     { value: -50, label: 'negative' },
-    { value: 'abc', label: 'non-numeric' }
+    { value: 'abc', label: 'non-numeric string' },
+    { value: NaN, label: 'NaN' },
+    { value: null, label: 'null' },
+    { value: '  ', label: 'whitespace' },
+    { value: Infinity, label: 'Infinity' },
+    { value: -Infinity, label: '-Infinity' }
   ];
 
   let allPassed = true;
@@ -190,13 +249,14 @@ async function testInvalidAmounts() {
 
       if (response.status === 400 || (response.data && !response.data.success)) {
         if (finalBalance === initialBalance) {
-          log(colors.green, `✓ ${testCase.label} (${testCase.value}) correctly rejected, balance unchanged`);
+          log(colors.green, `✓ ${testCase.label} correctly rejected, balance unchanged`);
         } else {
           log(colors.red, `✗ FAIL: ${testCase.label} rejected but balance changed: ${initialBalance} → ${finalBalance}`);
           allPassed = false;
         }
       } else {
-        log(colors.red, `✗ FAIL: ${testCase.label} (${testCase.value}) was accepted`);
+        log(colors.red, `✗ FAIL: ${testCase.label} was accepted`);
+        log(colors.red, `  Response: ${JSON.stringify(response.data)}`);
         allPassed = false;
       }
     } catch (err) {
@@ -225,7 +285,8 @@ async function runTests() {
     emptyBet: await testEmptyBetValidation(),
     validBet: await testValidBet(),
     betAll: await testBetAll(),
-    invalidAmounts: await testInvalidAmounts()
+    invalidAmounts: await testInvalidAmounts(),
+    balanceDisplay: await testBalanceDisplay()
   };
 
   // Summary
