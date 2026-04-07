@@ -5,7 +5,7 @@ let selectedFeatures = {
     chat: true, clips: true, shoutouts: true, followage: true,
     polls: true, predictions: true, announcements: true,
     eventsub: true, redemptions: true, song_requests: false,
-    moderation: false, delete_messages: false, automod: false, shield_mode: false, warnings: false,
+    moderation: true, delete_messages: true, automod: false, shield_mode: false, warnings: false,
     vip_management: false, moderator_management: false,
     channel_updates: false, schedule_management: false, ads_management: false,
     hype_trains: false, bits: false, subscriptions: false, follows_read: false,
@@ -86,6 +86,7 @@ async function autoSelectFeatures() {
                 }
             });
             
+            renderFeatures();
             console.log('Auto-selected features based on environment:', data.activeFeatures.map(f => f.id));
         }
     } catch (error) {
