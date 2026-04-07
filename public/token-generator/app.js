@@ -46,11 +46,52 @@ const FEATURES = [
 ];
 
 async function initPage() {
+    await autoSelectFeatures();
     renderFeatures();
     await loadPresets();
     await loadScopeCategories();
     updateAccountContext();
     setTimeout(loadCurrentScopes, 100);
+}
+
+async function autoSelectFeatures() {
+    try {
+        const response = await fetch('/api/scopes/required');
+        const data = await response.json();
+        
+        if (data.activeFeatures) {
+            // Mapping between backend feature IDs and frontend feature IDs
+            const mapping = {
+                'chat': 'chat',
+                'clips': 'clips',
+                'shoutouts': 'shoutouts',
+                'followage': 'followage',
+                'polls': 'polls',
+                'predictions': 'predictions',
+                'announcements': 'announcements',
+                'eventsub': 'eventsub',
+                'redemptions': 'redemptions',
+                'song_requests': 'redemptions', // Song requests use redemptions scope
+                'moderation': 'ban_timeout',
+                'automod': 'automod',
+                'channel_updates': 'channel_updates',
+                'vip_management': 'vip_management',
+                'bits': 'bits',
+                'subscriptions': 'subscriptions'
+            };
+
+            data.activeFeatures.forEach(feat => {
+                const frontendId = mapping[feat.id] || feat.id;
+                if (selectedFeatures.hasOwnProperty(frontendId)) {
+                    selectedFeatures[frontendId] = true;
+                }
+            });
+            
+            console.log('Auto-selected features based on environment:', data.activeFeatures.map(f => f.id));
+        }
+    } catch (error) {
+        console.error('Failed to auto-select features:', error);
+    }
 }
 
 function renderFeatures() {

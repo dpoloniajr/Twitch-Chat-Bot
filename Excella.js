@@ -3,6 +3,7 @@ require('./lib/console-timestamp');
 const TwitchHelixAPI = require('./lib/twitch-helix-api');
 const TwitchIRCClient = require('./lib/twitch-irc-client');
 const TwitchEventSubWS = require('./lib/twitch-eventsub-ws');
+const featureScopes = require('./lib/feature-scopes');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -241,6 +242,43 @@ function getBroadcasterScopes() {
 function validateScopes(requiredScopes) {
   const scopeSet = new Set(config.scopes);
   return requiredScopes.every(scope => scopeSet.has(scope));
+}
+
+/**
+ * Automatically check for missing scopes based on enabled features.
+ * Logs warnings and instructions if scopes are missing.
+ */
+async function checkRequiredScopes() {
+  const activeFeatures = featureScopes.getActiveFeatures(process.env);
+  const botRequired = featureScopes.getRequiredScopes(activeFeatures, 'bot');
+  const broadcasterRequired = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');
+
+  const botValidation = featureScopes.validateScopes(config.scopes, botRequired);
+  const broadcasterValidation = featureScopes.validateScopes(getBroadcasterScopes(), broadcasterRequired);
+
+  if (!botValidation.hasAll || !broadcasterValidation.hasAll) {
+    console.warn('\n⚠️  MISSING REQUIRED SCOPES DETECTED');
+    console.warn('The following features may not work correctly:');
+    
+    activeFeatures.forEach(featKey => {
+      const feat = featureScopes.FEATURE_SCOPES[featKey];
+      const missingBot = (feat.bot || []).filter(s => botValidation.missing.includes(s));
+      const missingBroadcaster = (feat.broadcaster || []).filter(s => broadcasterValidation.missing.includes(s));
+      
+      if (missingBot.length > 0 || missingBroadcaster.length > 0) {
+        console.warn(`- ${feat.name}: Missing ${[...missingBot, ...missingBroadcaster].join(', ')}`);
+      }
+    });
+
+    console.warn('\nTo fix this, please re-authorize your accounts using the Token Generator:');
+    const tokenGenUrl = `http://localhost:${process.env.TOKEN_GENERATOR_PORT || 3000}`;
+    console.warn(`👉 ${tokenGenUrl}\n`);
+    
+    return false;
+  }
+
+  console.log('✓ All required scopes for enabled features are present.');
+  return true;
 }
 
 // Log command execution to dashboard
@@ -3612,6 +3650,9 @@ async function start() {
   
   // Validate and refresh tokens before initializing
   await validateAndRefreshTokens();
+
+  // Check if all required scopes for enabled features are present
+  await checkRequiredScopes();
 
   if (!broadcasterId) {
     await init();

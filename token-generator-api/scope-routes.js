@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const featureScopes = require('../lib/feature-scopes');
 
 const SCOPE_CATEGORIES = {
   'Chat (IRC)': [
@@ -175,5 +176,21 @@ const PRESETS = {
 
 router.get('/categories', (req, res) => res.json(SCOPE_CATEGORIES));
 router.get('/presets', (req, res) => res.json(PRESETS));
+
+router.get('/required', (req, res) => {
+  const activeFeatures = featureScopes.getActiveFeatures(process.env);
+  const botScopes = featureScopes.getRequiredScopes(activeFeatures, 'bot');
+  const broadcasterScopes = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');
+  
+  res.json({
+    activeFeatures: activeFeatures.map(f => ({
+      id: f,
+      name: featureScopes.FEATURE_SCOPES[f]?.name || f,
+      description: featureScopes.FEATURE_SCOPES[f]?.description || ''
+    })),
+    bot: botScopes,
+    broadcaster: broadcasterScopes
+  });
+});
 
 module.exports = router;
