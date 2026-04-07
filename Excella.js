@@ -249,6 +249,28 @@ function validateScopes(requiredScopes) {
  * Logs warnings and instructions if scopes are missing.
  */
 async function checkRequiredScopes() {
+  // Automatically sync scopes to .env first
+  try {
+    const syncResult = await featureScopes.syncRequiredScopes(process.env.ENV_PATH || '.env');
+    if (syncResult.updated) {
+      console.log('✓ Automatically updated .env with missing scope requirements.');
+      if (syncResult.botAdded.length > 0) {
+        console.log(`  - Added to bot: ${syncResult.botAdded.join(', ')}`);
+        // Update live config/env
+        const newScopes = Array.from(new Set([...config.scopes, ...syncResult.botAdded])).sort();
+        config.scopes = newScopes;
+        process.env.TWITCH_SCOPES = newScopes.join(' ');
+      }
+      if (syncResult.broadcasterAdded.length > 0) {
+        console.log(`  - Added to broadcaster: ${syncResult.broadcasterAdded.join(', ')}`);
+        const currentBroadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(Boolean);
+        process.env.TWITCH_BROADCASTER_SCOPES = Array.from(new Set([...currentBroadcasterScopes, ...syncResult.broadcasterAdded])).sort().join(' ');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to sync required scopes to .env:', err.message);
+  }
+
   const activeFeatures = featureScopes.getActiveFeatures(process.env);
   const botRequired = featureScopes.getRequiredScopes(activeFeatures, 'bot');
   const broadcasterRequired = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');

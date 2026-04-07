@@ -190,7 +190,8 @@ router.get('/required', (req, res) => {
       description: featureScopes.FEATURE_SCOPES[f]?.description || ''
     })),
     bot: botScopes,
-    broadcaster: broadcasterScopes
+    broadcaster: broadcasterScopes,
+    hasBroadcasterToken: !!process.env.TWITCH_BROADCASTER_ACCESS_TOKEN
   });
 });
 

@@ -71,6 +71,15 @@ async function autoSelectFeatures() {
             requiredScopes.bot = data.bot || [];
             requiredScopes.broadcaster = data.broadcaster || [];
             
+            // Auto-detect single account mode
+            if (!data.hasBroadcasterToken && data.broadcaster.length > 0) {
+                const singleAccountCheckbox = document.getElementById('single-account-mode');
+                if (singleAccountCheckbox) {
+                    singleAccountCheckbox.checked = true;
+                    updateWizardScopeSummary();
+                }
+            }
+
             data.activeFeatures.forEach(feat => {
                 if (selectedFeatures.hasOwnProperty(feat.id)) {
                     selectedFeatures[feat.id] = true;
@@ -191,6 +200,7 @@ function wizardPrev(step) {
 function updateWizardScopeSummary() {
     let botScopes = new Set();
     let broadcasterScopes = new Set();
+    const isSingleAccount = document.getElementById('single-account-mode')?.checked;
     
     // Calculate required scopes based on user selected features
     Object.keys(selectedFeatures).forEach(featId => {
@@ -198,7 +208,13 @@ function updateWizardScopeSummary() {
             const featData = GLOBAL_FEATURE_SCOPES[featId];
             if (featData) {
                 if (featData.bot) featData.bot.forEach(s => botScopes.add(s));
-                if (featData.broadcaster) featData.broadcaster.forEach(s => broadcasterScopes.add(s));
+                if (featData.broadcaster) {
+                    if (isSingleAccount) {
+                        featData.broadcaster.forEach(s => botScopes.add(s));
+                    } else {
+                        featData.broadcaster.forEach(s => broadcasterScopes.add(s));
+                    }
+                }
             }
         }
     });
@@ -207,9 +223,18 @@ function updateWizardScopeSummary() {
     const broadcasterScopesArr = Array.from(broadcasterScopes).sort();
 
     const html = `
+        <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+            <label style="display: flex; align-items: center; cursor: pointer; font-weight: bold;">
+                <input type="checkbox" id="single-account-mode" style="width: 20px; height: 20px; margin-right: 10px;" onchange="updateWizardScopeSummary()" ${isSingleAccount ? 'checked' : ''}>
+                Single Account Mode (Use bot account for broadcaster features)
+            </label>
+            <p style="margin: 5px 0 0 30px; font-size: 13px; color: #555;">
+                Enable this if you are NOT using a separate bot account. The bot token will include all required scopes for alerts and events.
+            </p>
+        </div>
         <div style="display: grid; grid-template-columns: 1fr ${broadcasterScopesArr.length > 0 ? '1fr' : ''}; gap: 20px;">
             <div id="wizard-bot-scopes-container">
-                <h4>Bot Account (${botScopesArr.length} scopes)</h4>
+                <h4>${isSingleAccount ? 'Combined Bot & Broadcaster' : 'Bot Account'} (${botScopesArr.length} scopes)</h4>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
                     ${botScopesArr.map(s => `<span class="scope-badge">${s}</span>`).join('')}
                 </div>
