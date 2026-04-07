@@ -1,4 +1,5 @@
 let currentWizardStep = 1;
+let requiredScopes = { bot: [], broadcaster: [] };
 let selectedFeatures = {
     chat: true, clips: true, shoutouts: true, followage: true,
     polls: true, predictions: true, announcements: true,
@@ -60,6 +61,10 @@ async function autoSelectFeatures() {
         const data = await response.json();
         
         if (data.activeFeatures) {
+            // Store required scopes from backend
+            requiredScopes.bot = data.bot || [];
+            requiredScopes.broadcaster = data.broadcaster || [];
+
             // Mapping between backend feature IDs and frontend feature IDs
             const mapping = {
                 'chat': 'chat',
@@ -71,13 +76,14 @@ async function autoSelectFeatures() {
                 'announcements': 'announcements',
                 'eventsub': 'eventsub',
                 'redemptions': 'redemptions',
-                'song_requests': 'redemptions', // Song requests use redemptions scope
+                'song_requests': 'redemptions',
                 'moderation': 'ban_timeout',
                 'automod': 'automod',
                 'channel_updates': 'channel_updates',
                 'vip_management': 'vip_management',
                 'bits': 'bits',
-                'subscriptions': 'subscriptions'
+                'subscriptions': 'subscriptions',
+                'whispers': 'whispers'
             };
 
             data.activeFeatures.forEach(feat => {
@@ -199,47 +205,58 @@ function wizardPrev(step) {
 }
 
 function updateWizardScopeSummary() {
-    const botScopes = [];
-    const broadcasterScopes = [];
+    let botScopes = [];
+    let broadcasterScopes = [];
     
-    if (selectedFeatures.chat) { 
-        botScopes.push('chat:read', 'chat:edit', 'channel:bot', 'user:bot', 'user:read:chat', 'user:write:chat'); 
-    }
-    if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
-    if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
-    if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read'); }
-    if (selectedFeatures.shoutouts) { botScopes.push('moderator:manage:shoutouts'); }
-    if (selectedFeatures.followage) { botScopes.push('moderator:read:followers'); }
-    if (selectedFeatures.polls) { botScopes.push('channel:manage:polls'); }
-    if (selectedFeatures.predictions) { botScopes.push('channel:manage:predictions'); }
-    if (selectedFeatures.redemptions) { broadcasterScopes.push('channel:read:redemptions'); }
-    if (selectedFeatures.ban_timeout) { botScopes.push('moderator:manage:banned_users'); }
-    if (selectedFeatures.delete_messages) { botScopes.push('moderator:manage:chat_messages'); }
-    if (selectedFeatures.automod) { botScopes.push('moderator:manage:automod', 'moderator:manage:automod_settings'); }
-    if (selectedFeatures.shield_mode) { botScopes.push('moderator:manage:shield_mode'); }
-    if (selectedFeatures.warnings) { botScopes.push('moderator:manage:warnings'); }
-    if (selectedFeatures.unban_requests) { botScopes.push('moderator:manage:unban_requests'); }
-    if (selectedFeatures.vip_management) { botScopes.push('channel:manage:vips'); }
-    if (selectedFeatures.moderator_management) { botScopes.push('moderation:read', 'moderator:manage:moderators'); }
-    if (selectedFeatures.channel_updates) { botScopes.push('channel:manage:broadcast'); }
-    if (selectedFeatures.schedule_management) { botScopes.push('channel:manage:schedule'); }
-    if (selectedFeatures.ads_management) { botScopes.push('channel:manage:ads'); }
-    if (selectedFeatures.guest_star) { botScopes.push('channel:manage:guest_star'); }
-    if (selectedFeatures.user_email) { botScopes.push('user:read:email'); }
-    if (selectedFeatures.extensions) { botScopes.push('channel:manage:extensions'); }
-    if (selectedFeatures.hype_trains) { broadcasterScopes.push('channel:read:hype_train'); }
-    if (selectedFeatures.bits) { broadcasterScopes.push('bits:read'); }
-    if (selectedFeatures.subscriptions) { broadcasterScopes.push('channel:read:subscriptions'); }
-    if (selectedFeatures.follows_read) { broadcasterScopes.push('user:read:follows'); }
-    if (selectedFeatures.analytics) { broadcasterScopes.push('analytics:read:games'); }
-    if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
-    if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
-    
-    if (selectedFeatures.eventsub) {
-        broadcasterScopes.push('moderator:read:followers');
-        if (!broadcasterScopes.includes('channel:read:subscriptions')) broadcasterScopes.push('channel:read:subscriptions');
-        if (!broadcasterScopes.includes('bits:read')) broadcasterScopes.push('bits:read');
-        if (!broadcasterScopes.includes('channel:read:redemptions')) broadcasterScopes.push('channel:read:redemptions');
+    // Use the backend-provided required scopes if they were loaded
+    if (requiredScopes.bot.length > 0 || requiredScopes.broadcaster.length > 0) {
+        botScopes = [...requiredScopes.bot];
+        broadcasterScopes = [...requiredScopes.broadcaster];
+    } else {
+        // Fallback to local calculation if API failed or not yet called
+        if (selectedFeatures.chat) { 
+            botScopes.push('chat:read', 'chat:edit', 'channel:bot', 'user:bot', 'user:read:chat', 'user:write:chat'); 
+        }
+        if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
+        if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
+        if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read'); }
+        if (selectedFeatures.shoutouts) { botScopes.push('moderator:manage:shoutouts'); }
+        if (selectedFeatures.followage) { botScopes.push('moderator:read:followers'); }
+        if (selectedFeatures.polls) { botScopes.push('channel:manage:polls'); }
+        if (selectedFeatures.predictions) { botScopes.push('channel:manage:predictions'); }
+        if (selectedFeatures.redemptions) { broadcasterScopes.push('channel:read:redemptions'); }
+        if (selectedFeatures.ban_timeout) { botScopes.push('moderator:manage:banned_users'); }
+        if (selectedFeatures.delete_messages) { botScopes.push('moderator:manage:chat_messages'); }
+        if (selectedFeatures.automod) { botScopes.push('moderator:manage:automod', 'moderator:manage:automod_settings'); }
+        if (selectedFeatures.shield_mode) { botScopes.push('moderator:manage:shield_mode'); }
+        if (selectedFeatures.warnings) { botScopes.push('moderator:manage:warnings'); }
+        if (selectedFeatures.unban_requests) { botScopes.push('moderator:manage:unban_requests'); }
+        if (selectedFeatures.vip_management) { botScopes.push('channel:manage:vips'); }
+        if (selectedFeatures.moderator_management) { botScopes.push('moderation:read', 'moderator:manage:moderators'); }
+        if (selectedFeatures.channel_updates) { botScopes.push('channel:manage:broadcast'); }
+        if (selectedFeatures.schedule_management) { botScopes.push('channel:manage:schedule'); }
+        if (selectedFeatures.ads_management) { botScopes.push('channel:manage:ads'); }
+        if (selectedFeatures.guest_star) { botScopes.push('channel:manage:guest_star'); }
+        if (selectedFeatures.user_email) { botScopes.push('user:read:email'); }
+        if (selectedFeatures.extensions) { botScopes.push('channel:manage:extensions'); }
+        if (selectedFeatures.hype_trains) { broadcasterScopes.push('channel:read:hype_train'); }
+        if (selectedFeatures.bits) { broadcasterScopes.push('bits:read'); }
+        if (selectedFeatures.subscriptions) { broadcasterScopes.push('channel:read:subscriptions'); }
+        if (selectedFeatures.follows_read) { broadcasterScopes.push('user:read:follows'); }
+        if (selectedFeatures.analytics) { broadcasterScopes.push('analytics:read:games'); }
+        if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
+        if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
+        
+        if (selectedFeatures.eventsub) {
+            broadcasterScopes.push('moderator:read:followers');
+            if (!broadcasterScopes.includes('channel:read:subscriptions')) broadcasterScopes.push('channel:read:subscriptions');
+            if (!broadcasterScopes.includes('bits:read')) broadcasterScopes.push('bits:read');
+            if (!broadcasterScopes.includes('channel:read:redemptions')) broadcasterScopes.push('channel:read:redemptions');
+        }
+
+        // Deduplicate and sort
+        botScopes = [...new Set(botScopes)].sort();
+        broadcasterScopes = [...new Set(broadcasterScopes)].sort();
     }
 
     const html = `

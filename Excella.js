@@ -257,7 +257,12 @@ async function checkRequiredScopes() {
   const broadcasterValidation = featureScopes.validateScopes(getBroadcasterScopes(), broadcasterRequired);
 
   if (!botValidation.hasAll || !broadcasterValidation.hasAll) {
+    const isSingleAccount = !process.env.TWITCH_BROADCASTER_ACCESS_TOKEN;
+    
     console.warn('\n⚠️  MISSING REQUIRED SCOPES DETECTED');
+    if (isSingleAccount && !broadcasterValidation.hasAll) {
+      console.warn('NOTE: You are using a single account setup. Your bot token needs broadcaster-level scopes.');
+    }
     console.warn('The following features may not work correctly:');
     
     activeFeatures.forEach(featKey => {
