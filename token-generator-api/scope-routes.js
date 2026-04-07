@@ -183,6 +183,7 @@ router.get('/required', (req, res) => {
   const broadcasterScopes = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');
   
   res.json({
+    featureScopes: featureScopes.FEATURE_SCOPES,
     activeFeatures: activeFeatures.map(f => ({
       id: f,
       name: featureScopes.FEATURE_SCOPES[f]?.name || f,

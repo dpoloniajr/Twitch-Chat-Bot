@@ -253,8 +253,16 @@ async function checkRequiredScopes() {
   const botRequired = featureScopes.getRequiredScopes(activeFeatures, 'bot');
   const broadcasterRequired = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');
 
-  const botValidation = featureScopes.validateScopes(config.scopes, botRequired);
-  const broadcasterValidation = featureScopes.validateScopes(getBroadcasterScopes(), broadcasterRequired);
+  const botScopes = cachedTokenValidation.bot.scopes.length > 0 
+    ? cachedTokenValidation.bot.scopes 
+    : config.scopes;
+  
+  const broadcasterScopes = cachedTokenValidation.broadcaster.scopes.length > 0
+    ? cachedTokenValidation.broadcaster.scopes
+    : getBroadcasterScopes();
+
+  const botValidation = featureScopes.validateScopes(botScopes, botRequired);
+  const broadcasterValidation = featureScopes.validateScopes(broadcasterScopes, broadcasterRequired);
 
   if (!botValidation.hasAll || !broadcasterValidation.hasAll) {
     const isSingleAccount = !process.env.TWITCH_BROADCASTER_ACCESS_TOKEN;
