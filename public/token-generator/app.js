@@ -203,27 +203,6 @@ function updateWizardScopeSummary() {
         }
     });
 
-    // Special handling for hardcoded mappings not yet in lib/feature-scopes.js
-    // We should migrate these to lib/feature-scopes.js eventually
-    if (selectedFeatures.delete_messages) botScopes.add('moderator:manage:chat_messages');
-    if (selectedFeatures.shield_mode) botScopes.add('moderator:manage:shield_mode');
-    if (selectedFeatures.warnings) botScopes.add('moderator:manage:warnings');
-    if (selectedFeatures.unban_requests) botScopes.add('moderator:manage:unban_requests');
-    if (selectedFeatures.moderator_management) {
-        botScopes.add('moderation:read');
-        botScopes.add('moderator:manage:moderators');
-    }
-    if (selectedFeatures.schedule_management) botScopes.add('channel:manage:schedule');
-    if (selectedFeatures.ads_management) botScopes.add('channel:manage:ads');
-    if (selectedFeatures.guest_star) botScopes.add('channel:manage:guest_star');
-    if (selectedFeatures.user_email) botScopes.add('user:read:email');
-    if (selectedFeatures.extensions) botScopes.add('channel:manage:extensions');
-    if (selectedFeatures.hype_trains) broadcasterScopes.add('channel:read:hype_train');
-    if (selectedFeatures.follows_read) broadcasterScopes.add('user:read:follows');
-    if (selectedFeatures.analytics) broadcasterScopes.add('analytics:read:games');
-    if (selectedFeatures.charity) broadcasterScopes.add('channel:read:charity');
-    if (selectedFeatures.goals) broadcasterScopes.add('channel:read:goals');
-
     const botScopesArr = Array.from(botScopes).sort();
     const broadcasterScopesArr = Array.from(broadcasterScopes).sort();
 
