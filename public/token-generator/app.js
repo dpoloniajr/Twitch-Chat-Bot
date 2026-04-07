@@ -1,14 +1,16 @@
 let currentWizardStep = 1;
+let requiredScopes = { bot: [], broadcaster: [] };
+let GLOBAL_FEATURE_SCOPES = {}; // Store feature-to-scope mapping from backend
 let selectedFeatures = {
     chat: true, clips: true, shoutouts: true, followage: true,
     polls: true, predictions: true, announcements: true,
-    eventsub: true, redemptions: true,
-    ban_timeout: false, delete_messages: false, automod: false, shield_mode: false, warnings: false,
+    eventsub: true, redemptions: true, song_requests: false,
+    moderation: false, delete_messages: false, automod: false, shield_mode: false, warnings: false,
     vip_management: false, moderator_management: false,
     channel_updates: false, schedule_management: false, ads_management: false,
     hype_trains: false, bits: false, subscriptions: false, follows_read: false,
     user_email: false, extensions: false, analytics: false, charity: false, goals: false,
-    guest_star: false, unban_requests: false
+    guest_star: false, unban_requests: false, whispers: false
 };
 
 const FEATURES = [
@@ -21,7 +23,8 @@ const FEATURES = [
     { id: 'announcements', label: '📣 Announcements' },
     { id: 'eventsub', label: '🔔 EventSub' },
     { id: 'redemptions', label: '⭐ Channel Points' },
-    { id: 'ban_timeout', label: '🚫 Ban/Timeout Users' },
+    { id: 'song_requests', label: '🎵 Song Requests' },
+    { id: 'moderation', label: '🚫 Moderation (Ban/Timeout)' },
     { id: 'delete_messages', label: '🗑️ Delete Messages' },
     { id: 'automod', label: '⚙️ AutoMod Control' },
     { id: 'shield_mode', label: '🛡️ Shield Mode' },
@@ -46,11 +49,39 @@ const FEATURES = [
 ];
 
 async function initPage() {
+    await autoSelectFeatures();
     renderFeatures();
     await loadPresets();
     await loadScopeCategories();
     updateAccountContext();
     setTimeout(loadCurrentScopes, 100);
+}
+
+async function autoSelectFeatures() {
+    try {
+        const response = await fetch('/api/scopes/required');
+        const data = await response.json();
+        
+        if (data.featureScopes) {
+            GLOBAL_FEATURE_SCOPES = data.featureScopes;
+        }
+
+        if (data.activeFeatures) {
+            // Store required scopes from backend for validation
+            requiredScopes.bot = data.bot || [];
+            requiredScopes.broadcaster = data.broadcaster || [];
+            
+            data.activeFeatures.forEach(feat => {
+                if (selectedFeatures.hasOwnProperty(feat.id)) {
+                    selectedFeatures[feat.id] = true;
+                }
+            });
+            
+            console.log('Auto-selected features based on environment:', data.activeFeatures.map(f => f.id));
+        }
+    } catch (error) {
+        console.error('Failed to auto-select features:', error);
+    }
 }
 
 function renderFeatures() {
@@ -158,62 +189,36 @@ function wizardPrev(step) {
 }
 
 function updateWizardScopeSummary() {
-    const botScopes = [];
-    const broadcasterScopes = [];
+    let botScopes = new Set();
+    let broadcasterScopes = new Set();
     
-    if (selectedFeatures.chat) { 
-        botScopes.push('chat:read', 'chat:edit', 'channel:bot', 'user:bot', 'user:read:chat', 'user:write:chat'); 
-    }
-    if (selectedFeatures.clips) { botScopes.push('clips:edit'); }
-    if (selectedFeatures.announcements) { botScopes.push('moderator:manage:announcements'); }
-    if (selectedFeatures.whispers) { botScopes.push('user:manage:whispers', 'whispers:read'); }
-    if (selectedFeatures.shoutouts) { botScopes.push('moderator:manage:shoutouts'); }
-    if (selectedFeatures.followage) { botScopes.push('moderator:read:followers'); }
-    if (selectedFeatures.polls) { botScopes.push('channel:manage:polls'); }
-    if (selectedFeatures.predictions) { botScopes.push('channel:manage:predictions'); }
-    if (selectedFeatures.redemptions) { broadcasterScopes.push('channel:read:redemptions'); }
-    if (selectedFeatures.ban_timeout) { botScopes.push('moderator:manage:banned_users'); }
-    if (selectedFeatures.delete_messages) { botScopes.push('moderator:manage:chat_messages'); }
-    if (selectedFeatures.automod) { botScopes.push('moderator:manage:automod', 'moderator:manage:automod_settings'); }
-    if (selectedFeatures.shield_mode) { botScopes.push('moderator:manage:shield_mode'); }
-    if (selectedFeatures.warnings) { botScopes.push('moderator:manage:warnings'); }
-    if (selectedFeatures.unban_requests) { botScopes.push('moderator:manage:unban_requests'); }
-    if (selectedFeatures.vip_management) { botScopes.push('channel:manage:vips'); }
-    if (selectedFeatures.moderator_management) { botScopes.push('moderation:read', 'moderator:manage:moderators'); }
-    if (selectedFeatures.channel_updates) { botScopes.push('channel:manage:broadcast'); }
-    if (selectedFeatures.schedule_management) { botScopes.push('channel:manage:schedule'); }
-    if (selectedFeatures.ads_management) { botScopes.push('channel:manage:ads'); }
-    if (selectedFeatures.guest_star) { botScopes.push('channel:manage:guest_star'); }
-    if (selectedFeatures.user_email) { botScopes.push('user:read:email'); }
-    if (selectedFeatures.extensions) { botScopes.push('channel:manage:extensions'); }
-    if (selectedFeatures.hype_trains) { broadcasterScopes.push('channel:read:hype_train'); }
-    if (selectedFeatures.bits) { broadcasterScopes.push('bits:read'); }
-    if (selectedFeatures.subscriptions) { broadcasterScopes.push('channel:read:subscriptions'); }
-    if (selectedFeatures.follows_read) { broadcasterScopes.push('user:read:follows'); }
-    if (selectedFeatures.analytics) { broadcasterScopes.push('analytics:read:games'); }
-    if (selectedFeatures.charity) { broadcasterScopes.push('channel:read:charity'); }
-    if (selectedFeatures.goals) { broadcasterScopes.push('channel:read:goals'); }
-    
-    if (selectedFeatures.eventsub) {
-        broadcasterScopes.push('moderator:read:followers');
-        if (!broadcasterScopes.includes('channel:read:subscriptions')) broadcasterScopes.push('channel:read:subscriptions');
-        if (!broadcasterScopes.includes('bits:read')) broadcasterScopes.push('bits:read');
-        if (!broadcasterScopes.includes('channel:read:redemptions')) broadcasterScopes.push('channel:read:redemptions');
-    }
+    // Calculate required scopes based on user selected features
+    Object.keys(selectedFeatures).forEach(featId => {
+        if (selectedFeatures[featId]) {
+            const featData = GLOBAL_FEATURE_SCOPES[featId];
+            if (featData) {
+                if (featData.bot) featData.bot.forEach(s => botScopes.add(s));
+                if (featData.broadcaster) featData.broadcaster.forEach(s => broadcasterScopes.add(s));
+            }
+        }
+    });
+
+    const botScopesArr = Array.from(botScopes).sort();
+    const broadcasterScopesArr = Array.from(broadcasterScopes).sort();
 
     const html = `
-        <div style="display: grid; grid-template-columns: 1fr ${broadcasterScopes.length > 0 ? '1fr' : ''}; gap: 20px;">
+        <div style="display: grid; grid-template-columns: 1fr ${broadcasterScopesArr.length > 0 ? '1fr' : ''}; gap: 20px;">
             <div id="wizard-bot-scopes-container">
-                <h4>Bot Account (${botScopes.length} scopes)</h4>
+                <h4>Bot Account (${botScopesArr.length} scopes)</h4>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-                    ${botScopes.map(s => `<span class="scope-badge">${s}</span>`).join('')}
+                    ${botScopesArr.map(s => `<span class="scope-badge">${s}</span>`).join('')}
                 </div>
             </div>
-            ${broadcasterScopes.length > 0 ? `
+            ${broadcasterScopesArr.length > 0 ? `
                 <div id="wizard-broadcaster-scopes-container">
-                    <h4>Broadcaster Account (${broadcasterScopes.length} scopes)</h4>
+                    <h4>Broadcaster Account (${broadcasterScopesArr.length} scopes)</h4>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-                        ${broadcasterScopes.map(s => `<span class="scope-badge">${s}</span>`).join('')}
+                        ${broadcasterScopesArr.map(s => `<span class="scope-badge">${s}</span>`).join('')}
                     </div>
                 </div>
             ` : ''}
@@ -537,9 +542,40 @@ async function authorizeAccount(name, type) {
         const data = await response.json();
         const acc = data.account;
         
-        let scopes = type === 'bot' ? ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'] : ['moderator:read:followers', 'channel:read:redemptions', 'channel:read:subscriptions', 'bits:read'];
+        let scopes = new Set();
         
-        const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${acc.clientId}&redirect_uri=${encodeURIComponent(location.origin + '/callback')}&response_type=code&scope=${scopes.join('+')}&state=${name}_${type}`;
+        // If we have GLOBAL_FEATURE_SCOPES, use it to determine recommended scopes
+        if (Object.keys(GLOBAL_FEATURE_SCOPES).length > 0) {
+            // Recommendation: include basic bot features or eventsub features
+            Object.keys(GLOBAL_FEATURE_SCOPES).forEach(featId => {
+                const feat = GLOBAL_FEATURE_SCOPES[featId];
+                if (type === 'bot' && feat.bot) {
+                    // For bot auth, include features that are typically enabled
+                    const botDefaults = ['chat', 'clips', 'announcements', 'shoutouts', 'polls', 'predictions', 'moderation'];
+                    if (botDefaults.includes(featId)) {
+                        feat.bot.forEach(s => scopes.add(s));
+                    }
+                } else if (type === 'broadcaster' && feat.broadcaster) {
+                    // For broadcaster auth, include EventSub related features
+                    const broadcasterDefaults = ['eventsub', 'redemptions', 'bits', 'subscriptions'];
+                    if (broadcasterDefaults.includes(featId)) {
+                        feat.broadcaster.forEach(s => scopes.add(s));
+                    }
+                }
+            });
+        }
+        
+        // Fallback/Ensure basic scopes if Set is empty
+        if (scopes.size === 0) {
+            if (type === 'bot') {
+                ['chat:read', 'chat:edit', 'clips:edit', 'moderator:manage:shoutouts', 'channel:manage:polls', 'channel:manage:predictions', 'moderator:manage:announcements'].forEach(s => scopes.add(s));
+            } else {
+                ['moderator:read:followers', 'channel:read:redemptions', 'channel:read:subscriptions', 'bits:read'].forEach(s => scopes.add(s));
+            }
+        }
+        
+        const scopeArray = Array.from(scopes).sort();
+        const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${acc.clientId}&redirect_uri=${encodeURIComponent(location.origin + '/callback')}&response_type=code&scope=${scopeArray.join('+')}&state=${name}_${type}`;
         window.open(authUrl, '_blank');
     } catch (error) {
         alert('Error: ' + error.message);
