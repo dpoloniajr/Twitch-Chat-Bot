@@ -2223,6 +2223,7 @@ const TTS_CONFIG = {
   MAX_LENGTH: 200,
   PER_USER_COOLDOWN_SEC: 30,
   GLOBAL_COOLDOWN_SEC: 10,
+  REDEMPTION_QUEUE_MAX_SIZE: 100,
   CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Default reward title to look for
 };
 
@@ -2236,7 +2237,8 @@ const ttsRedemptionQueue = createRedemptionTTSQueue({
   getCooldownRemainingMs: () => getTTSGlobalCooldownRemainingMs(),
   processRedemption: async ({ channel, username, args, msg }) => {
     return handleTTS(channel, username, args, msg, true, { fromQueue: true });
-  }
+  },
+  maxSize: TTS_CONFIG.REDEMPTION_QUEUE_MAX_SIZE
 });
 
 async function handleTTS(channel, username, args, msg, isRedemption = false, options = {}) {
@@ -2279,13 +2281,23 @@ async function handleTTS(channel, username, args, msg, isRedemption = false, opt
     const remainingSec = Math.max(1, Math.ceil(cooldownRemainingMs / 1000));
 
     if (isRedemption) {
-      ttsRedemptionQueue.enqueue({
+      if (options.fromQueue) {
+        return 'defer';
+      }
+
+      const enqueueResult = ttsRedemptionQueue.enqueue({
         channel,
         username,
         args: Array.isArray(args) ? [...args] : [],
         msg
       });
-      console.log(`[TTS] Queued redemption for @${username} due to global cooldown (${remainingSec}s remaining). Queue size: ${ttsRedemptionQueue.size()}`);
+
+      if (!enqueueResult.accepted) {
+        console.warn(`[TTS] Dropping redemption for @${username}: queue is full (${enqueueResult.size}/${TTS_CONFIG.REDEMPTION_QUEUE_MAX_SIZE})`);
+        return false;
+      }
+
+      console.log(`[TTS] Queued redemption for @${username} due to global cooldown (${remainingSec}s remaining). Queue size: ${enqueueResult.size}`);
       return true;
     }
 
