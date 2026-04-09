@@ -238,17 +238,33 @@ function getBroadcasterScopes() {
   return config.scopes;
 }
 
-// Centralized scope validation with caching
-function validateScopes(requiredScopes) {
-  const scopeSet = new Set(config.scopes);
-  return requiredScopes.every(scope => scopeSet.has(scope));
-}
-
 /**
  * Automatically check for missing scopes based on enabled features.
  * Logs warnings and instructions if scopes are missing.
  */
 async function checkRequiredScopes() {
+  // Automatically sync scopes to .env first
+  try {
+    const syncResult = await featureScopes.syncRequiredScopes(process.env.ENV_PATH || '.env');
+    if (syncResult.updated) {
+      console.log('✓ Automatically updated .env with missing scope requirements.');
+      if (syncResult.botAdded.length > 0) {
+        console.log(`  - Added to bot: ${syncResult.botAdded.join(', ')}`);
+        // Update live config/env
+        const newScopes = Array.from(new Set([...config.scopes, ...syncResult.botAdded])).sort();
+        config.scopes = newScopes;
+        process.env.TWITCH_SCOPES = newScopes.join(' ');
+      }
+      if (syncResult.broadcasterAdded.length > 0) {
+        console.log(`  - Added to broadcaster: ${syncResult.broadcasterAdded.join(', ')}`);
+        const currentBroadcasterScopes = (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(Boolean);
+        process.env.TWITCH_BROADCASTER_SCOPES = Array.from(new Set([...currentBroadcasterScopes, ...syncResult.broadcasterAdded])).sort().join(' ');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to sync required scopes to .env:', err.message);
+  }
+
   const activeFeatures = featureScopes.getActiveFeatures(process.env);
   const botRequired = featureScopes.getRequiredScopes(activeFeatures, 'bot');
   const broadcasterRequired = featureScopes.getRequiredScopes(activeFeatures, 'broadcaster');
@@ -517,7 +533,7 @@ async function startAnnouncements() {
         const liveScopes = cachedTokenValidation.bot.scopes.length > 0
           ? cachedTokenValidation.bot.scopes
           : config.scopes;
-        if (hasScope(liveScopes, 'moderator:manage:announcements')) {
+        if (featureScopes.hasRequiredScopes('announcements', liveScopes, 'bot')) {
           let result = await apiClient.sendAnnouncement(broadcasterId, tokenUserId, msg, 'purple');
 
           // If the call fails with a token error, attempt a refresh and retry once
@@ -569,12 +585,9 @@ async function setupEventSub() {
     console.warn('EventSub disabled: no user token context');
     return;
   }
-  // Guard: token scopes must include moderator or user permissions, not just channel:bot
-  const hasUserScopes = config.scopes.some(s =>
-    s.startsWith('user:') || s.startsWith('moderator:') || s.startsWith('channel:manage') || s.startsWith('channel:read')
-  );
-  if (!hasUserScopes) {
-    console.warn('EventSub disabled: token scopes lack user permissions. Re-authorize with proper scopes.');
+  // Guard: token scopes must include user/moderator permissions for basic EventSub
+  if (!featureScopes.hasRequiredScopes('eventsub', config.scopes, 'broadcaster')) {
+    console.warn('EventSub disabled: token scopes lack required permissions. Re-authorize with proper scopes.');
     return;
   }
   try {
@@ -637,10 +650,10 @@ async function setupBroadcasterEventSub() {
   const broadcasterScopes = cachedTokenValidation.broadcaster.scopes.length > 0
     ? cachedTokenValidation.broadcaster.scopes
     : (process.env.TWITCH_BROADCASTER_SCOPES || '').split(' ').filter(s => s);
-  const hasFollowersScope = hasScope(broadcasterScopes, 'moderator:read:followers');
-  const hasRedemptionsScope = hasScope(broadcasterScopes, 'channel:read:redemptions');
-  const hasSubscriptionsScope = hasScope(broadcasterScopes, 'channel:read:subscriptions');
-  const hasBitsScope = hasScope(broadcasterScopes, 'bits:read');
+  const hasFollowersScope = featureScopes.hasRequiredScopes('followage', broadcasterScopes, 'broadcaster');
+  const hasRedemptionsScope = featureScopes.hasRequiredScopes('redemptions', broadcasterScopes, 'broadcaster');
+  const hasSubscriptionsScope = featureScopes.hasRequiredScopes('subscriptions', broadcasterScopes, 'broadcaster');
+  const hasBitsScope = featureScopes.hasRequiredScopes('bits', broadcasterScopes, 'broadcaster');
 
   if (!hasFollowersScope && !hasRedemptionsScope && !hasSubscriptionsScope && !hasBitsScope) {
     console.warn('[EventSub-Broadcaster] Broadcaster token missing required scopes:');
@@ -1216,18 +1229,6 @@ function scheduleProactiveTokenRefresh() {
 
 
 // Validate a token with Twitch
-// Check if a scope exists in the given scope list (cached)
-function hasScope(scopeList, targetScope) {
-  const scopes = scopeList || [];
-  return scopes.includes(targetScope);
-}
-
-// Check multiple scopes at once (cached)
-function hasScopeList(scopeList, targetScopes) {
-  const scopes = new Set(scopeList || []);
-  return targetScopes.every(s => scopes.has(s));
-}
-
 // Validate token with caching (avoid repeated HTTP calls)
 async function validateTokenCached(token, accountType = 'bot') {
   const now = Date.now();
@@ -1418,7 +1419,7 @@ async function createClip() {
     }
 
     // Check if required scope is present (cached)
-    if (!hasScope(config.scopes, 'clips:edit')) {
+    if (!featureScopes.hasRequiredScopes('clips', config.scopes, 'bot')) {
       console.error('Missing required scope: clips:edit');
       return { success: false, error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
     }
@@ -1541,7 +1542,7 @@ async function updateStreamTitle(newTitle) {
     if (!initComplete || !broadcasterId) {
       return { success: false, error: 'Bot not initialized yet. Try again shortly.' };
     }
-    if (!hasScope(getBroadcasterScopes(), 'channel:manage:broadcast')) {
+    if (!featureScopes.hasRequiredScopes('channel_updates', getBroadcasterScopes(), 'broadcaster')) {
       return { success: false, error: 'Missing scope: channel:manage:broadcast. Re-authorize via the token generator.' };
     }
     const title = String(newTitle || '').trim();
@@ -1568,7 +1569,7 @@ async function updateStreamGame(gameName) {
     if (!initComplete || !broadcasterId) {
       return { success: false, error: 'Bot not initialized yet. Try again shortly.' };
     }
-    if (!hasScope(getBroadcasterScopes(), 'channel:manage:broadcast')) {
+    if (!featureScopes.hasRequiredScopes('channel_updates', getBroadcasterScopes(), 'broadcaster')) {
       return { success: false, error: 'Missing scope: channel:manage:broadcast. Re-authorize via the token generator.' };
     }
     const name = String(gameName || '').trim();
@@ -1623,7 +1624,7 @@ async function updateStreamGame(gameName) {
 async function timeoutUser(channel, username, durationSeconds) {
   try {
     if (!tokenUserId || !broadcasterId) return;
-    if (!config.scopes.includes('moderator:manage:banned_users')) return;
+    if (!featureScopes.hasRequiredScopes('moderation', config.scopes, 'bot')) return;
 
     // Get user ID first
     const user = await apiClient.getUserByName(username);
@@ -1779,7 +1780,7 @@ async function handlePoll(channel, username, args) {
       )); // 15s-30m, default 5m
       
       // Check scope against the broadcaster token's scopes (the token used for this call)
-      if (!hasScope(getBroadcasterScopes(), 'channel:manage:polls')) {
+      if (!featureScopes.hasRequiredScopes('polls', getBroadcasterScopes(), 'broadcaster')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
@@ -1819,7 +1820,7 @@ async function handlePoll(channel, username, args) {
         return;
       }
       
-      if (!hasScope(getBroadcasterScopes(), 'channel:manage:polls')) {
+      if (!featureScopes.hasRequiredScopes('polls', getBroadcasterScopes(), 'broadcaster')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:polls`);
         return;
       }
@@ -1889,7 +1890,7 @@ async function handlePrediction(channel, username, args) {
       )); // 1m-30m, default 5m
       
       // Check scope against the broadcaster token's scopes (the token used for this call)
-      if (!hasScope(getBroadcasterScopes(), 'channel:manage:predictions')) {
+      if (!featureScopes.hasRequiredScopes('predictions', getBroadcasterScopes(), 'broadcaster')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }
@@ -1930,7 +1931,7 @@ async function handlePrediction(channel, username, args) {
         return;
       }
       
-      if (!hasScope(getBroadcasterScopes(), 'channel:manage:predictions')) {
+      if (!featureScopes.hasRequiredScopes('predictions', getBroadcasterScopes(), 'broadcaster')) {
         sendChatMessage(channel, `@${username} Missing scope: channel:manage:predictions`);
         return;
       }

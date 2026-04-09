@@ -25,7 +25,7 @@ const SCOPE_CATEGORIES = {
     { scope: 'moderator:manage:banned_users', description: 'Ban and unban users' },
     { scope: 'moderator:read:followers', description: 'Read followers list' },
     { scope: 'moderator:read:moderators', description: 'Read moderators list' },
-    { scope: 'moderator:manage:moderators', description: 'Add/remove moderators' },
+    { scope: 'channel:manage:moderators', description: 'Add/remove moderators' },
     { scope: 'moderator:manage:chat_messages', description: 'Delete chat messages' },
     { scope: 'moderator:read:chat_messages', description: 'Read deleted chat messages' },
     { scope: 'moderator:read:automod_settings', description: 'View AutoMod settings' },
@@ -190,7 +190,8 @@ router.get('/required', (req, res) => {
       description: featureScopes.FEATURE_SCOPES[f]?.description || ''
     })),
     bot: botScopes,
-    broadcaster: broadcasterScopes
+    broadcaster: broadcasterScopes,
+    hasBroadcasterToken: !!process.env.TWITCH_BROADCASTER_ACCESS_TOKEN
   });
 });
 
