@@ -4,6 +4,7 @@ const TwitchHelixAPI = require('./lib/twitch-helix-api');
 const TwitchIRCClient = require('./lib/twitch-irc-client');
 const TwitchEventSubWS = require('./lib/twitch-eventsub-ws');
 const featureScopes = require('./lib/feature-scopes');
+const { createRedemptionTTSQueue } = require('./lib/tts-redemption-queue');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -2223,10 +2224,25 @@ const TTS_CONFIG = {
   MAX_LENGTH: 200,
   PER_USER_COOLDOWN_SEC: 30,
   GLOBAL_COOLDOWN_SEC: 10,
+  REDEMPTION_QUEUE_MAX_SIZE: 100,
   CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Default reward title to look for
 };
 
-async function handleTTS(channel, username, args, msg, isRedemption = false) {
+function getTTSGlobalCooldownRemainingMs(now = Date.now()) {
+  const elapsedMs = now - lastGlobalTTSTime;
+  const cooldownMs = TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000;
+  return Math.max(0, cooldownMs - elapsedMs);
+}
+
+const ttsRedemptionQueue = createRedemptionTTSQueue({
+  getCooldownRemainingMs: () => getTTSGlobalCooldownRemainingMs(),
+  processRedemption: async ({ channel, username, args, msg }) => {
+    return handleTTS(channel, username, args, msg, true, { fromQueue: true });
+  },
+  maxSize: TTS_CONFIG.REDEMPTION_QUEUE_MAX_SIZE
+});
+
+async function handleTTS(channel, username, args, msg, isRedemption = false, options = {}) {
   const text = args.join(' ').trim();
 
   // Normalize username to lowercase for consistent cooldown tracking
@@ -2261,9 +2277,31 @@ async function handleTTS(channel, username, args, msg, isRedemption = false) {
 
   // Check global cooldown
   const now = Date.now();
-  const timeSinceLastGlobalTTS = now - lastGlobalTTSTime;
-  if (timeSinceLastGlobalTTS < TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000) {
-    const remainingSec = Math.max(1, Math.ceil((TTS_CONFIG.GLOBAL_COOLDOWN_SEC * 1000 - timeSinceLastGlobalTTS) / 1000));
+  const cooldownRemainingMs = getTTSGlobalCooldownRemainingMs(now);
+  if (cooldownRemainingMs > 0) {
+    const remainingSec = Math.max(1, Math.ceil(cooldownRemainingMs / 1000));
+
+    if (isRedemption) {
+      if (options.fromQueue) {
+        return 'defer';
+      }
+
+      const enqueueResult = ttsRedemptionQueue.enqueue({
+        channel,
+        username,
+        args: Array.isArray(args) ? [...args] : [],
+        msg
+      });
+
+      if (!enqueueResult.accepted) {
+        console.warn(`[TTS] Dropping redemption for @${username}: queue is full (${enqueueResult.size}/${TTS_CONFIG.REDEMPTION_QUEUE_MAX_SIZE})`);
+        return false;
+      }
+
+      console.log(`[TTS] Queued redemption for @${username} due to global cooldown (${remainingSec}s remaining). Queue size: ${enqueueResult.size}`);
+      return true;
+    }
+
     sendChatMessage(channel, `@${username} TTS is on global cooldown. Try again in ${remainingSec}s.`);
     return false; // Don't apply user cooldown
   }
