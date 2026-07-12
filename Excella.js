@@ -2317,6 +2317,22 @@ async function handleTTS(channel, username, args, msg, isRedemption = false, opt
     }
   }
 
+  // Commit cooldowns now, before any async work, so concurrent calls (e.g. two
+  // redemptions arriving back-to-back) can't both pass the checks above while
+  // this call is still awaiting TTS generation.
+  lastGlobalTTSTime = now;
+  ttsUserCooldowns.set(normalizedUsername, now);
+
+  // Cleanup old user cooldowns once the map grows past 100 entries
+  if (ttsUserCooldowns.size > 100) {
+    const cutoffTime = now - (TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 * 2);
+    for (const [user, timestamp] of ttsUserCooldowns.entries()) {
+      if (timestamp < cutoffTime) {
+        ttsUserCooldowns.delete(user);
+      }
+    }
+  }
+
   // Generate TTS audio via dashboard API (only if API provider is configured, not browser)
   let audioUrl = null;
   let useBrowserTTS = true;
@@ -2360,20 +2376,6 @@ async function handleTTS(channel, username, args, msg, isRedemption = false, opt
 
   // Log successful TTS
   logCommandExecution(username, '!tts', args, true);
-
-  // Update cooldowns (use normalized username for consistency)
-  lastGlobalTTSTime = now;
-  ttsUserCooldowns.set(normalizedUsername, now);
-
-  // Cleanup old user cooldowns (every 100 TTS calls)
-  if (ttsUserCooldowns.size > 100) {
-    const cutoffTime = now - (TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 * 2);
-    for (const [user, timestamp] of ttsUserCooldowns.entries()) {
-      if (timestamp < cutoffTime) {
-        ttsUserCooldowns.delete(user);
-      }
-    }
-  }
 
   return true; // Successfully processed
 }
