@@ -2323,7 +2323,7 @@ async function handleTTS(channel, username, args, msg, isRedemption = false, opt
   lastGlobalTTSTime = now;
   ttsUserCooldowns.set(normalizedUsername, now);
 
-  // Cleanup old user cooldowns (every 100 TTS calls)
+  // Cleanup old user cooldowns once the map grows past 100 entries
   if (ttsUserCooldowns.size > 100) {
     const cutoffTime = now - (TTS_CONFIG.PER_USER_COOLDOWN_SEC * 1000 * 2);
     for (const [user, timestamp] of ttsUserCooldowns.entries()) {
