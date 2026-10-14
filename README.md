@@ -142,6 +142,8 @@ docker-compose up -d                                  # bot + dashboard
 docker-compose --profile tools up token-generator     # token generator on port 3000
 ```
 
+The `token-generator` service bind-mounts `.env`, `accounts.encrypted.json` and `.encryption-key`, so all three must already exist as files that the container's user (UID 1001) can read and write. Docker creates a missing one as a directory, and the token generator then fails to start. If you don't have account files yet, it is simpler to run `npm run token-generator` on the host.
+
 Settings passed in by `docker-compose.yml` show as locked on the dashboard's Settings page, because `.env` cannot override them.
 
 ## Configuration
@@ -295,7 +297,7 @@ Add `http://localhost:3001/obs/overlays/song-player.html` as a browser source to
 
 ## Text-to-Speech
 
-`!tts <message>` and channel point redemptions whose title contains `TTS` (or your `TTS_REWARD_TITLE`) are read aloud by the TTS overlay. Messages pass through the chat filters (except spam). Redemptions skip the per-user cooldown.
+`!tts <message>` and channel point redemptions are read aloud by the TTS overlay. A redemption counts as TTS when its reward title contains the word `TTS` ("TTS Message" matches), or, if `TTS_REWARD_TITLE` is set, when the title equals it exactly (ignoring case). Messages pass through the chat filters (except spam). Redemptions skip the per-user cooldown.
 
 Add `http://localhost:3001/obs/overlays/tts-display.html` as a browser source. It accepts `?voice=en-US`, `?rate=1.0`, `?pitch=1.0`, `?volume=1.0`, `?duration=5000` and `?debug=true`.
 
@@ -306,7 +308,7 @@ Add `http://localhost:3001/obs/overlays/tts-display.html` as a browser source. I
 | `OPENAI_API_KEY` / `OPENAI_TTS_VOICE` / `OPENAI_TTS_MODEL` | - / `alloy` / `tts-1` | OpenAI voice |
 | `TTS_CACHE_ENABLED` / `TTS_CACHE_MAX_AGE` / `TTS_CACHE_MAX_SIZE` | `true` / 24h / 100MB | Audio cache in `dashboard/cache/tts/` |
 
-If the AI provider fails, the overlay falls back to browser speech. TTS settings saved on the Settings page apply immediately. See [TTS_README.md](TTS_README.md) for details.
+If the AI provider fails, the overlay falls back to browser speech. Voice, model, API key and cache-limit changes saved on the Settings page apply immediately. Switching `TTS_PROVIDER` between `browser` and an AI provider, or changing `TTS_REWARD_TITLE`, needs **Restart Bot**; changing `TTS_CACHE_ENABLED` needs a dashboard restart. See [TTS_README.md](TTS_README.md) for details.
 
 ## Dashboard
 
@@ -335,7 +337,7 @@ The Settings page reads and writes `.env` through `GET/PUT /api/config`. One sch
 
 - Secrets (API keys, client secret, tokens) show only "set" or "not set". You can replace or clear them but never read them back.
 - Tokens and scopes are read-only; use the token generator. `DASHBOARD_HOST` and `DASHBOARD_INTERNAL_SECRET` are read-only too, because they protect the dashboard.
-- Each setting says when it applies: TTS settings immediately, others after **Restart Bot**, and ports after restarting `npm start`.
+- Each setting says when it applies. Most need **Restart Bot**; some TTS settings apply immediately (see [Text-to-Speech](#text-to-speech) for the exceptions); `DASHBOARD_PORT` needs a restart of `npm start`, and `TOKEN_GENERATOR_PORT` a restart of `npm run token-generator`.
 - Settings set by the system environment (for example `docker-compose.yml`) are shown but locked.
 
 ### WebSocket events
@@ -505,14 +507,14 @@ To add a built-in command, write the handler in the matching `src/bot/` module, 
 
 **Dashboard writes fail with 403**: the request came from another origin, or `DASHBOARD_INTERNAL_SECRET` is set and the call needs the `x-bot-secret` header.
 
-**Can't reach the dashboard from another machine**: set `DASHBOARD_HOST=0.0.0.0` (Docker does this already).
+**Can't reach the dashboard from another machine**: set `DASHBOARD_HOST=0.0.0.0` (Docker does this already). The dashboard has no login, so only do this on a network you trust (see [Security](#security)).
 
 **Overlays show nothing or play no sound**: check the browser source URL and port, and enable "Refresh browser when scene becomes active". Browsers may block sound until the page has been interacted with; use the OBS browser source's audio controls.
 
 ## Security
 
 - `.env`, `accounts.encrypted.json`, `.encryption-key` and `dashboard/logs/` are gitignored. Never commit them.
-- The dashboard listens on `127.0.0.1` by default.
+- The dashboard has no login. Anyone who can reach its port can change settings, restore backups and control the bot, even with `DASHBOARD_INTERNAL_SECRET` set (the secret only protects the bot-only routes, and requests without an `Origin` header pass the CSRF check). It listens on `127.0.0.1` by default; if you expose it with `DASHBOARD_HOST=0.0.0.0` or Docker, limit access with a firewall or put it behind an authenticating reverse proxy.
 - State-changing dashboard requests from another website's origin are refused (CSRF check), so a page you visit can't change your bot.
 - With `DASHBOARD_INTERNAL_SECRET` set, bot-only writes (points, events, adding songs) need the `x-bot-secret` header, which the bot sends. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 - The Settings page never returns secret values.
