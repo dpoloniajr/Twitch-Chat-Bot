@@ -12,7 +12,7 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import * as state from './lib/state';
 import { DEFAULT_ALERT_CONFIG, DEFAULT_BUILTIN_COMMANDS, type BuiltinCommandEntry } from './lib/constants';
-import { errorHandler, sameOriginGuard, requireBotSecret, ensureBody } from './lib/middleware';
+import { errorHandler, sameOriginGuard, requireBotSecret, allowDashboardPages, ensureBody } from './lib/middleware';
 import * as ttsService from '../lib/tts-service';
 import { projectPath } from '../utils/project-root';
 import { createApiRouter } from './routes/api';
@@ -25,6 +25,7 @@ import { createQuotesRouter } from './routes/quotes';
 import { createCountersRouter } from './routes/counters';
 import { createBackupRouter } from './routes/backup';
 import { createSongQueueRouter } from './routes/song-queue';
+import { createConfigRouter } from './routes/config';
 
 export interface DashboardOptions {
   /** JSON data directory (default dashboard/logs) */
@@ -35,6 +36,12 @@ export interface DashboardOptions {
   envPath?: string;
   /** Initialise the TTS cache on init() (default true) */
   initTts?: boolean;
+  /**
+   * Env keys the system environment set before .env was loaded (dashboard/main.ts
+   * captures them). Without it, the Settings page infers them by comparing
+   * process.env with .env.
+   */
+  environmentKeys?: string[];
 }
 
 /** The data files createDashboard() uses (all inside logsDir) */
@@ -176,16 +183,32 @@ export function createDashboard(options: DashboardOptions = {}): Dashboard {
   // player overlay, ...) rely on sameOriginGuard instead.
   const botOnly = requireBotSecret(process.env.DASHBOARD_INTERNAL_SECRET);
   app.post(['/api/redemptions', '/api/eventsub-events', '/api/update-state', '/api/hype/trigger', '/api/tts/generate'], botOnly);
-  app.use('/api/loyalty', botOnly);
+  // Dashboard pages may also make the admin writes on these otherwise bot-only
+  // routes (see allowDashboardPages): loyalty settings and point edits, and every
+  // song queue action except adding a song (the bot charges points for that).
+  // Points-earning loyalty routes (award, add, deduct, gamba, duel) stay bot-only.
+  const botOrDashboard = allowDashboardPages(botOnly);
+  app.use('/api/loyalty', (req: Request, res: Response, next: NextFunction) => {
+    const isAdminEdit = (req.method === 'PUT' && /^\/config\/?$/i.test(req.path)) ||
+      (req.method === 'PUT' && /^\/user\/[^/]+\/points\/?$/i.test(req.path));
+    (isAdminEdit ? botOrDashboard : botOnly)(req, res, next);
+  });
   app.use('/api/song-queue', (req: Request, res: Response, next: NextFunction) => {
+    // The song player overlay skips finished songs without an Origin check of its own
     const isOverlaySkip = req.method === 'POST' && /^\/skip\/?$/i.test(req.path);
     if (isOverlaySkip) return next();
-    botOnly(req, res, next);
+    const isAdd = req.method === 'POST' && /^\/add\/?$/i.test(req.path);
+    (isAdd ? botOnly : botOrDashboard)(req, res, next);
   });
 
   // Routes
   const broadcast = state.broadcastState;
   app.use('/api', createApiRouter(paths, envPath));
+  // TTS settings saved on the Settings page apply to this process right away
+  app.use('/api/config', createConfigRouter(envPath, {
+    environmentKeys: options.environmentKeys,
+    onChange: () => ttsService.reconfigure(process.env)
+  }));
   app.use('/api/filters', createFiltersRouter(envPath));
   app.use('/api/alerts', createAlertsRouter(paths.alertConfigFile));
   app.use('/api/uploads', createUploadsRouter(uploadsDir));

@@ -104,6 +104,70 @@ export async function upsertEnvValue(envPath: string, key: string, value: string
 }
 
 /**
+ * Format a value for a .env line so dotenv and readEnvFileSync() read it back
+ * unchanged. Plain values are written bare; values with `#`, quotes or edge
+ * spaces are single-quoted (dotenv keeps single-quoted text literally), or
+ * double-quoted when they contain a single quote but no `"` or backslash.
+ * Throws ValidationError for line breaks or values that cannot round-trip.
+ */
+export function formatEnvValue(key: string, value: string): string {
+  if (/[\r\n\0]/.test(value)) {
+    throw new ValidationError(`${key} value cannot contain line breaks`);
+  }
+  const needsQuotes = /[#'"`]/.test(value) || value !== value.trim();
+  if (!needsQuotes) return value;
+  if (!value.includes("'")) return `'${value}'`;
+  if (!value.includes('"') && !value.includes('\\')) return `"${value}"`;
+  throw new ValidationError(`${key} value cannot contain both ' and " (or ' and a backslash)`);
+}
+
+/**
+ * Apply several .env edits in one locked write: a string sets the key (the
+ * first `KEY=` / `export KEY=` line is replaced and any later duplicates are
+ * dropped, otherwise a line is appended), null removes every line for the key.
+ * Other lines, comments and blank lines are kept as they are.
+ */
+export async function updateEnvValues(envPath: string, updates: Record<string, string | null>): Promise<void> {
+  const lines: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (!ENV_KEY_PATTERN.test(key)) throw new Error(`Invalid .env key: ${JSON.stringify(key)}`);
+    lines[key] = value === null ? null : `${key}=${formatEnvValue(key, value)}`;
+  }
+
+  await withFileLock(envPath, async () => {
+    let content = '';
+    try {
+      content = await fs.readFile(envPath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    const existing = content === '' ? [] : content.replace(/(\r?\n)+$/, '').split(/\r?\n/);
+    const written = new Set<string>();
+    const out: string[] = [];
+    for (const line of existing) {
+      const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+      const key = match?.[1];
+      if (key === undefined || !Object.prototype.hasOwnProperty.call(lines, key)) {
+        out.push(line);
+        continue;
+      }
+      const replacement = lines[key];
+      if (replacement !== null && !written.has(key)) out.push(replacement);
+      written.add(key);
+    }
+    for (const [key, line] of Object.entries(lines)) {
+      if (line !== null && !written.has(key)) out.push(line);
+    }
+
+    // Written in place, not renamed over: .env is often a single-file Docker bind
+    // mount (rename fails there) and keeps its permissions this way
+    await fs.writeFile(envPath, out.length ? out.join(eol) + eol : '');
+  });
+}
+
+/**
  * Read a .env file into a key/value map (missing file: empty map). Handles the
  * subset of dotenv syntax the dashboard and token generator write: `KEY=value`
  * lines, an optional `export ` prefix, `#` comments and single/double quotes.

@@ -209,6 +209,16 @@ export function createSongQueueRouter(
     }
   });
 
+  // GET /api/song-queue/blocklist - Get blocked videos, channels and keywords
+  router.get('/blocklist', async (req, res, next) => {
+    try {
+      const data = await readBlocklistData();
+      res.json({ videos: data.videos || [], channels: data.channels || [], keywords: data.keywords || [] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // PUT /api/song-queue/config - Update configuration
   router.put('/config', locked([queueFile], async (req, res, next) => {
     try {

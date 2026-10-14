@@ -25,6 +25,11 @@
         <li><a href="#settings" onclick="showPage('settings', event)" class="nav-link">Settings</a></li>
         <li><a href="#alert-config" onclick="showPage('alert-config', event)" class="nav-link">Alert Config</a></li>
         <li><a href="#obs-overlays" onclick="showPage('obs-overlays', event)" class="nav-link">OBS Overlays</a></li>
+        <li><a href="#songs" onclick="showPage('songs', event)" class="nav-link">Song Queue</a></li>
+        <li><a href="#loyalty" onclick="showPage('loyalty', event)" class="nav-link">Loyalty</a></li>
+        <li><a href="#quotes" onclick="showPage('quotes', event)" class="nav-link">Quotes</a></li>
+        <li><a href="#counters" onclick="showPage('counters', event)" class="nav-link">Counters</a></li>
+        <li><a href="#backups" onclick="showPage('backups', event)" class="nav-link">Backups</a></li>
       </ul>
     </div>
   </nav>
@@ -199,49 +204,48 @@
     </div>
   </div>
 
-  <!-- Settings Page -->
+  <!-- Settings Page (form built by manage.js from GET /api/config) -->
   <div id="settings" class="page">
     <div class="container">
       <h2>Bot Settings</h2>
-      
-      <div class="settings-section">
-        <h3>General Settings</h3>
-        <div class="form-group">
-          <label>Command Refresh Interval (seconds)</label>
-          <div style="display:flex; gap:10px;">
-            <input type="number" id="commandRefreshInterval" min="5" value="60" style="flex:1;">
-            <button onclick="saveBotSettings()" class="btn btn-primary">Save Settings</button>
-          </div>
-          <small class="info-text">How often the bot refreshes custom commands from the dashboard.</small>
-        </div>
+      <p class="info-text">Every setting saved here is written to your .env file. Secrets (API keys, tokens) are never shown; you can only replace them. Chat filter settings live on the <a href="#filters" onclick="showPage('filters', event)">Chat Filters</a> page.</p>
+
+      <div id="settingsRestartNotice" class="mgr-notice" hidden>
+        <span id="settingsRestartText"></span>
+        <button onclick="restartBot()" class="btn btn-primary btn-small">Restart Bot</button>
+      </div>
+      <div id="settingsStatus" class="mgr-status" role="status"></div>
+
+      <div id="settingsForm" class="mgr-settings"></div>
+
+      <div class="mgr-actions">
+        <button id="settingsSaveBtn" onclick="mgrSaveSettings()" class="btn btn-primary" disabled>Save Changes</button>
+        <button onclick="mgrLoadSettings()" class="btn btn-secondary">Discard Changes</button>
       </div>
 
       <div class="settings-section" style="margin-top:30px;">
         <h3>Bot Control</h3>
         <div class="danger-zone">
-          <p>Restart the bot process. This will reconnect the bot to Twitch.</p>
+          <p>Restart the bot so it reconnects to Twitch and picks up saved settings.</p>
           <button onclick="restartBot()" class="btn btn-danger">Restart Bot</button>
         </div>
       </div>
 
-      <div class="settings-section" style="margin-top:30px;">
-        <h3>Bot Information</h3>
+      <div class="settings-section">
+        <h3>Connected As</h3>
+        <p class="info-text">What the running bot reports right now.</p>
         <div class="form-group">
           <label>Broadcaster Name</label>
           <input type="text" id="broadcasterName" disabled>
         </div>
-
         <div class="form-group">
           <label>Channels (comma-separated)</label>
           <textarea id="channels" disabled></textarea>
         </div>
-
         <div class="form-group">
           <label>Scopes</label>
           <textarea id="scopes" disabled></textarea>
         </div>
-
-        <p class="info-text">⚠️ To modify core account settings, edit your .env file and restart the bot.</p>
       </div>
     </div>
   </div>
@@ -1666,6 +1670,212 @@
     </div>
   </div>
 
+  <!-- Song Queue Page (manage.js) -->
+  <div id="songs" class="page">
+    <div class="container">
+      <h2>Song Queue</h2>
+      <div id="songsStatus" class="mgr-status" role="status"></div>
+
+      <div class="settings-section">
+        <h3>Now Playing</h3>
+        <div id="songsNowPlaying" class="mgr-empty">Nothing is playing.</div>
+        <div class="mgr-actions">
+          <button onclick="mgrSkipSong()" class="btn btn-secondary">Skip Song</button>
+          <button onclick="mgrClearQueue()" class="btn btn-danger">Clear Queue (refunds points)</button>
+          <button onclick="mgrLoadSongs()" class="btn btn-secondary">Refresh</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Up Next</h3>
+        <table class="logs-table">
+          <thead><tr><th>#</th><th>Song</th><th>Requested by</th><th>Length</th><th>Cost</th><th>Actions</th></tr></thead>
+          <tbody id="songsQueueList"></tbody>
+        </table>
+      </div>
+
+      <div class="settings-section">
+        <h3>Song Request Settings</h3>
+        <div class="mgr-grid">
+          <label class="checkbox-label"><input type="checkbox" id="songsEnabled"> Song requests enabled</label>
+          <label class="checkbox-label"><input type="checkbox" id="songsAllowDuplicates"> Allow duplicate songs</label>
+          <div class="form-group"><label for="songsCost">Cost (loyalty points, 0 = free)</label><input type="number" id="songsCost" min="0" step="1"></div>
+          <div class="form-group"><label for="songsMaxDuration">Max length (minutes)</label><input type="number" id="songsMaxDuration" min="1" step="1"></div>
+          <div class="form-group"><label for="songsMaxPerUser">Max songs per viewer</label><input type="number" id="songsMaxPerUser" min="1" step="1"></div>
+          <div class="form-group"><label for="songsPriority">Who can request</label>
+            <select id="songsPriority"><option value="everyone">Everyone</option><option value="subs">Subscribers</option><option value="vips">VIPs</option></select>
+          </div>
+        </div>
+        <button onclick="mgrSaveSongConfig()" class="btn btn-primary">Save Song Settings</button>
+        <p class="info-text">The YouTube API key is on the Settings page.</p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Blocklist</h3>
+        <div class="word-input-group">
+          <select id="songsBlockType" style="max-width:160px;"><option value="video">Video ID</option><option value="channel">Channel ID</option><option value="keyword">Keyword</option></select>
+          <input type="text" id="songsBlockValue" placeholder="Video ID, channel ID or keyword...">
+          <button onclick="mgrBlockSong()" class="btn btn-primary">Block</button>
+        </div>
+        <div id="songsBlocklist"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loyalty Page (manage.js) -->
+  <div id="loyalty" class="page">
+    <div class="container">
+      <h2>Loyalty Points</h2>
+      <div id="loyaltyStatus" class="mgr-status" role="status"></div>
+
+      <div id="loyaltyStats" class="status-grid"></div>
+
+      <div class="settings-section">
+        <h3>Points Settings</h3>
+        <div class="mgr-grid">
+          <label class="checkbox-label"><input type="checkbox" id="loyaltyEnabled"> Loyalty points enabled</label>
+          <div class="form-group"><label for="loyaltyCurrencyName">Currency name (singular)</label><input type="text" id="loyaltyCurrencyName" maxlength="30"></div>
+          <div class="form-group"><label for="loyaltyCurrencyNamePlural">Currency name (plural)</label><input type="text" id="loyaltyCurrencyNamePlural" maxlength="30"></div>
+          <div class="form-group"><label for="loyaltyPointsPerMinute">Points per minute watched</label><input type="number" id="loyaltyPointsPerMinute" min="0" step="1"></div>
+          <div class="form-group"><label for="loyaltyPointsPerMessage">Points per chat message</label><input type="number" id="loyaltyPointsPerMessage" min="0" step="1"></div>
+          <div class="form-group"><label for="loyaltyMaxPointsPerMessage">Max points per message</label><input type="number" id="loyaltyMaxPointsPerMessage" min="0" step="1"></div>
+          <div class="form-group"><label for="loyaltyMessageCooldownSeconds">Message cooldown (seconds)</label><input type="number" id="loyaltyMessageCooldownSeconds" min="0" step="1"></div>
+          <div class="form-group"><label for="loyaltySubscriberMultiplier">Subscriber multiplier</label><input type="number" id="loyaltySubscriberMultiplier" min="0" step="0.1"></div>
+          <div class="form-group"><label for="loyaltyVipMultiplier">VIP multiplier</label><input type="number" id="loyaltyVipMultiplier" min="0" step="0.1"></div>
+          <div class="form-group"><label for="loyaltyPointsPerLevel">Points per level</label><input type="number" id="loyaltyPointsPerLevel" min="1" step="1"></div>
+        </div>
+        <button onclick="mgrSaveLoyaltyConfig()" class="btn btn-primary">Save Points Settings</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>Set a Viewer's Points</h3>
+        <div class="word-input-group">
+          <input type="text" id="loyaltyUser" placeholder="Username">
+          <input type="number" id="loyaltyPoints" placeholder="Points" min="0" step="1" style="max-width:160px;">
+          <button onclick="mgrSetUserPoints()" class="btn btn-primary">Set Points</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Leaderboard</h3>
+        <table class="logs-table">
+          <thead><tr><th>Rank</th><th>Viewer</th><th>Points</th><th>Level</th><th>Watch time</th><th>Actions</th></tr></thead>
+          <tbody id="loyaltyLeaderboard"></tbody>
+        </table>
+      </div>
+
+      <div class="settings-section">
+        <h3>Recent Transactions</h3>
+        <table class="logs-table">
+          <thead><tr><th>Time</th><th>Viewer</th><th>Type</th><th>Amount</th><th>Reason</th></tr></thead>
+          <tbody id="loyaltyTransactions"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quotes Page (manage.js) -->
+  <div id="quotes" class="page">
+    <div class="container">
+      <h2>Quotes</h2>
+      <div id="quotesStatus" class="mgr-status" role="status"></div>
+
+      <div class="settings-section">
+        <h3>Add a Quote</h3>
+        <div class="form-group"><label for="quoteText">Quote</label><input type="text" id="quoteText" maxlength="1000"></div>
+        <div class="mgr-grid">
+          <div class="form-group"><label for="quoteAddedBy">Added by</label><input type="text" id="quoteAddedBy" value="dashboard"></div>
+          <div class="form-group"><label for="quoteGame">Game (optional)</label><input type="text" id="quoteGame"></div>
+        </div>
+        <button onclick="mgrAddQuote()" class="btn btn-primary">Add Quote</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>All Quotes</h3>
+        <div class="word-input-group">
+          <input type="text" id="quotesSearch" placeholder="Search text, author or game..." onkeypress="if(event.key==='Enter') mgrLoadQuotes(1)">
+          <button onclick="mgrLoadQuotes(1)" class="btn btn-secondary">Search</button>
+        </div>
+        <table class="logs-table">
+          <thead><tr><th>#</th><th>Quote</th><th>Added by</th><th>Game</th><th>Actions</th></tr></thead>
+          <tbody id="quotesList"></tbody>
+        </table>
+        <div class="mgr-actions">
+          <button id="quotesPrev" onclick="mgrQuotesPage(-1)" class="btn btn-secondary btn-small">Previous</button>
+          <span id="quotesPageInfo"></span>
+          <button id="quotesNext" onclick="mgrQuotesPage(1)" class="btn btn-secondary btn-small">Next</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Quote Settings</h3>
+        <div class="mgr-grid">
+          <div class="form-group"><label for="quotesMinLength">Minimum length</label><input type="number" id="quotesMinLength" min="1" step="1"></div>
+          <div class="form-group"><label for="quotesMaxLength">Maximum length</label><input type="number" id="quotesMaxLength" min="1" step="1"></div>
+          <div class="form-group"><label for="quotesMaxQuotes">Maximum quotes</label><input type="number" id="quotesMaxQuotes" min="1" step="1"></div>
+          <label class="checkbox-label"><input type="checkbox" id="quotesAllowDuplicates"> Allow duplicate quotes</label>
+        </div>
+        <button onclick="mgrSaveQuotesConfig()" class="btn btn-primary">Save Quote Settings</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>Import / Export</h3>
+        <div class="mgr-actions">
+          <button onclick="mgrExportQuotes()" class="btn btn-secondary">Export Quotes</button>
+          <input type="file" id="quotesImportFile" accept=".json,application/json">
+          <button onclick="mgrImportQuotes()" class="btn btn-secondary">Import (merge)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Counters Page (manage.js) -->
+  <div id="counters" class="page">
+    <div class="container">
+      <h2>Counters</h2>
+      <div id="countersStatus" class="mgr-status" role="status"></div>
+
+      <div class="settings-section">
+        <h3>New Counter</h3>
+        <div class="word-input-group">
+          <input type="text" id="newCounterName" placeholder="Name (e.g. deaths)" maxlength="50">
+          <input type="text" id="newCounterDescription" placeholder="Description (optional)">
+          <input type="number" id="newCounterInitial" placeholder="Start at" value="0" step="1" style="max-width:120px;">
+          <button onclick="mgrCreateCounter()" class="btn btn-primary">Create</button>
+        </div>
+      </div>
+
+      <table class="logs-table">
+        <thead><tr><th>Name</th><th>Description</th><th>Value</th><th>Actions</th></tr></thead>
+        <tbody id="countersList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Backups Page (manage.js) -->
+  <div id="backups" class="page">
+    <div class="container">
+      <h2>Backups</h2>
+      <div id="backupsStatus" class="mgr-status" role="status"></div>
+
+      <div class="settings-section">
+        <h3>Create or Upload</h3>
+        <p class="info-text">A backup holds commands, announcements, loyalty points, quotes, counters, alert and overlay settings. Your .env (tokens and keys) is never included.</p>
+        <div class="mgr-actions">
+          <button onclick="mgrCreateBackup()" class="btn btn-primary">Create Backup Now</button>
+          <input type="file" id="backupUploadFile" accept=".json,application/json">
+          <button onclick="mgrUploadBackup()" class="btn btn-secondary">Upload Backup File</button>
+        </div>
+      </div>
+
+      <table class="logs-table">
+        <thead><tr><th>Created</th><th>File</th><th>Size</th><th>Contains</th><th>Actions</th></tr></thead>
+        <tbody id="backupsList"></tbody>
+      </table>
+    </div>
+  </div>
+
   <script src="app.js"></script>
+  <script src="manage.js"></script>
 </body>
 </html>

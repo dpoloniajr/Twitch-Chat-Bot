@@ -336,6 +336,21 @@ describe('dashboard /api/song-queue', () => {
   });
 
   describe('blocklist', () => {
+    it('GET /blocklist creates an empty blocklist and lists what POST /block adds', async () => {
+      expect((await d.get('/api/song-queue/blocklist')).json).toEqual({ videos: [], channels: [], keywords: [] });
+      await d.post('/api/song-queue/block', { type: 'video', value: 'vid1' });
+      await d.post('/api/song-queue/block', { type: 'channel', value: 'ch9' });
+      await d.post('/api/song-queue/block', { type: 'keyword', value: 'Earrape' });
+      expect((await d.get('/api/song-queue/blocklist')).json).toEqual({ videos: ['vid1'], channels: ['ch9'], keywords: ['Earrape'] });
+      await d.del('/api/song-queue/block/ch9');
+      expect((await d.get('/api/song-queue/blocklist')).json.channels).toEqual([]);
+    });
+
+    it('GET /blocklist fills in lists a hand-edited file lacks, and never returns savedAt', async () => {
+      d.writeJson('song-blocklist.json', { videos: ['x'], savedAt: '2026-01-01' });
+      expect((await d.get('/api/song-queue/blocklist')).json).toEqual({ videos: ['x'], channels: [], keywords: [] });
+    });
+
     it('POST /block validates input', async () => {
       const cases: Array<[Record<string, unknown>, string]> = [
         [{ type: 'video' }, 'Missing required fields: type, value'],

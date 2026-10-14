@@ -21,6 +21,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
+import { SETTINGS } from '../../../src/dashboard/lib/settings-schema';
 
 export const ROOT = path.join(__dirname, '..', '..', '..');
 
@@ -90,10 +91,17 @@ export interface DashOptions {
   envFile?: string;
   /** Address to listen on (default 127.0.0.1) */
   listenHost?: string;
+  /** Passed to createDashboard (keys the system environment set, as dashboard/main.ts captures them) */
+  environmentKeys?: string[];
 }
 
-/** Env vars the dashboard or tts-service read; cleared so the host environment cannot leak in */
+/**
+ * Env vars the dashboard or tts-service read, plus every key the Settings page
+ * (PUT /api/config) can write; cleared so the host environment cannot leak in,
+ * and restored on close so one test's saved settings cannot leak into the next.
+ */
 const CONTROLLED_ENV = [
+  ...SETTINGS.map(setting => setting.key),
   'DASHBOARD_INTERNAL_SECRET',
   'COMMAND_REFRESH_INTERVAL',
   'TTS_PROVIDER',
@@ -191,7 +199,7 @@ export async function startDashboard(options: DashOptions = {}): Promise<Dash> {
   jest.isolateModules(() => {
     const mod: DashboardModule = require('../../../src/dashboard/server');
     state = require('../../../src/dashboard/lib/state');
-    dashboard = mod.createDashboard({ logsDir, uploadsDir, envPath, initTts: false });
+    dashboard = mod.createDashboard({ logsDir, uploadsDir, envPath, initTts: false, environmentKeys: options.environmentKeys });
   });
 
   await dashboard.init();

@@ -215,14 +215,14 @@ describe('createBot', () => {
     expect(chat.connect).not.toHaveBeenCalled();
   });
 
-  it('watches the injected restart flag every 5s and exits with 0', async () => {
+  it('watches the injected restart flag every 5s and exits with the restart code (75)', async () => {
     const d = deps();
     bot = createBot(d);
     await bot.start();
     flagPresent = true;
     expect(() => jest.advanceTimersByTime(5000)).toThrow('exit');
     expect(d.fs.unlinkSync).toHaveBeenCalledWith(path.join(dir, 'restart.flag'));
-    expect(exit).toHaveBeenCalledWith(0);
+    expect(exit).toHaveBeenCalledWith(75);
   });
 
   it('stop() clears its timers and disconnects', async () => {
