@@ -16,6 +16,7 @@ services:
     environment:
       - NODE_ENV=production
       - DASHBOARD_PORT=3001
+      - DASHBOARD_HOST=0.0.0.0
       # Twitch Configuration (set in .env or environment)
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
@@ -41,7 +42,7 @@ services:
       # Mount .env for token refresh (optional)
       - ./.env:/app/.env:rw
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -70,7 +71,7 @@ services:
       - ./.env:/app/.env:rw
       - ./accounts.encrypted.json:/app/accounts.encrypted.json:rw
       - ./.encryption-key:/app/.encryption-key:rw
-    command: ["node", "token-generator.js"]
+    command: ["node", "dist/token-generator/main.js"]
     networks:
       - bot_network
 

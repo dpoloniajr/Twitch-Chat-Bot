@@ -3,10 +3,6 @@
  * Advanced rate limiting for commands, API calls, and spam protection
  */
 
-import { createLogger } from './logger';
-
-const logger = createLogger('RateLimiter');
-
 /**
  * Rate limit bucket type
  */
@@ -200,9 +196,7 @@ export class RateLimiter {
 export class MultiTierRateLimiter {
   private limiters: Map<string, RateLimiter> = new Map();
 
-  constructor(
-    private tiers: Record<string, RateLimitConfig>
-  ) {
+  constructor(tiers: Record<string, RateLimitConfig>) {
     for (const [name, config] of Object.entries(tiers)) {
       this.limiters.set(name, new RateLimiter(config));
     }

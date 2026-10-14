@@ -4,7 +4,7 @@
 
 ### Step 1: Start Token Generator
 ```bash
-node token-generator.js
+npm run token-generator
 # Opens http://localhost:3000
 ```
 
@@ -25,7 +25,7 @@ Channels: your_twitch_username,friend_channel
 
 ### Step 4: Start Bot
 ```bash
-node Excella --account=mybot
+npm run bot -- --account mybot
 ```
 
 Done! 🎉
@@ -37,13 +37,13 @@ Done! 🎉
 curl http://localhost:3000/api/accounts
 
 # Start bot with specific account
-node Excella --account=mybot
+npm run bot -- --account mybot
 
 # Export account as .env (backup)
 curl http://localhost:3000/api/accounts/mybot/export > mybot.env
 
 # Switch between accounts (requires restart)
-node Excella --account=testbot
+npm run bot -- --account testbot
 ```
 
 ## Important Files

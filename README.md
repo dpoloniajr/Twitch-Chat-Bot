@@ -1,6 +1,6 @@
 # Twitch Chat Bot - Excella
 
-A feature-rich, modular Twitch chat bot built with Node.js featuring a dual-token architecture (bot + broadcaster), an OAuth token generator with setup wizard, encrypted multi-account management, a real-time web dashboard, and OBS overlay integration for stream alerts.
+A feature-rich, modular Twitch chat bot built with Node.js and TypeScript featuring a dual-token architecture (bot + broadcaster), an OAuth token generator with setup wizard, encrypted multi-account management, a real-time web dashboard, and OBS overlay integration for stream alerts.
 
 ## Table of Contents
 
@@ -88,7 +88,7 @@ A feature-rich, modular Twitch chat bot built with Node.js featuring a dual-toke
 
 ### Prerequisites
 
-- **Node.js** v16 or higher
+- **Node.js** v18 or higher
 - **npm** v7 or higher
 - **Twitch Developer Account** with a registered OAuth application
 
@@ -125,13 +125,13 @@ cp .env.example .env
 
 3. **Generate OAuth Tokens**
    ```bash
-   node token-generator.js
+   npm run token-generator
    ```
    Open `http://localhost:3000` in your browser and follow the setup wizard.
 
 4. **Start the Bot**
    ```bash
-   npm run dev   # Starts bot and dashboard
+   npm run dev   # Builds, then starts bot and dashboard
    ```
 
 ## Installation
@@ -170,7 +170,7 @@ cp .env.example .env
 
 6. **Generate Tokens**
    ```bash
-   node token-generator.js
+   npm run token-generator
    ```
 
 ## Configuration
@@ -253,17 +253,38 @@ CHAT_FILTER_TIMEOUT_SEC=60
 ### Start Commands
 
 ```bash
-# Start everything (bot + dashboard)
+# Build, then start everything (bot + dashboard)
 npm run dev
 
-# Start only the bot
+# Start bot + dashboard from an existing build (dist/)
+npm start
+
+# Start only the bot (builds first)
 npm run bot
 
-# Start only the dashboard
+# Start only the dashboard (builds first)
 npm run dashboard
 
-# Start the token generator
-node token-generator.js
+# Start the token generator (builds first)
+npm run token-generator
+```
+
+The bot, dashboard and token generator are written in TypeScript under `src/` and compiled to `dist/` by `npm run build`. Browser scripts in `src/web/` are compiled in place next to their pages (`dashboard/public/`, `public/`, `obs/`); those emitted `.js` files are gitignored.
+
+### Development Commands
+
+```bash
+npm run build       # Compile server code (tsc) and browser code (tsconfig.web.json)
+npm run typecheck   # Type-check without emitting
+npm test            # Run Jest (builds browser code first)
+```
+
+### Docker
+
+The multi-stage `Dockerfile` compiles the TypeScript and runs `npm start` from `dist/`. The dashboard binds to `DASHBOARD_HOST` (default `127.0.0.1`); the Docker image and `docker-compose.yml` set `DASHBOARD_HOST=0.0.0.0` so the published port is reachable.
+
+```bash
+docker-compose up -d
 ```
 
 ### Using Account Manager
@@ -271,7 +292,7 @@ node token-generator.js
 Run the bot with a specific account:
 
 ```bash
-node Excella --account my-account-name
+npm run bot -- --account my-account-name
 ```
 
 ### Expected Startup Output
@@ -554,7 +575,7 @@ npm run dashboard
 npm run dev
 ```
 
-Open `http://localhost:3001` in your browser.
+Open `http://localhost:3001` in your browser. The dashboard listens on `127.0.0.1` unless `DASHBOARD_HOST` is set.
 
 ### Dashboard Features
 
@@ -734,7 +755,7 @@ Manage multiple Twitch accounts with encrypted storage.
 ### Using the Account Manager
 
 **Via Token Generator UI:**
-1. Run `node token-generator.js`
+1. Run `npm run token-generator`
 2. Open `http://localhost:3000`
 3. Navigate to "Accounts" tab
 4. Create, authorize, and manage accounts
@@ -742,7 +763,7 @@ Manage multiple Twitch accounts with encrypted storage.
 **Via CLI:**
 ```bash
 # Run bot with specific account
-node Excella --account production-bot
+npm run bot -- --account production-bot
 
 # List accounts (in token-generator)
 # Visit http://localhost:3000/api/accounts
@@ -780,7 +801,7 @@ node Excella --account production-bot
 The token generator provides a web UI for OAuth authorization.
 
 ```bash
-node token-generator.js
+npm run token-generator
 # Open http://localhost:3000
 ```
 
@@ -807,7 +828,7 @@ node token-generator.js
 
 Tokens are automatically refreshed by the bot when expired. Manual refresh:
 
-1. Run `node token-generator.js`
+1. Run `npm run token-generator`
 2. Click "Refresh Token" in the UI
 3. Or re-authorize by clicking "Authorize with Selected Scopes"
 
@@ -948,26 +969,33 @@ Base URL: `http://localhost:3001`
 
 ```
 Twitch-Chat-Bot/
-├── Excella                      # Main bot application
-├── token-generator.js           # OAuth token generator server
-├── account-manager.js           # Encrypted account storage
 ├── package.json                 # Dependencies and scripts
+├── tsconfig.json                # Server TypeScript build (src/ -> dist/)
+├── tsconfig.web.json            # Browser TypeScript build (src/web/ -> pages)
+├── Dockerfile                   # Multi-stage build
 ├── .env                         # Configuration (gitignored)
 ├── .env.example                 # Example configuration
 ├── accounts.encrypted.json      # Encrypted accounts (gitignored)
 ├── .encryption-key              # Encryption key (gitignored)
 │
-├── lib/
-│   ├── twitch-helix-api.js      # Twitch Helix API client
-│   ├── twitch-irc-client.js     # IRC/tmi.js wrapper
-│   └── twitch-eventsub-ws.js    # EventSub WebSocket client
+├── src/
+│   ├── bot/                     # Bot (createBot in create-bot.ts, entry main.ts)
+│   ├── dashboard/               # Dashboard server (server.ts, routes/, lib/, entry main.ts)
+│   ├── token-generator/         # OAuth token generator (server.ts, routes/, entry main.ts)
+│   ├── lib/                     # Shared libs (Helix, IRC, EventSub, account/token/env managers, TTS)
+│   ├── utils/project-root.ts    # Resolves the project root from src/ or dist/
+│   ├── commands/, services/,    # Standalone modules (Discord, analytics, scheduler, moderation,
+│   │   integrations/, filters/  #   rate limiter, duplicate loyalty/quotes/counters managers, ...)
+│   │                            #   NOT loaded by the bot or dashboard yet; only exported via src/index.ts
+│   └── web/                     # Browser code, compiled next to the pages below
+│
+├── dist/                        # Compiled output (gitignored)
 │
 ├── dashboard/
-│   ├── server.js                # Express + WebSocket server
 │   ├── README.md                # Dashboard documentation
 │   ├── public/
 │   │   ├── index.html           # Dashboard UI
-│   │   ├── app.js               # Dashboard frontend
+│   │   ├── app.js               # Dashboard frontend (compiled from src/web)
 │   │   └── style.css            # Dashboard styles
 │   ├── logs/                    # JSON data storage (gitignored)
 │   └── uploads/                 # Media uploads (gitignored)
@@ -979,13 +1007,14 @@ Twitch-Chat-Bot/
 │   │   ├── chat-box.html        # Chat display
 │   │   └── goal-bar.html        # Goal progress bar
 │   ├── js/
-│   │   └── overlay-client.js    # WebSocket client for overlays
+│   │   └── overlay-client.js    # WebSocket client for overlays (compiled from src/web)
 │   ├── css/
 │   │   └── overlay-base.css     # Shared overlay styles
 │   └── assets/
 │       └── sounds/              # Default alert sounds
 │
-├── test-*.js                    # Manual test scripts
+├── public/token-generator/       # Token generator UI
+├── tests/                       # Jest test suites
 ├── CLAUDE.md                    # AI assistant documentation
 └── README.md                    # This file
 ```
@@ -996,11 +1025,11 @@ Twitch-Chat-Bot/
 
 **"Missing required environment variables"**
 - Ensure all required variables are set in `.env`
-- Run `node token-generator.js` to generate missing tokens
+- Run `npm run token-generator` to generate missing tokens
 
 **"Invalid token supplied"**
 - Tokens have expired or are invalid
-- Run `node token-generator.js` and re-authorize
+- Run `npm run token-generator` and re-authorize
 
 **"Broadcaster not found"**
 - Check `TWITCH_BROADCASTER_NAME` matches your Twitch username exactly
@@ -1092,6 +1121,7 @@ accounts.encrypted.json
 dashboard/logs/
 dashboard/uploads/
 node_modules/
+dist/
 ```
 
 ### Best Practices

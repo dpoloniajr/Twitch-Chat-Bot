@@ -154,11 +154,14 @@ Already included in the main bot. No additional packages needed!
 
 ```
 /home/user/Twitch-Chat-Bot/
-├── tts-service.js              # TTS service module (380 lines)
-├── Excella.js                  # Bot integration
+├── src/lib/tts-service.ts       # TTS service module
+├── src/bot/tts.ts              # Bot integration (handleTTS)
+├── src/bot/config.ts           # TTS_CONFIG
+├── src/dashboard/
+│   ├── server.ts               # Dashboard server
+│   └── routes/api.ts           # TTS API endpoints
+├── src/web/obs/overlays/tts-display.ts  # Overlay script (compiled to obs/overlays/tts-display.js)
 ├── dashboard/
-│   ├── server.js               # Dashboard with TTS routes
-│   ├── routes/api.js           # TTS API endpoints
 │   └── cache/
 │       └── tts/                # Audio cache directory
 │           └── *.mp3           # Cached audio files
@@ -225,17 +228,18 @@ TTS_CACHE_MAX_AGE=86400000      # 24 hours in milliseconds
 TTS_CACHE_MAX_SIZE=104857600    # 100MB in bytes
 ```
 
-#### Bot Configuration (Excella.js)
+#### Bot Configuration (src/bot/config.ts)
 
-These are hardcoded but can be modified in `Excella.js`:
+These are hardcoded but can be modified in `src/bot/config.ts` (rebuild with `npm run build`):
 
-```javascript
-const TTS_CONFIG = {
+```typescript
+export const TTS_CONFIG = {
   MAX_LENGTH: 200,                     // Maximum characters per TTS
   PER_USER_COOLDOWN_SEC: 30,           // Per-user cooldown in seconds
   GLOBAL_COOLDOWN_SEC: 10,             // Global cooldown in seconds
+  REDEMPTION_QUEUE_MAX_SIZE: 100,      // Queued TTS redemptions
   CHANNEL_POINTS_REWARD_TITLE: 'TTS'  // Reward title to detect
-};
+} as const;
 ```
 
 ---
@@ -279,7 +283,7 @@ const TTS_CONFIG = {
 
 1. **Go to Twitch Creator Dashboard** → Channel Points → Manage Rewards
 2. **Create Custom Reward**:
-   - **Title**: Must include "TTS" (e.g., "TTS Message", "Text to Speech", "Send TTS")
+   - **Title**: Must contain "TTS" as a whole word (e.g., "TTS Message", "Send TTS"; "Text to Speech" does not match). To use any other title, set `TTS_REWARD_TITLE` in `.env` to the exact reward title
    - **Cost**: Set your desired point cost (e.g., 500 points)
    - **Settings**: Enable "Require Viewer to Enter Text"
    - **Max Length**: Set to 200 characters
@@ -290,7 +294,8 @@ const TTS_CONFIG = {
 - **Cooldown Bypass**: Redemptions bypass per-user cooldown
 - **Global Cooldown**: Still respects 10-second global cooldown
 - **Content Filtering**: All filters still apply
-- **Automatic Detection**: Bot auto-detects rewards with "TTS" in title
+- **Automatic Detection**: Bot detects rewards with "TTS" as a whole word in the title, or the exact `TTS_REWARD_TITLE`
+- **Refunds**: Rejected redemptions (too long, filtered, queue full) are refunded. This needs the `channel:manage:redemptions` scope and only works for rewards created by the same Twitch app; otherwise the bot logs a warning
 
 #### Example
 
@@ -488,7 +493,7 @@ GET /api/tts/audio/a1b2c3d4e5f6...xyz.mp3
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Excella.js (Bot)                           │
+│                    src/bot/tts.ts (Bot)                         │
 │  • Validate length (200 chars)                                 │
 │  • Check content filters (blacklist, URLs, caps, etc.)         │
 │  • Check cooldowns (per-user 30s, global 10s)                  │
@@ -504,7 +509,7 @@ GET /api/tts/audio/a1b2c3d4e5f6...xyz.mp3
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    TTS Service Module                           │
-│                   (tts-service.js)                              │
+│                 (src/lib/tts-service.ts)                        │
 └───────────────┬───────────────────────┬─────────────────────────┘
                 │                       │
      ┌──────────▼──────────┐ ┌─────────▼──────────┐
@@ -841,8 +846,8 @@ TTS_CACHE_MAX_AGE=43200000   # 12 hours instead of 24 hours
 
 **Verify Fix:**
 ```bash
-# Check Excella.js for normalization
-grep "normalizedUsername" Excella.js
+# Check src/bot/tts.ts for normalization
+grep "normalizedUsername" src/bot/tts.ts
 
 # Should see: const normalizedUsername = username.toLowerCase();
 ```
@@ -909,7 +914,7 @@ Clone your own voice for personalized TTS:
 Set up different voices for different user roles:
 
 ```javascript
-// In Excella.js handleTTS function:
+// In handleTTS in src/bot/tts.ts:
 
 // Determine voice based on user role
 let voiceId = config.elevenLabsVoiceId; // Default
@@ -1003,7 +1008,7 @@ Modify the overlay animations in `tts-display.html`:
 Track TTS usage with custom logging:
 
 ```javascript
-// Add to Excella.js handleTTS function:
+// Add to handleTTS in src/bot/tts.ts:
 
 // Log TTS analytics
 const ttsAnalytics = {
@@ -1143,10 +1148,10 @@ A: Check `dashboard/cache/tts/` directory exists and is writable
 ### Resources
 
 - **Main Documentation**: `/CLAUDE.md`
-- **TTS Service Code**: `/tts-service.js`
-- **Bot Integration**: `/Excella.js` (search for `handleTTS`)
-- **Overlay Code**: `/obs/overlays/tts-display.html`
-- **API Routes**: `/dashboard/routes/api.js` (TTS section)
+- **TTS Service Code**: `/src/lib/tts-service.ts`
+- **Bot Integration**: `/src/bot/tts.ts` (search for `handleTTS`)
+- **Overlay Code**: `/obs/overlays/tts-display.html` (script source: `/src/web/obs/overlays/tts-display.ts`)
+- **API Routes**: `/src/dashboard/routes/api.ts` (TTS section)
 
 ### Getting Help
 

@@ -2,6 +2,8 @@
 
 **Status:** ✅ COMPLETE & TESTED
 
+> **Note (2026-10-14):** The codebase is now TypeScript. `account-manager.js` is `src/lib/account-manager.ts`, `token-generator.js` is `src/token-generator/` (account API in `routes/account-routes.ts`), the `Excella` bot is `src/bot/` (entry `main.ts`), and `test-account-manager.js` was replaced by the Jest suite `tests/lib/account-manager.test.ts`. Run the bot with `npm run bot -- --account <name>` and the token generator with `npm run token-generator`. The file list below describes the original implementation.
+
 ## What Was Built
 
 A complete multi-account management system for the Twitch Chat Bot, allowing you to:
@@ -83,9 +85,9 @@ GET    /api/accounts/:name/export - Export as .env
 
 ### 3. CLI Integration
 ```bash
-node Excella                      # Use .env (legacy)
-node Excella --account=mybot      # Use encrypted account
-node Excella --account=testbot    # Switch instantly
+npm run bot                         # Use .env (legacy)
+npm run bot -- --account mybot      # Use encrypted account
+npm run bot -- --account testbot    # Switch instantly
 ```
 
 ### 4. Backward Compatibility
@@ -134,7 +136,7 @@ All tests PASSED ✅
 ### Create and Use Account
 ```bash
 # 1. Start token generator
-node token-generator.js
+npm run token-generator
 
 # 2. Create account "mybot" with:
 #    - Client ID/Secret from Twitch console
@@ -145,7 +147,7 @@ node token-generator.js
 # 4. Tokens automatically encrypted and saved
 
 # 5. Start bot with account
-node Excella --account=mybot
+npm run bot -- --account mybot
 ```
 
 ### Switch Accounts
@@ -154,9 +156,9 @@ node Excella --account=mybot
 # mybot, testbot, friendsbot, etc.
 
 # Switch by restarting with different account
-node Excella --account=testbot
+npm run bot -- --account testbot
 # vs
-node Excella --account=friendsbot
+npm run bot -- --account friendsbot
 ```
 
 ### Backup Account
@@ -210,19 +212,19 @@ cat mybot.env
 ### Current Setup (No Changes Required)
 ```bash
 # Keep using .env
-node token-generator.js      # Optional: add new accounts
-node Excella                 # Loads from .env
+npm run token-generator      # Optional: add new accounts
+npm run bot                 # Loads from .env
 ```
 
 ### Gradual Migration
 ```bash
 # Create first account in account manager
-node token-generator.js
+npm run token-generator
 # Create account "default"
 # Authorize tokens
 
 # Start using account
-node Excella --account=default
+npm run bot -- --account default
 
 # Create additional accounts as needed
 # Switch between them with `--account` flag
@@ -232,7 +234,7 @@ node Excella --account=default
 ```bash
 # All accounts in account manager
 # No .env file needed (or keep as backup)
-node Excella --account=mybot
+npm run bot -- --account mybot
 ```
 
 ## Performance Impact
@@ -244,8 +246,8 @@ node Excella --account=mybot
 
 ## File Sizes
 
-- `account-manager.js`: ~10 KB
-- `test-account-manager.js`: ~8 KB
+- `src/lib/account-manager.ts`: ~15 KB
+- `tests/lib/account-manager.test.ts`: Jest suite
 - `accounts.encrypted.json`: ~1 KB per account
 - `.encryption-key`: 64 bytes (always)
 - Documentation: ~50 KB
@@ -254,17 +256,17 @@ node Excella --account=mybot
 
 1. **Test with real accounts:**
    ```bash
-   node token-generator.js
+   npm run token-generator
    # Create test accounts and authorize
    ```
 
 2. **Migrate existing setups:**
    ```bash
    # Option A: Keep .env (no changes)
-   node Excella
+   npm run bot
    
    # Option B: Create account from .env
-   # Then use node Excella --account=mybot
+   # Then use npm run bot -- --account mybot
    ```
 
 3. **Integrate with dashboard** (future):
@@ -288,7 +290,7 @@ See **ACCOUNT_MANAGEMENT.md** for:
 
 ## Code Quality
 
-- ✅ Syntax validated (node -c)
+- ✅ Type-checked (`npm run typecheck`)
 - ✅ All tests passing
 - ✅ No breaking changes
 - ✅ Backward compatible

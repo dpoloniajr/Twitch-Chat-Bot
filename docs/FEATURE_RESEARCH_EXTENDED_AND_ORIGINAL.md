@@ -3,6 +3,8 @@
 **Purpose:** More researched Twitch/API features plus **original ideas** tailored to Excella’s stack (IRC tags, EventSub, dashboard, overlays).  
 **Last updated:** 2025-02-04
 
+> **Note (2026-10-14):** Paths updated for the TypeScript layout: bot code is in `src/bot/` (handlers in feature modules, commands registered in `src/bot/command-registry.ts`), the Helix/IRC clients are in `src/lib/`, dashboard code is in `src/dashboard/`, and the token generator is in `src/token-generator/`.
+
 ---
 
 ## Part A — More Researched Features
@@ -54,7 +56,7 @@
 
 **What:** Other bots (Moobot, Streamer.bot) “recognize” a user’s first message in the channel and can send a welcome (chat message and/or OBS alert).
 
-- **In Excella:** We **already receive** Twitch IRC tags `first-msg` and `returning-chatter` in `lib/twitch-irc-client.js` and pass them as `msg.userInfo.isFirst` and `msg.userInfo.isReturningChatter`. We don’t use them yet.
+- **In Excella:** We **already receive** Twitch IRC tags `first-msg` and `returning-chatter` in `src/lib/twitch-irc-client.ts` and pass them as `msg.userInfo.isFirst` and `msg.userInfo.isReturningChatter`. We don’t use them yet.
 - So “first-time chatter” is a **researched concept** that we can implement with **no new API** — see Part B (original) for our take.
 
 ---

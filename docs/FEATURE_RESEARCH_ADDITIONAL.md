@@ -3,6 +3,8 @@
 **Purpose:** Expand the backlog of possible Excella features beyond Raffle and Stream Marker.  
 **Last updated:** 2025-02-04
 
+> **Note (2026-10-14):** Paths updated for the TypeScript layout: bot code is in `src/bot/` (handlers in feature modules, commands registered in `src/bot/command-registry.ts`), the Helix/IRC clients are in `src/lib/`, dashboard code is in `src/dashboard/`, and the token generator is in `src/token-generator/`.
+
 ---
 
 ## Summary Table
@@ -57,7 +59,7 @@
 - **Permission:** Everyone.
 - **Cooldown:** 10–30 s to avoid spam.
 
-**Files:** Excella.js — new `handleUptime(channel)`, register `!uptime` in commandRegistry; add to dashboard commands list.
+**Files:** src/bot/ — new `handleUptime(channel)`, register `!uptime` in commandRegistry; add to dashboard commands list.
 
 ---
 
@@ -76,12 +78,12 @@
 
 - **No new API.** Pure bot logic:
   - In-memory (or dashboard-backed) allowlist: `Set` or `Map` of `username_lower -> expiryTimestamp`.
-  - In the existing URL-filter branch (Excella chat filters): before applying timeout/delete, check if the message’s username is on the permit list and not expired. If yes, skip action (and optionally remove from list after first use or keep until expiry).
+  - In the existing URL-filter branch (`src/bot/chat-filter.ts`): before applying timeout/delete, check if the message’s username is on the permit list and not expired. If yes, skip action (and optionally remove from list after first use or keep until expiry).
   - Optional: `!unpermit <username>` to remove early.
 - **Permission:** Mod only.
 - **Scope:** None.
 
-**Files:** Excella.js — permit allowlist, check in URL filter path; register `!permit` and optional `!unpermit` in commandRegistry.
+**Files:** src/bot/ — permit allowlist, check in URL filter path; register `!permit` and optional `!unpermit` in commandRegistry.
 
 ---
 
@@ -102,7 +104,7 @@
 - If 404 or no upcoming segments: “No upcoming scheduled streams.”
 - **Permission:** Everyone. **Cooldown:** 60+ s (schedule doesn’t change every second).
 
-**Files:** twitch-helix-api.js — `getSchedule(broadcasterId)`; Excella.js — `handleSchedule(channel)`, register `!schedule` / `!nextstream`; add scope to token generator if missing.
+**Files:** src/lib/twitch-helix-api.ts — `getSchedule(broadcasterId)`; src/bot/ — `handleSchedule(channel)`, register `!schedule` / `!nextstream`; add scope to token generator if missing.
 
 ---
 
@@ -123,7 +125,7 @@
   **Note:** Twitch docs state only the **broadcaster** may start a commercial (not editors/mods). Use broadcaster token; restrict command to broadcaster only (or document that only broadcaster should use it).
 - Reply: “Running a 60s ad.” or “Cannot run ad: [reason]” (e.g. not live, cooldown). Twitch returns `retry_after` on cooldown — can echo “Next ad in Xs.”
 
-**Files:** twitch-helix-api.js — `startCommercial(broadcasterId, length)`; Excella.js — `handleCommercial(channel, username, args)`, perm: broadcaster-only or mod (with doc that only broadcaster’s token works).
+**Files:** src/lib/twitch-helix-api.ts — `startCommercial(broadcasterId, length)`; src/bot/ — `handleCommercial(channel, username, args)`, perm: broadcaster-only or mod (with doc that only broadcaster’s token works).
 
 ---
 
@@ -142,7 +144,7 @@
 - Resolve `username` → `to_broadcaster_id` via Helix Users (getUserByName).
 - Reply: “Raid initiated to @Target. Check your Twitch UI to confirm.” or “Could not start raid: [reason].”
 
-**Files:** twitch-helix-api.js — `startRaid(fromBroadcasterId, toBroadcasterId)`; Excella.js — `handleRaid(channel, username, args)`, broadcaster-only.
+**Files:** src/lib/twitch-helix-api.ts — `startRaid(fromBroadcasterId, toBroadcasterId)`; src/bot/ — `handleRaid(channel, username, args)`, broadcaster-only.
 
 ---
 
@@ -160,7 +162,7 @@
 - **API:** `GET https://api.twitch.tv/helix/bits/leaderboard` with `count`, `period`, optional `started_at`.
 - Format: “Top cheerers (month): 1. UserA - 10,000 bits, 2. UserB - 5,000 bits…”
 
-**Files:** twitch-helix-api.js — `getBitsLeaderboard(options)`; Excella.js — `handleBitsLeaderboard(channel, args)`; broadcaster token + scope.
+**Files:** src/lib/twitch-helix-api.ts — `getBitsLeaderboard(options)`; src/bot/ — `handleBitsLeaderboard(channel, args)`; broadcaster token + scope.
 
 ---
 
@@ -179,7 +181,7 @@
 - No Helix calls. Random choice from arrays; optional cooldown per command.
 - **Permission:** Everyone. Good for engagement and custom-command-style variety.
 
-**Files:** Excella.js — small handlers + register in commandRegistry. Optional: make response lists configurable via dashboard later.
+**Files:** src/bot/ — small handlers + register in commandRegistry. Optional: make response lists configurable via dashboard later.
 
 ---
 

@@ -8,19 +8,19 @@ The multi-account management system allows you to manage multiple Twitch bot acc
 
 ### Components
 
-1. **account-manager.js** - Core account management module
+1. **src/lib/account-manager.ts** - Core account management module
    - Encrypted token storage (AES-256-CBC)
    - CRUD operations for accounts
    - Token lifecycle management
    - .env import/export
 
-2. **token-generator.js** - Enhanced with account manager integration
+2. **src/token-generator/** - Token generator with account manager integration (`routes/account-routes.ts`)
    - New API endpoints for account management
    - Account-aware OAuth callbacks
    - Account selection UI (frontend coming)
 
-3. **Excella** - Updated to support account loading
-   - `--account` CLI flag for account selection
+3. **Bot (src/bot/)** - Supports account loading (`parseAccountArg` in `config.ts`, `loadSelectedAccount` in `auth.ts`)
+   - `--account <name>` CLI flag for account selection (pass it after `--` when using npm: `npm run bot -- --account mybot`)
    - Automatic credential loading from encrypted storage
    - Fallback to .env if no account specified
 
@@ -35,20 +35,20 @@ The multi-account management system allows you to manage multiple Twitch bot acc
 
 ```bash
 # Load and use 'mybot' account
-node Excella --account=mybot
+npm run bot -- --account mybot
 
 # Load and use 'testbot' account
-node Excella --account=testbot
+npm run bot -- --account testbot
 
 # Default: Use environment variables from .env
-node Excella
+npm run bot
 ```
 
 ### Managing Accounts via Token Generator
 
 1. Start token generator:
    ```bash
-   node token-generator.js
+   npm run token-generator
    # Open http://localhost:3000
    ```
 
@@ -190,7 +190,7 @@ Download account as .env file
 
 ```bash
 # Just use the bot normally - no changes needed
-node Excella
+npm run bot
 # Loads from TWITCH_* environment variables
 ```
 
@@ -211,7 +211,7 @@ node Excella
 
 3. Start bot with account:
    ```bash
-   node Excella --account=default
+   npm run bot -- --account default
    ```
 
 4. Optional: Delete .env
@@ -228,7 +228,7 @@ Tokens expire after ~1 hour. The bot automatically refreshes tokens on startup.
 
 ```bash
 # Visit token-generator and re-authorize account
-node token-generator.js
+npm run token-generator
 # Click "Authorize Bot Account" for existing account
 # New tokens are saved automatically
 ```
@@ -242,7 +242,7 @@ node token-generator.js
 curl http://localhost:3000/api/accounts
 
 # Check account name spelling
-node Excella --account=correctname
+npm run bot -- --account correctname
 ```
 
 ### Error: Account has not been authorized
@@ -250,7 +250,7 @@ node Excella --account=correctname
 ```bash
 # Account exists but tokens not set
 # Run token-generator and authorize the account
-node token-generator.js
+npm run token-generator
 # Click account name, then "Authorize Bot"
 ```
 
@@ -278,8 +278,9 @@ node token-generator.js
 
 ### Import Account from .env File
 
-```bash
-const AccountManager = require('./account-manager');
+```javascript
+// After `npm run build`
+const { AccountManager } = require('./dist/lib/account-manager');
 const am = new AccountManager();
 const envContent = require('fs').readFileSync('.env', 'utf8');
 
@@ -288,8 +289,9 @@ am.importFromEnv('mybot', envContent);
 
 ### Export All Accounts
 
-```bash
-const AccountManager = require('./account-manager');
+```javascript
+// After `npm run build`
+const { AccountManager } = require('./dist/lib/account-manager');
 const am = new AccountManager();
 
 am.listAccounts().forEach(acc => {
@@ -302,22 +304,22 @@ am.listAccounts().forEach(acc => {
 
 ```bash
 # Start with account A
-node Excella --account=botA
+npm run bot -- --account botA
 
 # To switch, restart with account B
 # (requires stopping current process)
-node Excella --account=botB
+npm run bot -- --account botB
 ```
 
 ## Testing
 
-Run the included test suite:
+Run the Jest suite (`tests/lib/account-manager.test.ts`):
 
 ```bash
-node test-account-manager.js
+npx jest tests/lib/account-manager.test.ts
 ```
 
-Output should show:
+It covers:
 - ✓ Account creation
 - ✓ Account listing
 - ✓ Token updates
@@ -329,14 +331,14 @@ Output should show:
 
 ```
 .
-├── account-manager.js          # Core account management
-├── token-generator.js          # Updated with account API
-├── Excella                      # Updated with --account support
+├── src/lib/account-manager.ts  # Core account management
+├── src/token-generator/        # Token generator with account API
+├── src/bot/                    # Bot with --account support
 ├── accounts.encrypted.json      # Auto-generated encrypted storage
 ├── .encryption-key             # Auto-generated encryption key (chmod 600)
 ├── .env                        # Still supported (legacy)
 ├── accounts.json.example       # Example structure (reference)
-└── test-account-manager.js     # Test suite
+└── tests/lib/account-manager.test.ts  # Test suite
 ```
 
 ## Future Enhancements

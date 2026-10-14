@@ -486,7 +486,7 @@ export class AnalyticsManager {
     const start = startDate.toISOString();
     const end = endDate.toISOString();
 
-    for (const [key, value] of this.hourlyStats) {
+    for (const value of this.hourlyStats.values()) {
       if (value.hour >= start && value.hour <= end) {
         stats.push(value);
       }

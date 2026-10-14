@@ -1,5 +1,19 @@
 # TypeScript Migration Plan — Excella (Twitch Chat Bot)
 
+> **Status: COMPLETE (2026-10-14).** The bot, dashboard, token generator, shared libraries and browser code are all TypeScript; no application JavaScript remains in the repo root or `lib/`. The plan below is kept for reference; its file names and intermediate scripts (`bot:ts`, `dash:ts`, `dist/bot.js`) describe the plan, not the final layout.
+>
+> **Final layout:**
+> - Bot: `src/bot/` (`createBot` in `create-bot.ts`, entry `main.ts`) replaces `Excella.js`
+> - Dashboard: `src/dashboard/` (`createDashboard` in `server.ts`, `routes/`, `lib/`, entry `main.ts`) replaces `dashboard/server.js`, `dashboard/routes/*.js` and `dashboard/lib/*.js`; static files stay in `dashboard/public/`
+> - Token generator: `src/token-generator/` (`server.ts`, `routes/`, entry `main.ts`) replaces `token-generator.js` and `token-generator-api/`
+> - Shared libs: `src/lib/` (including `account-manager.ts` and `tts-service.ts`) replaces `lib/*.js`, `account-manager.js` and `tts-service.js`; `src/utils/project-root.ts` resolves data paths from `src/` or `dist/`
+> - Browser code: `src/web/`, compiled in place by `tsconfig.web.json` into `dashboard/public/`, `public/` and `obs/` (emitted `.js` is gitignored)
+> - Output in `dist/`. Scripts: `npm run build`, `npm run bot` / `dashboard` / `token-generator` (each builds first), `npm start` (built bot + dashboard via concurrently), `npm run dev` (build, then start), `npm test`, `npm run typecheck`
+> - Docker: multi-stage `Dockerfile` builds the TypeScript; the dashboard binds to `DASHBOARD_HOST` (default `127.0.0.1`, Docker sets `0.0.0.0`)
+> - Tests: the root `test-*.js` manual scripts were deleted and their checks ported to Jest (`tests/`)
+>
+> **Not done:** Phase 4 (wiring the pre-existing `src/` modules into the bot) was not carried out. The bot was ported module by module into `src/bot/` instead. Discord, analytics, scheduler, stream-utils, shutdown, moderation, the rate limiter and the duplicate loyalty/quotes/counters managers in `src/services/` and `src/commands/` (and the other modules only re-exported from `src/index.ts`, such as `src/filters/`) are still not loaded by the bot or dashboard.
+
 ## Executive Summary
 
 The project already has a solid TypeScript foundation: 27 source files (~8,100 lines) covering

@@ -166,17 +166,20 @@ describe('ShutdownManager', () => {
       expect(manager.isInProgress()).toBe(false);
     });
 
-    it('should return true during shutdown', () => {
+    it('should return true during shutdown', async () => {
       manager.register('test', async () => {
         // Check during execution
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
-      // Start shutdown but don't await
-      manager.shutdown('test', 0).catch(() => {});
+      // Start shutdown but don't await yet
+      const shutdownPromise = manager.shutdown('test', 0).catch(() => {});
 
       // Should be in progress
       expect(manager.isInProgress()).toBe(true);
+
+      // Let shutdown finish while process.exit is still mocked
+      await shutdownPromise;
     });
   });
 

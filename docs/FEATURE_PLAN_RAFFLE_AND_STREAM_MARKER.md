@@ -4,6 +4,8 @@
 **Target:** Excella (Twitch Chat Bot)  
 **Last updated:** 2025-02-04
 
+> **Note (2026-10-14):** Paths updated for the TypeScript layout: bot code is in `src/bot/` (handlers in feature modules, commands registered in `src/bot/command-registry.ts`), the Helix/IRC clients are in `src/lib/`, dashboard code is in `src/dashboard/`, and the token generator is in `src/token-generator/`.
+
 ---
 
 ## 1. Research: Popular Twitch Bot Features
@@ -55,8 +57,8 @@ From current bot platforms (Streamer.bot, Nightbot, Moobot, open-source bots) an
 
 **Implementation outline:**
 
-1. **Helix client** (`lib/twitch-helix-api.js`): add `getChatters(broadcasterId, moderatorId, options)` with pagination.
-2. **Excella** (`Excella.js`):
+1. **Helix client** (`src/lib/twitch-helix-api.ts`): add `getChatters(broadcasterId, moderatorId, options)` with pagination.
+2. **Bot** (`src/bot/`, e.g. `channel-commands.ts`):
    - Add `handleRaffle(channel, username, args)`.
    - Validate `moderator:read:chatters`; get broadcaster id and moderator id (from token or message).
    - Call `getChatters`, optionally filter by role, pick N random, send result to chat.
@@ -95,8 +97,8 @@ From current bot platforms (Streamer.bot, Nightbot, Moobot, open-source bots) an
 
 **Implementation outline:**
 
-1. **Helix client** (`lib/twitch-helix-api.js`): add `createStreamMarker(broadcasterId, description)` (use broadcaster token).
-2. **Excella** (`Excella.js`):
+1. **Helix client** (`src/lib/twitch-helix-api.ts`): add `createStreamMarker(broadcasterId, description)` (use broadcaster token).
+2. **Bot** (`src/bot/`, e.g. `channel-commands.ts`):
    - Add `handleMarker(channel, username, args)`.
    - Use **broadcaster** API client (stream markers require broadcaster token).
    - Check scope `channel:manage:broadcast`; if not live, return friendly message.
@@ -118,13 +120,13 @@ No new env vars required; existing bot/broadcaster token setup is enough.
 
 ## 4. File Change Checklist
 
-- [ ] **lib/twitch-helix-api.js**
+- [ ] **src/lib/twitch-helix-api.ts**
   - [ ] `getChatters(broadcasterId, moderatorId, { first, after })` with pagination
   - [ ] `createStreamMarker(broadcasterId, description)` (broadcaster token)
-- [ ] **Excella.js**
+- [ ] **src/bot/** (handler module + `command-registry.ts`)
   - [ ] `handleRaffle(channel, username, args)` + `!raffle` in commandRegistry (mod, cooldown)
   - [ ] `handleMarker(channel, username, args)` + `!marker` in commandRegistry (mod, cooldown)
-  - [ ] `handleCommands` / builtin list: add !raffle, !marker
+  - [ ] `COMMANDS_HELP` (`src/bot/command-registry.ts`) / builtin list: add !raffle, !marker
 - [ ] **token-generator / scope-routes**
   - No code change; document in setup that raffle needs `moderator:read:chatters`, marker needs broadcaster with `channel:manage:broadcast`
 - [ ] **CLAUDE.md**
@@ -146,4 +148,4 @@ No new env vars required; existing bot/broadcaster token setup is enough.
 - [Twitch API – Get Chatters](https://dev.twitch.tv/docs/api/reference#get-chatters)
 - [Twitch API – Create Stream Marker](https://dev.twitch.tv/docs/api/reference#create-stream-marker)
 - CLAUDE.md (project patterns, command registry, scope validation)
-- token-generator-api/scope-routes.js (moderator:read:chatters, channel:manage:broadcast)
+- src/token-generator/routes/scope-routes.ts (moderator:read:chatters, channel:manage:broadcast)

@@ -162,3 +162,13 @@ accounts.encrypted.json
 /.claude
 /.codex
 /.cursor
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# Browser JS compiled from src/web (npm run build / build:web)
+dashboard/public/app.js
+public/token-generator/app.js
+obs/js/overlay-client.js
+obs/overlays/*.js
