@@ -15,7 +15,7 @@ npm install
 Start the dashboard server (runs on port 3001 by default):
 
 ```bash
-node dashboard/server.js
+npm run dashboard   # builds, then runs node dist/dashboard/main.js
 ```
 
 Or set a custom port via `.env`:

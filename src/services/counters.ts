@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
+import { updateJsonFileSync } from '../lib/file-lock';
 
 const logger = createLogger('Counters');
 
@@ -51,6 +52,17 @@ export interface CountersConfig {
   maxHistoryEntries: number;
 }
 
+/**
+ * Shape of counters.json (shared with the dashboard)
+ */
+interface CountersFileData {
+  counters?: Record<string, Counter>;
+  history?: CounterHistoryEntry[];
+  config?: Partial<CountersConfig>;
+  savedAt?: string;
+  [key: string]: unknown;
+}
+
 const DEFAULT_CONFIG: CountersConfig = {
   maxCounters: 100,
   maxValue: 999999,
@@ -70,6 +82,15 @@ export class CountersManager {
   private dirty: boolean = false;
   private saveInterval: NodeJS.Timeout | null = null;
 
+  // Merge-on-save state: counter values as of the last load/save, so a save
+  // applies increments as deltas and explicit sets as absolute values
+  private baseline: Map<string, number> = new Map();
+  private absoluteValues: Set<string> = new Set();
+  private pendingHistory: CounterHistoryEntry[] = [];
+  private replacedAll: boolean = false;
+  private configDirty: boolean = false;
+  private lastSyncedMtimeMs: number = 0;
+
   constructor(options?: {
     dataPath?: string;
     config?: Partial<CountersConfig>;
@@ -83,7 +104,7 @@ export class CountersManager {
     this.loadData();
 
     // Auto-save periodically
-    const autoSaveInterval = options?.autoSaveIntervalMs || 60000;
+    const autoSaveInterval = options?.autoSaveIntervalMs ?? 60000;
     if (autoSaveInterval > 0) {
       this.saveInterval = setInterval(() => this.saveIfDirty(), autoSaveInterval);
     }
@@ -139,6 +160,8 @@ export class CountersManager {
           this.config = { ...this.config, ...parsed.config };
         }
 
+        this.baseline = this.snapshotValues();
+        this.lastSyncedMtimeMs = this.getFileMtime();
         logger.info('Loaded counters', { count: this.counters.size });
       }
     } catch (error) {
@@ -146,6 +169,83 @@ export class CountersManager {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  }
+
+  private snapshotValues(): Map<string, number> {
+    return new Map(Array.from(this.counters, ([name, counter]) => [name, counter.value]));
+  }
+
+  private getFileMtime(): number {
+    try {
+      return fs.statSync(this.dataPath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  private clamp(value: number, config: CountersConfig): number {
+    return Math.max(config.minValue, Math.min(config.maxValue, value));
+  }
+
+  /**
+   * Apply this process's changes since the last sync onto the file's current contents
+   */
+  private mergeInto(current: CountersFileData | null): CountersFileData {
+    const config = this.configDirty ? this.config : { ...this.config, ...(current?.config ?? {}) };
+
+    if (this.replacedAll || !current) {
+      return {
+        ...(current ?? {}),
+        counters: Object.fromEntries(this.counters),
+        history: this.history.slice(-config.maxHistoryEntries * this.counters.size),
+        config,
+        savedAt: new Date().toISOString(),
+      };
+    }
+
+    const counters: Record<string, Counter> = { ...(current.counters ?? {}) };
+    const deleted = new Set(Array.from(this.baseline.keys()).filter((name) => !this.counters.has(name)));
+    for (const name of deleted) {
+      delete counters[name];
+    }
+
+    for (const [name, counter] of this.counters) {
+      const base = this.baseline.get(name);
+      const onDisk = counters[name];
+      const absolute = this.absoluteValues.has(name);
+
+      if (!onDisk) {
+        if (base === undefined || counter.value !== base || absolute) {
+          counters[name] = { ...counter };
+        }
+        continue;
+      }
+
+      const delta = counter.value - (base ?? 0);
+      if (!absolute && delta === 0) {
+        continue;
+      }
+
+      counters[name] = {
+        ...onDisk,
+        value: absolute ? counter.value : this.clamp(onDisk.value + delta, config),
+        lastModifiedAt: counter.lastModifiedAt,
+        lastModifiedBy: counter.lastModifiedBy,
+      };
+    }
+
+    const counterCount = Object.keys(counters).length;
+    const history = [...(current.history ?? []), ...this.pendingHistory]
+      .filter((h) => !deleted.has(h.counterName))
+      .slice(-config.maxHistoryEntries * counterCount);
+
+    return {
+      ...current,
+      counters,
+      history,
+      config,
+      savedAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -158,14 +258,19 @@ export class CountersManager {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const saveData = {
-        counters: Object.fromEntries(this.counters),
-        history: this.history.slice(-this.config.maxHistoryEntries * this.counters.size),
-        config: this.config,
-        savedAt: new Date().toISOString(),
-      };
+      // Lock, re-read and merge, so changes the dashboard made since our last
+      // sync are kept. Throws without writing if the file can't be parsed.
+      const merged = updateJsonFileSync<CountersFileData>(this.dataPath, (current) => this.mergeInto(current))!;
 
-      fs.writeFileSync(this.dataPath, JSON.stringify(saveData, null, 2));
+      this.counters = new Map(Object.entries(merged.counters ?? {}));
+      this.history = merged.history ?? [];
+      this.config = { ...this.config, ...merged.config };
+      this.baseline = this.snapshotValues();
+      this.absoluteValues.clear();
+      this.pendingHistory = [];
+      this.replacedAll = false;
+      this.configDirty = false;
+      this.lastSyncedMtimeMs = this.getFileMtime();
       this.dirty = false;
       logger.debug('Saved counters', { count: this.counters.size });
     } catch (error) {
@@ -181,6 +286,9 @@ export class CountersManager {
   private saveIfDirty(): void {
     if (this.dirty) {
       this.saveData();
+    } else if (this.getFileMtime() !== this.lastSyncedMtimeMs) {
+      // Nothing pending here, so pick up changes another process wrote
+      this.loadData();
     }
   }
 
@@ -260,6 +368,20 @@ export class CountersManager {
     modifiedBy: string,
     reason?: string
   ): { success: boolean; counter?: Counter; error?: string } {
+    return this.applyValue(name, value, modifiedBy, reason, true);
+  }
+
+  /**
+   * Change a counter's value. `absolute` marks an explicit set, which wins
+   * over other writers on save; otherwise the change is saved as a delta.
+   */
+  private applyValue(
+    name: string,
+    value: number,
+    modifiedBy: string,
+    reason: string | undefined,
+    absolute: boolean
+  ): { success: boolean; counter?: Counter; error?: string } {
     const normalizedName = this.normalizeName(name);
     const counter = this.counters.get(normalizedName);
 
@@ -277,6 +399,9 @@ export class CountersManager {
     counter.lastModifiedAt = new Date().toISOString();
     counter.lastModifiedBy = modifiedBy.toLowerCase();
 
+    if (absolute) {
+      this.absoluteValues.add(normalizedName);
+    }
     this.dirty = true;
 
     // Record history
@@ -305,7 +430,7 @@ export class CountersManager {
     }
 
     const newValue = counter.value + amount;
-    return this.setValue(name, newValue, modifiedBy, reason || `+${amount}`);
+    return this.applyValue(name, newValue, modifiedBy, reason || `+${amount}`, false);
   }
 
   /**
@@ -362,7 +487,7 @@ export class CountersManager {
     modifiedBy: string,
     reason?: string
   ): void {
-    this.history.push({
+    const entry: CounterHistoryEntry = {
       counterName,
       previousValue,
       newValue,
@@ -370,7 +495,9 @@ export class CountersManager {
       modifiedBy: modifiedBy.toLowerCase(),
       timestamp: new Date().toISOString(),
       reason,
-    });
+    };
+    this.history.push(entry);
+    this.pendingHistory.push(entry);
 
     // Trim old history
     const maxTotal = this.config.maxHistoryEntries * this.counters.size;
@@ -440,6 +567,7 @@ export class CountersManager {
    */
   updateConfig(updates: Partial<CountersConfig>): void {
     this.config = { ...this.config, ...updates };
+    this.configDirty = true;
     this.dirty = true;
     logger.info('Counters config updated', { updates: Object.keys(updates) });
   }
@@ -463,6 +591,7 @@ export class CountersManager {
 
     if (!merge) {
       this.counters.clear();
+      this.replacedAll = true;
     }
 
     for (const counter of counters) {

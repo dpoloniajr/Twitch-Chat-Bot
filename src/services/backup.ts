@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
+import { withCrossProcessLockSync, writeFileAtomicSync } from '../lib/file-lock';
 
 const logger = createLogger('Backup');
 
@@ -113,7 +114,10 @@ export class BackupManager {
   private async writeJsonFile(filename: string, data: unknown): Promise<boolean> {
     const filePath = path.join(this.logsDir, filename);
     try {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+      // Same lock as the bot's managers and the dashboard use for these files
+      withCrossProcessLockSync(filePath, () => {
+        writeFileAtomicSync(filePath, JSON.stringify(data, null, 2));
+      });
       return true;
     } catch (error) {
       logger.error(`Failed to write ${filename}`, {

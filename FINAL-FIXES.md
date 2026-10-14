@@ -1,5 +1,7 @@
 # Final Fix - Copy-to-Clipboard Event Handler
 
+> **Note (2026-10-14):** Historical record. `dashboard/public/app.js` is now compiled from `src/web/dashboard/public/app.ts` (`npm run build`); edit the `.ts` source.
+
 ## Issue Identified by Code Review
 **Problem**: The `copyToClipboard()` function relied on the global `event` object:
 ```javascript

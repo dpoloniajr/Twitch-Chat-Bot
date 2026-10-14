@@ -1,5 +1,7 @@
 # OBS Overlay Dashboard Configuration Implementation Report
 
+> **Note (2026-10-14):** This is a historical record. File paths refer to the pre-TypeScript layout. Current locations: `dashboard/server.js` → `src/dashboard/server.ts` (`createDashboard`) with routes in `src/dashboard/routes/` and helpers in `src/dashboard/lib/`; `dashboard/public/app.js` → `src/web/dashboard/public/app.ts` (compiled to `dashboard/public/app.js` by `npm run build`, gitignored); `Excella.js` → `src/bot/`; `token-generator.js` → `src/token-generator/`; `lib/*` → `src/lib/*`. `index.html` and `style.css` are still in `dashboard/public/`.
+
 ## Overview
 Successfully implemented a comprehensive OBS overlay configuration system that allows users to configure overlay settings directly from the web dashboard instead of manually adding URL parameters.
 

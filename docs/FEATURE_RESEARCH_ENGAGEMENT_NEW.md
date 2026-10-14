@@ -3,6 +3,8 @@
 **Purpose:** Research and recommend new Excella features that add to the stream and drive viewer engagement.  
 **Last updated:** 2025-02-20
 
+> **Note (2026-10-14):** Paths updated for the TypeScript layout: bot code is in `src/bot/` (handlers in feature modules, commands registered in `src/bot/command-registry.ts`), the Helix/IRC clients are in `src/lib/`, dashboard code is in `src/dashboard/`, and the token generator is in `src/token-generator/`.
+
 ---
 
 ## 1. Current Engagement Stack (Summary)
@@ -32,7 +34,7 @@ Below are features that **drive engagement** (more chat, more watch time, more r
 **Why it drives engagement:**
 - Gives a clear reason to earn points (chat + watch time).
 - Creates memorable moments (TTS, highlight, shoutout) that others see and want to try.
-- Reuses existing `loyalty-store.js` (`deductPoints` / `refundPoints`) and dashboard APIs; song-queue is the reference pattern.
+- Reuses existing `src/dashboard/lib/loyalty-store.ts` (`deductPoints` / `refundPoints`) and dashboard APIs; song-queue is the reference pattern.
 
 **Suggested store items (configurable cost in dashboard):**
 
@@ -67,7 +69,7 @@ Below are features that **drive engagement** (more chat, more watch time, more r
 - Optional: `!duel cancel` to withdraw before the other accepts (if you add an “accept” step).
 
 **Implementation outline:**
-- **Loyalty:** `deductPoints` for both users; `addPoints` for winner (and optionally small bonus). Use `loyalty-store.js` and existing dashboard loyalty file.
+- **Loyalty:** `deductPoints` for both users; `addPoints` for winner (and optionally small bonus). Use `src/dashboard/lib/loyalty-store.ts` and existing dashboard loyalty file.
 - **Bot:** New handler in Excella (or dashboard API that Excella calls): validate both users have balance, deduct, run “roll”, credit winner, broadcast result. Reply in chat: “@UserA wins the duel vs @UserB! 80 points awarded.”
 - **Dashboard:** Optional “Duel” tab: last N duels, leaderboard of “duel wins” (would require storing duel history; can be Phase 2).
 - **OBS:** Optional overlay event “duel_result” for a quick on-screen graphic.
@@ -148,6 +150,6 @@ Below are features that **drive engagement** (more chat, more watch time, more r
 
 ## 5. References
 
-- **Codebase:** `dashboard/lib/loyalty-store.js` (deductPoints, refundPoints, awardMessagePoints); `dashboard/routes/song-queue.js` (pattern for “cost + action”); `Excella.js` (commandRegistry, message handler, alerts).
+- **Codebase:** `src/dashboard/lib/loyalty-store.ts` (deductPoints, refundPoints, awardMessagePoints); `src/dashboard/routes/song-queue.ts` (pattern for “cost + action”); `src/bot/` (`command-registry.ts`, `message-handler.ts`, `eventsub.ts`).
 - **Docs:** FEATURE_PLAN_RAFFLE_AND_STREAM_MARKER.md, FEATURE_RESEARCH_EXTENDED_AND_ORIGINAL.md, FEATURE_RESEARCH_ADDITIONAL.md.
 - **External:** StreamElements Duel/Raffle/Emote Bingo; Moobot giveaways and song requests — same engagement goals, different implementations.

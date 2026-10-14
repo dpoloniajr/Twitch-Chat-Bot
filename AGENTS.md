@@ -15,30 +15,43 @@ This document provides essential context for AI assistants working with this cod
 ## Quick Start Commands
 
 ```bash
-npm install          # Install dependencies
-npm run bot          # Start only the bot
-npm run dashboard    # Start only the dashboard (port 3001)
-npm run dev          # Start bot and dashboard concurrently
-node token-generator.js  # Start OAuth token generator (port 3000)
+npm install              # Install dependencies
+npm run build            # Compile src/ to dist/ (tsc) and src/web/ in place (tsconfig.web.json)
+npm run bot              # Build, then start only the bot
+npm run dashboard        # Build, then start only the dashboard (port 3001)
+npm run dev              # Build, then start bot and dashboard concurrently
+npm start                # Start bot and dashboard from an existing dist/ build
+npm run token-generator  # Build, then start OAuth token generator (port 3000)
+npm test                 # Jest (pretest builds the browser code first)
+npm run typecheck        # tsc --noEmit
 ```
+
+The codebase is TypeScript. Server code compiles to `dist/`; browser code in `src/web/` compiles to `.js` files next to the pages in `dashboard/public/`, `public/` and `obs/` (those emitted files are gitignored, so edit the `.ts` sources). The dashboard binds to `DASHBOARD_HOST` (default `127.0.0.1`; the Docker image sets `0.0.0.0`).
 
 ## Project Structure
 
 ```
 /
-├── Excella.js                 # Main bot application (3,205 lines)
-├── token-generator.js         # OAuth server with setup wizard (2,215 lines)
-├── account-manager.js         # Encrypted account storage (397 lines)
+├── src/
+│   ├── bot/                   # Bot: createBot (create-bot.ts), entry main.ts, one module per feature
+│   ├── dashboard/             # Express API + WebSocket server: server.ts (createDashboard), routes/, lib/, entry main.ts
+│   ├── token-generator/       # OAuth server with setup wizard: server.ts, routes/, entry main.ts
+│   ├── lib/                   # Shared libs (Helix/IRC/EventSub clients, account/token/env managers, TTS, file lock)
+│   ├── utils/project-root.ts  # Resolves the project root from src/ or dist/
+│   ├── web/                   # Browser TypeScript (dashboard app, token generator UI, OBS overlays)
+│   └── commands/, services/, integrations/, filters/, utils/  # Standalone modules, NOT loaded by the bot yet (see below)
+├── dist/                      # Compiled output (gitignored)
+├── tests/                     # Jest suites (unit, regression, e2e, web)
 ├── dashboard/
-│   ├── server.js              # Express API + WebSocket server (847 lines)
 │   ├── public/
 │   │   ├── index.html         # Dashboard UI
-│   │   ├── app.js             # Dashboard frontend logic
+│   │   ├── app.js             # Dashboard frontend (compiled from src/web/dashboard/public/app.ts)
 │   │   └── style.css          # Dashboard styles
 │   └── logs/                  # JSON data storage (gitignored)
+├── public/token-generator/    # Token generator UI (app.js compiled from src/web)
 ├── obs/
-│   ├── overlays/              # HTML overlay pages for OBS (alerts, song-player, etc.)
-│   ├── js/overlay-client.js   # WebSocket client for overlays
+│   ├── overlays/              # HTML overlay pages for OBS (alerts, song-player, etc.; .js compiled from src/web)
+│   ├── js/overlay-client.js   # WebSocket client for overlays (compiled from src/web)
 │   ├── css/overlay-base.css   # Shared overlay styles
 │   └── assets/sounds/         # Alert sound files
 ├── .env                       # Environment configuration (gitignored)
@@ -46,11 +59,13 @@ node token-generator.js  # Start OAuth token generator (port 3000)
 └── .encryption-key            # AES-256 encryption key (gitignored)
 ```
 
+**Not wired in yet:** `src/integrations/discord.ts`, `src/services/analytics.ts`, `src/services/scheduler.ts`, `src/services/stream-utils.ts`, `src/utils/shutdown.ts`, `src/commands/moderation.ts`, `src/utils/rate-limiter.ts`, and the duplicate loyalty/quotes/counters managers in `src/services/` and `src/commands/` are tested but not loaded by the bot or dashboard. They are only re-exported from `src/index.ts`. The live implementations are in `src/bot/` and `src/dashboard/`.
+
 ## Architecture
 
 ### Core Components
 
-1. **Excella (Main Bot)** - IRC-based chat bot using tmi.js and direct Helix API
+1. **Excella (Main Bot, `src/bot/`)** - IRC-based chat bot using tmi.js and direct Helix API
 2. **Token Generator** - OAuth 2.0 server with scope management UI
 3. **Account Manager** - AES-256-CBC encrypted credential storage
 4. **Dashboard Server** - Express API with WebSocket for real-time updates
@@ -72,26 +87,26 @@ The bot uses separate authentication for different capabilities:
 
 Commands are registered in a Map with permission levels:
 
-```javascript
-const commandRegistry = new Map([
+```typescript
+const commandRegistry = new Map<string, RegisteredCommand>([
   ['!command', {
-    perm: 'everyone' | 'mod',
-    handler: async ({ channel, user, args, msg }) => {
-      return { success: true, message: 'Response' };
+    perm: 'everyone', // or 'mod'
+    handler: async ({ channel, username, args, msg }) => {
+      sendChatMessage(channel, 'Response');
     }
   }]
 ]);
 ```
 
-**Location:** `Excella.js` - Variable: `commandRegistry`
+**Location:** `src/bot/command-registry.ts` - Function: `createCommandRegistry()`
 
 ### Scope Validation Pattern
 
-Always check for required OAuth scopes before API calls:
+Always check for required OAuth scopes before API calls (`src/lib/feature-scopes.ts`):
 
-```javascript
-if (!hasScope(config.scopes, 'required:scope')) {
-  return { success: false, error: 'Missing scope: required:scope' };
+```typescript
+if (!featureScopes.hasRequiredScopes('clips', config.scopes, 'bot')) {
+  return { success: false, error: 'Missing clips:edit scope. Please re-authorize with the token generator.' };
 }
 ```
 
@@ -110,11 +125,7 @@ return {
 
 ### Permission Checking
 
-```javascript
-function checkModPermission(msg, channel, username) {
-  return msg.userInfo.isMod || msg.userInfo.isBroadcaster;
-}
-```
+`checkModPermission(msg, channel, username)` in `src/bot/context.ts` returns true for moderators and the broadcaster.
 
 ### Caching Strategy
 
@@ -214,7 +225,7 @@ The free quota is 10,000 units/day. Each search costs 100 units; metadata lookup
 
 ## Chat Filtering System
 
-**Location:** `Excella.js` - Functions: `checkChatFilters()`, `checkChatFiltersWithoutSideEffects()`
+**Location:** `src/bot/chat-filter.ts` - Functions: `checkChatFilters()`, `checkChatFiltersWithoutSideEffects()`
 
 Filter types:
 1. **Blacklist Words** - Case-insensitive matching
@@ -227,7 +238,7 @@ Moderators and broadcaster are exempt from all filters.
 
 ## TTS (Text-to-Speech) System
 
-**Location:** `Excella.js` - Function: `handleTTS()`, Config: `TTS_CONFIG`, `/obs/overlays/tts-display.html` (overlay)
+**Location:** `src/bot/tts.ts` - Function: `handleTTS()`, Config: `TTS_CONFIG` in `src/bot/config.ts`, `/obs/overlays/tts-display.html` (overlay), `src/lib/tts-service.ts` (AI providers)
 
 ### Features
 - **Browser-based TTS** using Web Speech API
@@ -273,14 +284,15 @@ http://localhost:3001/obs/overlays/tts-display.html?voice=en-US&rate=1.1&pitch=1
 
 ### Configuration
 
-TTS configuration in `Excella.js`:
-```javascript
-const TTS_CONFIG = {
+TTS configuration in `src/bot/config.ts`:
+```typescript
+export const TTS_CONFIG = {
   MAX_LENGTH: 200,                // Maximum characters
   PER_USER_COOLDOWN_SEC: 30,      // Per-user cooldown
   GLOBAL_COOLDOWN_SEC: 10,        // Global cooldown
+  REDEMPTION_QUEUE_MAX_SIZE: 100, // Queued TTS redemptions
   CHANNEL_POINTS_REWARD_TITLE: 'TTS' // Reward title to detect
-};
+} as const;
 ```
 
 ### AI TTS Provider Configuration (Phase 2)
@@ -337,8 +349,8 @@ TTS_CACHE_MAX_SIZE=104857600    # 100MB in bytes
 
 ## Song Request System
 
-**Location:** `Excella.js` - Functions: `handleSongRequest()`, `handleCurrentSong()`, `handleQueueInfo()`, `handleSkipSong()`, `handleRemoveSong()`, `handleClearQueue()`, `handleSongRequestConfig()`, `handleBlockSong()`, `handleUnblockSong()`
-**Route:** `dashboard/routes/song-queue.js`
+**Location:** `src/bot/song-requests.ts` - Functions: `handleSongRequest()`, `handleCurrentSong()`, `handleQueueInfo()`, `handleSkipSong()`, `handleRemoveSong()`, `handleClearQueue()`, `handleSongRequestConfig()`, `handleBlockSong()`, `handleUnblockSong()`
+**Route:** `src/dashboard/routes/song-queue.ts`
 
 ### Features
 - **YouTube search and URL lookup** using YouTube Data API v3
@@ -485,8 +497,8 @@ Core libraries:
 
 ### Adding a New Command
 
-1. Define handler in `Excella.js` following the registry pattern
-2. Add to `commandRegistry` Map with appropriate permission level
+1. Define the handler in the matching `src/bot/` module (e.g. `channel-commands.ts`, `fun-commands.ts`)
+2. Add it to the Map in `src/bot/command-registry.ts` with the appropriate permission level
 3. Check required scopes at handler start
 4. Return standardized response object
 5. Update `!commands` output if needed
@@ -495,13 +507,15 @@ Core libraries:
 
 1. Check for broadcaster token availability
 2. Validate required scopes
-3. Register listener on `broadcasterEventSubListener`
+3. Register the listener on `state.broadcasterEventSub` in `src/bot/eventsub.ts`
 4. Handle events and forward to dashboard via API
 
 ### Working with Account Manager
 
-```javascript
-const am = require('./account-manager');
+```typescript
+import { AccountManager } from '../lib/account-manager';
+
+const am = new AccountManager();
 
 // List accounts
 const accounts = am.listAccounts();
@@ -509,11 +523,9 @@ const accounts = am.listAccounts();
 // Load specific account
 const account = am.getAccount('account-name');
 
-// Save account
-am.saveAccount('name', {
-  clientId, clientSecret, broadcasterName,
-  channels, accessToken, refreshToken, scopes
-});
+// Create account, then store tokens
+am.createAccount('name', clientId, clientSecret, broadcasterName, channels);
+am.updateTokens('name', { /* TokenUpdate */ });
 
 // Delete account
 am.deleteAccount('name');
@@ -521,31 +533,29 @@ am.deleteAccount('name');
 
 ### Testing
 
-Manual test files exist (no formal framework):
-- `test-shoutout.js` - Shoutout command testing
-- `test-custom-command.js` - Custom command rendering
-- `test-account-manager.js` - Account manager CRUD
+Jest with ts-jest (`jest.config.ts`). Suites live in `tests/` (unit tests mirror `src/`, plus `tests/regression/`, `tests/e2e/` and `tests/web/`). The old root `test-*.js` manual scripts were removed; their checks are ported to Jest.
 
-Run with: `node test-<name>.js`
+Run with: `npm test` (the `pretest` script compiles the browser code first)
 
 ## File Locations Reference
 
 | Purpose | File | Key Lines |
 |---------|------|-----------|
-| Command handlers | `Excella.js` | 1399-2795 |
-| Command registry | `Excella.js` | 2798-3053 |
-| Message handler | `Excella.js` | 3087-3205 |
-| Chat filters | `Excella.js` | 238-365 |
-| Token management | `Excella.js` | 1008-1110 |
-| EventSub setup | `Excella.js` | 367-667 |
-| Cooldown system | `Excella.js` | 668-781 |
-| Song request handlers | `Excella.js` | 2179-2795 |
-| Song queue API | `dashboard/routes/song-queue.js` | Full file |
+| Bot wiring | `src/bot/create-bot.ts` (entry `src/bot/main.ts`) | Full file |
+| Command handlers | `src/bot/*-commands.ts`, `polls.ts`, `song-requests.ts`, `tts.ts` | Full files |
+| Command registry | `src/bot/command-registry.ts` | Full file |
+| Message handler | `src/bot/message-handler.ts` | Full file |
+| Chat filters | `src/bot/chat-filter.ts` | Full file |
+| Token management | `src/bot/auth.ts`, `src/lib/token-manager.ts` | Full files |
+| EventSub setup | `src/bot/eventsub.ts` | Full file |
+| Cooldown system | `src/bot/cooldowns.ts` | Full file |
+| Song request handlers | `src/bot/song-requests.ts` | Full file |
+| Song queue API | `src/dashboard/routes/song-queue.ts` | Full file |
 | Song queue data | `dashboard/logs/song-queue.json` | Runtime file |
 | Song blocklist data | `dashboard/logs/song-blocklist.json` | Runtime file |
-| Dashboard routes | `dashboard/server.js` | Full file |
-| Account encryption | `account-manager.js` | Full file |
-| OAuth flow | `token-generator.js` | Full file |
+| Dashboard server | `src/dashboard/server.ts` (`createDashboard`), routes in `src/dashboard/routes/` | Full files |
+| Account encryption | `src/lib/account-manager.ts` | Full file |
+| OAuth flow | `src/token-generator/server.ts`, `src/token-generator/routes/` | Full files |
 
 ## Common Issues
 

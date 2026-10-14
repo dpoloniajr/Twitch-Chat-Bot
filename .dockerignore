@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.git
+# Secrets and local data stay out of the image (mount them at runtime)
+.env
+.env.*
+.encryption-key
+accounts.encrypted.json
+backups
+logs
+dashboard/logs
+dashboard/uploads
+dashboard/cache

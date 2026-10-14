@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
+import { updateJsonFileSync } from '../lib/file-lock';
 
 const logger = createLogger('Loyalty');
 
@@ -71,6 +72,31 @@ export interface LoyaltyTransaction {
   balance: number;
 }
 
+/**
+ * Shape of loyalty.json (shared with the dashboard)
+ */
+interface LoyaltyFileData {
+  users?: Record<string, UserLoyaltyData>;
+  config?: Partial<LoyaltyConfig>;
+  transactions?: LoyaltyTransaction[];
+  savedAt?: string;
+  [key: string]: unknown;
+}
+
+/** Counters that are merged as deltas when saving */
+const DELTA_FIELDS = ['points', 'totalEarned', 'totalSpent', 'watchTimeMinutes', 'messageCount'] as const;
+
+type UserSnapshot = Record<(typeof DELTA_FIELDS)[number], number> & { lastSeen: string };
+
+const EMPTY_SNAPSHOT: UserSnapshot = {
+  points: 0,
+  totalEarned: 0,
+  totalSpent: 0,
+  watchTimeMinutes: 0,
+  messageCount: 0,
+  lastSeen: '',
+};
+
 const DEFAULT_CONFIG: LoyaltyConfig = {
   pointsPerMinute: 10,
   pointsPerMessage: 5,
@@ -97,6 +123,14 @@ export class LoyaltyManager {
   private dirty: boolean = false;
   private saveInterval: NodeJS.Timeout | null = null;
 
+  // Merge-on-save state: what the file held at the last load/save, so a save
+  // applies only this process's changes on top of whatever is on disk now
+  private baseline: Map<string, UserSnapshot> = new Map();
+  private absolutePoints: Set<string> = new Set();
+  private pendingTransactions: LoyaltyTransaction[] = [];
+  private configDirty: boolean = false;
+  private lastSyncedMtimeMs: number = 0;
+
   constructor(options?: {
     dataPath?: string;
     config?: Partial<LoyaltyConfig>;
@@ -111,7 +145,7 @@ export class LoyaltyManager {
     this.loadData();
 
     // Auto-save periodically
-    const autoSaveInterval = options?.autoSaveIntervalMs || 60000;
+    const autoSaveInterval = options?.autoSaveIntervalMs ?? 60000;
     if (autoSaveInterval > 0) {
       this.saveInterval = setInterval(() => this.saveIfDirty(), autoSaveInterval);
     }
@@ -136,6 +170,8 @@ export class LoyaltyManager {
           this.transactions = parsed.transactions;
         }
 
+        this.baseline = this.snapshotUsers();
+        this.lastSyncedMtimeMs = this.getFileMtime();
         logger.info('Loaded loyalty data', { userCount: this.data.size });
       }
     } catch (error) {
@@ -143,6 +179,87 @@ export class LoyaltyManager {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  }
+
+  private snapshotUsers(): Map<string, UserSnapshot> {
+    const snapshot = new Map<string, UserSnapshot>();
+    for (const [username, user] of this.data) {
+      snapshot.set(username, {
+        points: user.points,
+        totalEarned: user.totalEarned,
+        totalSpent: user.totalSpent,
+        watchTimeMinutes: user.watchTimeMinutes,
+        messageCount: user.messageCount,
+        lastSeen: user.lastSeen,
+      });
+    }
+    return snapshot;
+  }
+
+  private getFileMtime(): number {
+    try {
+      return fs.statSync(this.dataPath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Apply this process's changes since the last sync onto the file's current contents
+   */
+  private mergeInto(current: LoyaltyFileData | null): LoyaltyFileData {
+    const users: Record<string, UserLoyaltyData> = { ...(current?.users ?? {}) };
+
+    for (const [username, user] of this.data) {
+      const base = this.baseline.get(username);
+      const onDisk = users[username];
+      const changed =
+        !base ||
+        this.absolutePoints.has(username) ||
+        user.lastSeen !== base.lastSeen ||
+        DELTA_FIELDS.some((field) => user[field] !== base[field]);
+
+      if (!changed) {
+        // Untouched here: keep the file's version (or its removal)
+        continue;
+      }
+
+      if (!onDisk) {
+        users[username] = { ...user };
+        continue;
+      }
+
+      const from = base ?? EMPTY_SNAPSHOT;
+      const merged: UserLoyaltyData = { ...onDisk };
+      for (const field of DELTA_FIELDS) {
+        merged[field] = (onDisk[field] || 0) + (user[field] - from[field]);
+      }
+      if (this.absolutePoints.has(username)) {
+        merged.points = user.points;
+      }
+      if (merged.points < 0) {
+        logger.warn('Merged balance went negative, clamping to 0', { username, points: merged.points });
+        merged.points = 0;
+      }
+      merged.lastSeen = user.lastSeen > (onDisk.lastSeen || '') ? user.lastSeen : onDisk.lastSeen;
+      merged.firstSeen =
+        onDisk.firstSeen && onDisk.firstSeen < user.firstSeen ? onDisk.firstSeen : user.firstSeen;
+      merged.level = this.calculateLevel(merged.totalEarned);
+      users[username] = merged;
+    }
+
+    const config = this.configDirty ? this.config : { ...this.config, ...(current?.config ?? {}) };
+    const transactions = [...(current?.transactions ?? []), ...this.pendingTransactions].slice(
+      -this.maxTransactionHistory
+    );
+
+    return {
+      ...(current ?? {}),
+      users,
+      config,
+      transactions,
+      savedAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -155,14 +272,18 @@ export class LoyaltyManager {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const saveData = {
-        users: Object.fromEntries(this.data),
-        config: this.config,
-        transactions: this.transactions.slice(-this.maxTransactionHistory),
-        savedAt: new Date().toISOString(),
-      };
+      // Lock, re-read and merge, so changes the dashboard made since our last
+      // sync are kept. Throws without writing if the file can't be parsed.
+      const merged = updateJsonFileSync<LoyaltyFileData>(this.dataPath, (current) => this.mergeInto(current))!;
 
-      fs.writeFileSync(this.dataPath, JSON.stringify(saveData, null, 2));
+      this.data = new Map(Object.entries(merged.users ?? {}));
+      this.config = { ...this.config, ...merged.config };
+      this.transactions = merged.transactions ?? [];
+      this.baseline = this.snapshotUsers();
+      this.absolutePoints.clear();
+      this.pendingTransactions = [];
+      this.configDirty = false;
+      this.lastSyncedMtimeMs = this.getFileMtime();
       this.dirty = false;
       logger.debug('Saved loyalty data', { userCount: this.data.size });
     } catch (error) {
@@ -178,6 +299,9 @@ export class LoyaltyManager {
   private saveIfDirty(): void {
     if (this.dirty) {
       this.saveData();
+    } else if (this.getFileMtime() !== this.lastSyncedMtimeMs) {
+      // Nothing pending here, so pick up changes another process wrote
+      this.loadData();
     }
   }
 
@@ -311,6 +435,7 @@ export class LoyaltyManager {
 
     const user = this.getOrCreateUser(username);
     user.watchTimeMinutes += minutesWatched;
+    this.dirty = true;
 
     const result = this.awardPoints(username, points, 'Watch time bonus');
 
@@ -419,6 +544,7 @@ export class LoyaltyManager {
     const diff = amount - user.points;
 
     user.points = Math.max(0, amount);
+    this.absolutePoints.add(username.toLowerCase());
     this.dirty = true;
 
     this.recordTransaction(username, diff, 'admin', reason, user.points);
@@ -438,14 +564,16 @@ export class LoyaltyManager {
     reason: string,
     balance: number
   ): void {
-    this.transactions.push({
+    const transaction: LoyaltyTransaction = {
       username: username.toLowerCase(),
       amount,
       type,
       reason,
       timestamp: new Date().toISOString(),
       balance,
-    });
+    };
+    this.transactions.push(transaction);
+    this.pendingTransactions.push(transaction);
 
     // Trim old transactions
     if (this.transactions.length > this.maxTransactionHistory * 2) {
@@ -515,6 +643,7 @@ export class LoyaltyManager {
    */
   updateConfig(updates: Partial<LoyaltyConfig>): void {
     this.config = { ...this.config, ...updates };
+    this.configDirty = true;
     this.dirty = true;
     logger.info('Loyalty config updated', { updates: Object.keys(updates) });
   }

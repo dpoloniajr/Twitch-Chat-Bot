@@ -22,6 +22,13 @@ jest.mock('fs', () => ({
   unlinkSync: jest.fn(),
 }));
 
+// Run the cross-process lock inline and write straight through the mocked fs
+jest.mock('../../src/lib/file-lock', () => ({
+  withCrossProcessLockSync: (_filePath: string, action: () => unknown) => action(),
+  writeFileAtomicSync: (filePath: string, content: string) =>
+    jest.requireMock('fs').writeFileSync(filePath, content),
+}));
+
 const mockFs = fs as jest.Mocked<typeof fs>;
 
 describe('BackupManager', () => {

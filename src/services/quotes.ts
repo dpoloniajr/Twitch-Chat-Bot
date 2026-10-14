@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger } from '../utils/logger';
+import { updateJsonFileSync } from '../lib/file-lock';
 
 const logger = createLogger('Quotes');
 
@@ -35,6 +36,17 @@ export interface QuotesConfig {
   allowDuplicates: boolean;
 }
 
+/**
+ * Shape of quotes.json (shared with the dashboard)
+ */
+interface QuotesFileData {
+  quotes?: Quote[];
+  config?: Partial<QuotesConfig>;
+  nextId?: number;
+  savedAt?: string;
+  [key: string]: unknown;
+}
+
 const DEFAULT_CONFIG: QuotesConfig = {
   maxQuotes: 10000,
   minLength: 5,
@@ -53,6 +65,13 @@ export class QuotesManager {
   private dirty: boolean = false;
   private saveInterval: NodeJS.Timeout | null = null;
 
+  // Merge-on-save state: quote id -> text as of the last load/save, so a save
+  // applies only this process's adds, edits and deletes to the file
+  private baseline: Map<number, string> = new Map();
+  private replacedAll: boolean = false;
+  private configDirty: boolean = false;
+  private lastSyncedMtimeMs: number = 0;
+
   constructor(options?: {
     dataPath?: string;
     config?: Partial<QuotesConfig>;
@@ -66,7 +85,7 @@ export class QuotesManager {
     this.loadData();
 
     // Auto-save periodically
-    const autoSaveInterval = options?.autoSaveIntervalMs || 60000;
+    const autoSaveInterval = options?.autoSaveIntervalMs ?? 60000;
     if (autoSaveInterval > 0) {
       this.saveInterval = setInterval(() => this.saveIfDirty(), autoSaveInterval);
     }
@@ -97,6 +116,8 @@ export class QuotesManager {
           this.nextId = maxId + 1;
         }
 
+        this.baseline = this.snapshotQuotes();
+        this.lastSyncedMtimeMs = this.getFileMtime();
         logger.info('Loaded quotes', { count: this.quotes.length });
       }
     } catch (error) {
@@ -104,6 +125,69 @@ export class QuotesManager {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  }
+
+  private snapshotQuotes(): Map<number, string> {
+    return new Map(this.quotes.map((q) => [q.id, q.text]));
+  }
+
+  private getFileMtime(): number {
+    try {
+      return fs.statSync(this.dataPath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Apply this process's changes since the last sync onto the file's current contents
+   */
+  private mergeInto(current: QuotesFileData | null): QuotesFileData {
+    const config = this.configDirty ? this.config : { ...this.config, ...(current?.config ?? {}) };
+
+    if (this.replacedAll || !current) {
+      return {
+        ...(current ?? {}),
+        quotes: this.quotes,
+        config,
+        nextId: this.nextId,
+        savedAt: new Date().toISOString(),
+      };
+    }
+
+    const currentIds = new Set(this.quotes.map((q) => q.id));
+    let quotes = (current.quotes ?? []).filter((q) => !(this.baseline.has(q.id) && !currentIds.has(q.id)));
+    let maxId = quotes.reduce((max, q) => Math.max(max, q.id), 0);
+
+    for (const quote of this.quotes) {
+      const baseText = this.baseline.get(quote.id);
+
+      if (baseText === undefined) {
+        // Added here. If the dashboard took this id in the meantime, renumber ours.
+        const onDisk = quotes.find((q) => q.id === quote.id);
+        if (onDisk && onDisk.text === quote.text) {
+          continue;
+        }
+        if (onDisk) {
+          const newId = Math.max(maxId, this.nextId - 1, current.nextId ? current.nextId - 1 : 0) + 1;
+          logger.warn('Quote id taken by another writer, renumbering', { from: quote.id, to: newId });
+          quote.id = newId;
+        }
+        quotes.push({ ...quote });
+        maxId = Math.max(maxId, quote.id);
+      } else if (baseText !== quote.text) {
+        // Edited here; apply only if the quote still exists on disk
+        quotes = quotes.map((q) => (q.id === quote.id ? { ...q, text: quote.text } : q));
+      }
+    }
+
+    return {
+      ...current,
+      quotes,
+      config,
+      nextId: Math.max(maxId + 1, current.nextId ?? 1, this.nextId),
+      savedAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -116,14 +200,17 @@ export class QuotesManager {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const saveData = {
-        quotes: this.quotes,
-        config: this.config,
-        nextId: this.nextId,
-        savedAt: new Date().toISOString(),
-      };
+      // Lock, re-read and merge, so changes the dashboard made since our last
+      // sync are kept. Throws without writing if the file can't be parsed.
+      const merged = updateJsonFileSync<QuotesFileData>(this.dataPath, (current) => this.mergeInto(current))!;
 
-      fs.writeFileSync(this.dataPath, JSON.stringify(saveData, null, 2));
+      this.quotes = merged.quotes ?? [];
+      this.config = { ...this.config, ...merged.config };
+      this.nextId = merged.nextId ?? this.nextId;
+      this.baseline = this.snapshotQuotes();
+      this.replacedAll = false;
+      this.configDirty = false;
+      this.lastSyncedMtimeMs = this.getFileMtime();
       this.dirty = false;
       logger.debug('Saved quotes', { count: this.quotes.length });
     } catch (error) {
@@ -139,6 +226,9 @@ export class QuotesManager {
   private saveIfDirty(): void {
     if (this.dirty) {
       this.saveData();
+    } else if (this.getFileMtime() !== this.lastSyncedMtimeMs) {
+      // Nothing pending here, so pick up changes another process wrote
+      this.loadData();
     }
   }
 
@@ -381,6 +471,7 @@ export class QuotesManager {
    */
   updateConfig(updates: Partial<QuotesConfig>): void {
     this.config = { ...this.config, ...updates };
+    this.configDirty = true;
     this.dirty = true;
     logger.info('Quotes config updated', { updates: Object.keys(updates) });
   }
@@ -405,6 +496,7 @@ export class QuotesManager {
     if (!merge) {
       this.quotes = [];
       this.nextId = 1;
+      this.replacedAll = true;
     }
 
     for (const quote of quotes) {
