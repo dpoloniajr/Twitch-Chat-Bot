@@ -169,6 +169,7 @@ dist/
 
 # Browser JS compiled from src/web (npm run build / build:web)
 dashboard/public/app.js
+dashboard/public/manage.js
 public/token-generator/app.js
 obs/js/overlay-client.js
 obs/overlays/*.js

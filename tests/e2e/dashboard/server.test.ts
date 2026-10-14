@@ -290,6 +290,70 @@ describe('x-bot-secret guard on bot-only writes (DASHBOARD_INTERNAL_SECRET)', ()
       expect((await call('POST', '/api/song-queue/SKIP/')).status).toBe(200);
     });
 
+    describe('admin actions from a dashboard page (same-origin Origin header, no secret)', () => {
+      const page = () => ({ origin: `http://127.0.0.1:${d.port}` });
+      const seedQueue = () => d.writeJson('song-queue.json', {
+        active: [
+          { id: 's1', videoId: 'v1', title: 'First', channelTitle: 'c', channelId: 'ch1', thumbnail: '', requester: 'u', requesterDisplayName: 'U', addedAt: '', position: 1, pointsCost: 0 },
+          { id: 's2', videoId: 'v2', title: 'Second', channelTitle: 'c', channelId: 'ch1', thumbnail: '', requester: 'u', requesterDisplayName: 'U', addedAt: '', position: 2, pointsCost: 0 }
+        ],
+        history: [],
+        config: { enabled: true, maxDuration: 600, maxPerUser: 3, allowDuplicates: false, cost: 0, priority: 'everyone' }
+      });
+
+      // The Song Queue and Loyalty pages make these
+      const DASHBOARD_ADMIN: Array<[string, string, unknown]> = [
+        ['PUT', '/api/loyalty/config', { pointsPerMessage: 1 }],
+        ['PUT', '/api/loyalty/user/viewer/points', { points: 50 }],
+        ['PUT', '/api/song-queue/config', { cost: 5 }],
+        ['POST', '/api/song-queue/block', { type: 'keyword', value: 'k' }],
+        ['DELETE', '/api/song-queue/block/k', undefined],
+        ['DELETE', '/api/song-queue/2', undefined],
+        ['POST', '/api/song-queue/clear', undefined]
+      ];
+
+      it.each(DASHBOARD_ADMIN)('%s %s is allowed', async (method, url, body) => {
+        seedQueue();
+        if (url === '/api/song-queue/block/k') await call('POST', '/api/song-queue/block', BOT, { type: 'keyword', value: 'k' });
+        const res = await call(method, url, page(), body);
+        expect([method, url, res.status]).toEqual([method, url, 200]);
+      });
+
+      it('the edits really land', async () => {
+        seedQueue();
+        await call('PUT', '/api/loyalty/user/viewer/points', page(), { points: 50 });
+        expect(d.readJson('loyalty.json').users.viewer.points).toBe(50);
+        await call('DELETE', '/api/song-queue/2', page());
+        expect(d.readJson('song-queue.json').active.map((s: { id: string }) => s.id)).toEqual(['s1']);
+      });
+
+      // Points-earning and charging writes stay bot-only even from a page
+      it.each([
+        ['POST', '/api/loyalty/award-message', { username: 'u' }],
+        ['POST', '/api/loyalty/gamba', { username: 'u', amount: 1 }],
+        ['POST', '/api/loyalty/duel', { challenger: 'u', opponent: 'v' }],
+        ['POST', '/api/loyalty/add', { username: 'u', amount: 5 }],
+        ['POST', '/api/loyalty/deduct', { username: 'u', amount: 5 }],
+        ['POST', '/api/song-queue/add', { videoId: 'v', title: 't', requester: 'u' }],
+        ['POST', '/api/song-queue/ADD/', { videoId: 'v', title: 't', requester: 'u' }],
+        ['PUT', '/api/loyalty/user/a/b/points', { points: 1 }]
+      ])('%s %s still needs the secret', async (method, url, body) => {
+        const res = await call(method, url, page(), body);
+        expect(res.status).toBe(403);
+      });
+
+      it('an empty Origin header is not a page', async () => {
+        expect((await call('POST', '/api/song-queue/clear', { origin: '' })).status).toBe(403);
+      });
+
+      it('another site is refused by the CSRF check before anything else', async () => {
+        const res = await call('PUT', '/api/loyalty/config', { origin: 'http://evil.example' }, { pointsPerMessage: 1 });
+        expect(res.status).toBe(403);
+        expect(res.json).toEqual({ error: 'Forbidden: cross-site request' });
+        expect(d.exists('loyalty.json')).toBe(false);
+      });
+    });
+
     it('a case or trailing-slash variant of a bot-only path is still guarded', async () => {
       expect((await call('POST', '/API/LOYALTY/add', {}, { username: 'x', amount: 5 })).status).toBe(403);
       expect((await call('POST', '/api/hype/trigger/', {}, { channel: '#c', count: 1 })).status).toBe(403);

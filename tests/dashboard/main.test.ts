@@ -61,7 +61,35 @@ describe('dashboard main', () => {
     const { order, config, createDashboard } = runMain(Promise.resolve());
     expect(order).toEqual(['console-timestamp', 'dotenv', 'server', 'createDashboard']);
     expect(config).toHaveBeenCalledWith({ path: path.join(ROOT, '.env') });
-    expect(createDashboard).toHaveBeenCalledWith();
+    expect(createDashboard).toHaveBeenCalledWith({ environmentKeys: expect.any(Array) });
+    await flush();
+  });
+
+  it('tells the dashboard which keys the system environment set before .env was loaded', async () => {
+    process.env.SYSTEM_SET_KEY = 'from-docker';
+    process.env.SYSTEM_EMPTY_KEY = '';
+    const { createDashboard } = runMain(Promise.resolve());
+    const [[options]] = createDashboard.mock.calls as unknown as Array<[{ environmentKeys: string[] }]>;
+    expect(options.environmentKeys).toContain('SYSTEM_SET_KEY');
+    expect(options.environmentKeys).not.toContain('SYSTEM_EMPTY_KEY');
+    delete process.env.SYSTEM_SET_KEY;
+    delete process.env.SYSTEM_EMPTY_KEY;
+    await flush();
+  });
+
+  it('keys .env adds are not reported as set by the environment', async () => {
+    const order: string[] = [];
+    const createDashboard = jest.fn((_options?: unknown) => ({ server: { listen: jest.fn() }, init: jest.fn(() => Promise.resolve()) }));
+    jest.isolateModules(() => {
+      jest.doMock('../../src/lib/console-timestamp', () => ({}));
+      jest.doMock('dotenv', () => ({ config: () => { order.push('dotenv'); process.env.FROM_DOTENV_ONLY = 'x'; } }));
+      jest.doMock('../../src/dashboard/server', () => ({ createDashboard }));
+      require('../../src/dashboard/main');
+    });
+    const options = createDashboard.mock.calls[0][0] as { environmentKeys: string[] };
+    expect(order).toEqual(['dotenv']);
+    expect(options.environmentKeys).not.toContain('FROM_DOTENV_ONLY');
+    delete process.env.FROM_DOTENV_ONLY;
     await flush();
   });
 

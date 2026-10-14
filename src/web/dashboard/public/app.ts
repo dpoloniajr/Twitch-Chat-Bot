@@ -224,6 +224,11 @@ function initWebSocket() {
     } else if (message.type === 'filters') {
       loadFilters();
     }
+
+    // Song queue, loyalty, quote and counter updates for manage.ts's pages
+    if (typeof mgrOnSocketMessage === 'function') {
+      mgrOnSocketMessage(message as { type?: string; data?: unknown });
+    }
   };
 
   ws.onerror = (error) => {
@@ -304,9 +309,9 @@ function showPage(pageId: string, eventObj?: Event) {
     (eventObj.target as Element).classList.add('active');
   }
 
-  // Load page-specific data
-  if (pageId === 'settings') {
-    loadBotSettings();
+  // Pages owned by manage.ts (Settings, Song Queue, Loyalty, ...) load their data
+  if (typeof mgrOnPageShown === 'function') {
+    mgrOnPageShown(pageId);
   }
 }
 
@@ -1562,45 +1567,7 @@ function updateTestPanelFields() {
   document.getElementById('testRewardGroup')!.style.display = alertType === 'redemption' ? 'block' : 'none';
 }
 
-// Bot Settings
-async function loadBotSettings() {
-  try {
-    const response = await fetch('/api/settings');
-    const settings: { commandRefreshInterval: number } = await response.json();
-    // number assigned as-is; the DOM stringifies it
-    (document.getElementById('commandRefreshInterval') as HTMLInputElement).value = settings.commandRefreshInterval as unknown as string;
-  } catch (error) {
-    console.error('Failed to load bot settings:', error);
-  }
-}
-
-async function saveBotSettings() {
-  const commandRefreshInterval = parseInt((document.getElementById('commandRefreshInterval') as HTMLInputElement).value);
-
-  if (isNaN(commandRefreshInterval) || commandRefreshInterval < 5) {
-    alert('Refresh interval must be at least 5 seconds');
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commandRefreshInterval })
-    });
-
-    if (response.ok) {
-      alert('Settings saved successfully');
-    } else {
-      const error: DashApiError = await response.json();
-      alert(`Failed to save settings: ${error.error || 'Unknown error'}`);
-    }
-  } catch (error) {
-    console.error('Failed to save bot settings:', error);
-    alert('Failed to save settings');
-  }
-}
-
+// Bot control (the Settings form itself lives in manage.ts)
 async function restartBot() {
   if (!confirm('Are you sure you want to restart the bot? It will take a few seconds to reconnect.')) {
     return;
@@ -1612,7 +1579,7 @@ async function restartBot() {
     });
 
     if (response.ok) {
-      alert('Restart signal sent to bot. The bot will exit and should be restarted by your process manager.');
+      alert('Restart signal sent. The bot restarts within a few seconds and picks up saved settings.');
     } else {
       alert('Failed to send restart signal');
     }

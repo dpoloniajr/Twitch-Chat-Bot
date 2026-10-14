@@ -457,7 +457,7 @@ describe('bot startup', () => {
       return { set: (v: boolean) => { present = v; }, exists, unlink };
     }
 
-    it('checks every 5s and exits with code 0 after removing the flag', async () => {
+    it('checks every 5s and exits with the restart code (75) after removing the flag', async () => {
       const b = await start();
       const flag = fakeRestartFlag();
       await b.advance(4_000);
@@ -468,18 +468,18 @@ describe('bot startup', () => {
 
       flag.set(true);
       // process.exit is mocked to throw, so the timer tick rejects
-      await expect(b.advance(5_000)).rejects.toThrow('process.exit(0)');
-      expect(b.exitCodes()).toEqual([0]);
+      await expect(b.advance(5_000)).rejects.toThrow('process.exit(75)');
+      expect(b.exitCodes()).toEqual([75]);
       expect(flag.unlink).toHaveBeenCalledWith(RESTART_FLAG);
       expect(lines(logSpy)).toContain('🔄 Restart flag detected. Restarting bot...');
     });
 
-    it('still exits with code 0 when the flag cannot be removed', async () => {
+    it('still exits with the restart code when the flag cannot be removed', async () => {
       const b = await start();
       const flag = fakeRestartFlag(new Error('EPERM'));
       flag.set(true);
-      await expect(b.advance(5_000)).rejects.toThrow('process.exit(0)');
-      expect(b.exitCodes()).toEqual([0]);
+      await expect(b.advance(5_000)).rejects.toThrow('process.exit(75)');
+      expect(b.exitCodes()).toEqual([75]);
       expect(lines(errorSpy)).toContain('Failed to remove restart flag: EPERM');
     });
   });

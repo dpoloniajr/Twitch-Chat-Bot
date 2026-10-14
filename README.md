@@ -61,6 +61,8 @@ A feature-rich, modular Twitch chat bot built with Node.js and TypeScript featur
 - **Loyalty System** - Track user points, levels, and watch time
 - **Quotes Database** - Add, manage, and display random quotes
 - **Counters** - Create and manage custom counters (deaths, wins, etc.)
+- **Settings** - Edit every bot setting from `.env` in the browser (secrets are write-only)
+- **Song Queue, Backups** - Manage the request queue and blocklist; create, download and restore backups
 
 ### OBS Integration
 - **Alert Overlays** - Customizable alerts for follows, subs, bits, raids, redemptions
@@ -268,6 +270,8 @@ npm run dashboard
 # Start the token generator (builds first)
 npm run token-generator
 ```
+
+`npm start` and `npm run bot` run the bot under a small supervisor (`dist/bot/supervisor.js`) that starts it again when you press **Restart Bot** on the dashboard (the bot exits with code 75 to ask for that). Any other exit ends it as before.
 
 The bot, dashboard and token generator are written in TypeScript under `src/` and compiled to `dist/` by `npm run build`. Browser scripts in `src/web/` are compiled in place next to their pages (`dashboard/public/`, `public/`, `obs/`); those emitted `.js` files are gitignored.
 
@@ -588,6 +592,24 @@ Open `http://localhost:3001` in your browser. The dashboard listens on `127.0.0.
 - **EventSub Events** - View follows, subs, raids, bits, redemptions
 - **OBS Configuration** - Configure overlay settings
 - **Alert Configuration** - Customize alert appearances
+- **Settings** - Every `.env` setting in grouped panels (see below)
+- **Song Queue** - Now playing, the queue, skip/remove/clear, request rules and the blocklist
+- **Loyalty** - Points settings, stats, leaderboard, transactions, and setting a viewer's points
+- **Quotes** - Add, search, edit, delete, import/export, and quote rules
+- **Counters** - Create, count up/down, set, reset and delete
+- **Backups** - Create, upload, download, restore and delete backups (they never include `.env`)
+
+### Settings Page
+
+The Settings page edits the `.env` file through `GET/PUT /api/config`. One schema
+(`src/dashboard/lib/settings-schema.ts`) defines every setting's type, range,
+default and group, and drives both the form and the server-side validation.
+
+- **Secrets are write-only.** API keys, the client secret and tokens show only "set" or "not set"; you can replace or clear them but never read them back.
+- **Tokens and scopes are read-only.** Use the token generator to create them. `DASHBOARD_HOST` and `DASHBOARD_INTERNAL_SECRET` are read-only too, because they protect the dashboard itself.
+- **Each setting says when it applies.** TTS settings apply immediately; the rest need a bot restart (the **Restart Bot** button restarts it with the new settings) or, for ports, a restart of `npm start`.
+- **Settings set by the system environment** (for example in `docker-compose.yml`) are shown but locked, because `.env` cannot override them.
+- Chat filter settings stay on the Chat Filters page, and announcement messages on the Announcements page.
 
 ### WebSocket Events
 

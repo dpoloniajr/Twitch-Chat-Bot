@@ -29,6 +29,7 @@ import { createPollCommands } from './polls';
 import { createSongCommands } from './song-requests';
 import { createTTS } from './tts';
 import { createYouTubeClient } from './youtube';
+import { RESTART_EXIT_CODE } from './restart';
 
 export interface Bot {
   ctx: BotContext;
@@ -93,7 +94,7 @@ export function createBot(deps: BotDeps): Bot {
       } catch (e) {
         console.error('Failed to remove restart flag:', (e as Error).message);
       }
-      ctx.exit(0);
+      ctx.exit(RESTART_EXIT_CODE);
     }
   }
 
