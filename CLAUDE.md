@@ -17,7 +17,7 @@ This document provides essential context for AI assistants working with this cod
 ```bash
 npm install              # Install dependencies
 npm run build            # Compile src/ to dist/ (tsc) and src/web/ in place (tsconfig.web.json)
-npm run bot              # Build, then start only the bot
+npm run bot              # Build, then start only the bot (under the restart supervisor)
 npm run dashboard        # Build, then start only the dashboard (port 3001)
 npm run dev              # Build, then start bot and dashboard concurrently
 npm start                # Start bot and dashboard from an existing dist/ build
@@ -25,6 +25,8 @@ npm run token-generator  # Build, then start OAuth token generator (port 3000)
 npm test                 # Jest (pretest builds the browser code first)
 npm run typecheck        # tsc --noEmit
 ```
+
+The dashboard's "Restart Bot" button writes `dashboard/logs/restart.flag`; the bot exits with code 75 and `src/bot/supervisor.ts` (what `npm start` and `npm run bot` run) starts it again.
 
 The codebase is TypeScript. Server code compiles to `dist/`; browser code in `src/web/` compiles to `.js` files next to the pages in `dashboard/public/`, `public/` and `obs/` (those emitted files are gitignored, so edit the `.ts` sources). The dashboard binds to `DASHBOARD_HOST` (default `127.0.0.1`; the Docker image sets `0.0.0.0`).
 
@@ -460,6 +462,8 @@ http://localhost:3001/obs/overlays/song-player.html
 | POST | `/api/song-queue/clear` | Clear entire queue |
 | POST | `/api/song-queue/block` | Add to blocklist |
 | DELETE | `/api/song-queue/block/:id` | Remove from blocklist |
+| GET | `/api/song-queue/blocklist` | Get blocked videos, channels and keywords |
+| GET/PUT | `/api/config` | Settings page: read (secrets as set/not set only) and edit `.env` settings |
 | GET | `/api/tts/config` | Get TTS service configuration |
 | POST | `/api/tts/generate` | Generate TTS audio (text, voice, provider) |
 | GET | `/api/tts/audio/:filename` | Serve cached TTS audio files |
@@ -474,6 +478,14 @@ Connect to `ws://localhost:3001` for real-time updates:
 - `redemption` - Channel points redemptions
 - `eventsub-event` - EventSub events
 - `song-queue-update` - Song queue changes (add, skip, remove, clear, config)
+
+### Settings Page and Dashboard Admin Writes
+
+- `src/dashboard/lib/settings-schema.ts` lists every `.env` key the Settings page shows (type, range, default, group, when it applies). Add new bot env settings there; `tests/dashboard/lib/settings-schema.test.ts` fails when the running code reads an env key the schema does not list.
+- `src/dashboard/routes/config.ts` (`/api/config`) validates a whole PUT before writing, writes with `updateEnvValues()` (quotes values so dotenv reads them back), never returns secret values, and refuses read-only keys and keys set by the process environment.
+- Browser pages for the new admin screens are in `src/web/dashboard/public/manage.ts` (compiled to `dashboard/public/manage.js`); app.ts calls its `mgrOnPageShown` / `mgrOnSocketMessage` hooks.
+- With `DASHBOARD_INTERNAL_SECRET` set, the dashboard pages may still make admin writes on otherwise bot-only routes (loyalty `PUT /config` and `PUT /user/:u/points`; every song queue write except `POST /add`) because they carry a same-origin `Origin` header (`allowDashboardPages` in `src/dashboard/lib/middleware.ts`). Point-earning loyalty routes and adding songs stay bot-only.
+- Loyalty `PUT /config` now validates keys, types and ranges.
 
 ## Dependencies
 

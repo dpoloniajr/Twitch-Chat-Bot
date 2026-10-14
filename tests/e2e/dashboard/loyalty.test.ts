@@ -86,10 +86,32 @@ describe('dashboard /api/loyalty', () => {
         expect((await d.get('/api/loyalty/config')).json).toEqual(DEFAULT_CONFIG);
       });
 
-      it('PUT /config merges without validation', async () => {
-        const res = await d.put('/api/loyalty/config', { pointsPerMessage: 7, junk: 'x' });
-        expect(res.json).toEqual({ success: true, config: { ...DEFAULT_CONFIG, pointsPerMessage: 7, junk: 'x' } });
-        expect(d.readJson('loyalty.json').config.junk).toBe('x');
+      it('PUT /config merges the known settings it is given', async () => {
+        const res = await d.put('/api/loyalty/config', { pointsPerMessage: 7, currencyName: '  coin ', vipMultiplier: 1.25, enabled: false });
+        const expected = { ...DEFAULT_CONFIG, pointsPerMessage: 7, currencyName: 'coin', vipMultiplier: 1.25, enabled: false };
+        expect(res.json).toEqual({ success: true, config: expected });
+        expect(d.readJson('loyalty.json').config).toEqual(expected);
+      });
+
+      it.each([
+        ['an unknown key', { pointsPerMessage: 7, junk: 'x' }, 'Unknown loyalty setting: junk'],
+        ['an empty body', {}, 'No settings given'],
+        ['an array body', [1], 'Body must be an object of settings'],
+        ['a string number', { pointsPerMinute: '10' }, 'pointsPerMinute must be a whole number'],
+        ['a fractional integer field', { pointsPerMessage: 1.5 }, 'pointsPerMessage must be a whole number'],
+        ['a negative value', { messageCooldownSeconds: -1 }, 'messageCooldownSeconds must be between 0 and 86400'],
+        ['a zero points-per-level', { pointsPerLevel: 0 }, 'pointsPerLevel must be between 1 and 100000000'],
+        ['an infinite multiplier', { subscriberMultiplier: 1e400 }, 'subscriberMultiplier must be a number'],
+        ['a multiplier above 100', { vipMultiplier: 101 }, 'vipMultiplier must be between 0 and 100'],
+        ['a blank currency name', { currencyName: '   ' }, 'currencyName must be 1-30 characters'],
+        ['a long currency name', { currencyNamePlural: 'x'.repeat(31) }, 'currencyNamePlural must be 1-30 characters'],
+        ['a non-boolean enabled', { enabled: 'yes' }, 'enabled must be true or false']
+      ])('PUT /config rejects %s with 400 and leaves the file alone', async (_label, body, error) => {
+        const before = d.readJson('loyalty.json');
+        const res = await d.put('/api/loyalty/config', body);
+        expect(res.status).toBe(400);
+        expect(res.json).toEqual({ error });
+        expect(d.readJson('loyalty.json')).toEqual(before);
       });
     });
 

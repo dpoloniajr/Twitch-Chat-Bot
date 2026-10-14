@@ -142,8 +142,15 @@ export interface LoadPageOptions {
   html: string;
   /** e.g. 'dashboard/public/app.js' */
   script: string;
+  /** More page scripts run after `script`, in order (e.g. 'dashboard/public/manage.js') */
+  extraScripts?: string[];
   url?: string;
   routes?: Record<string, MockResponseInit | ((init: RequestInit | undefined) => MockResponseInit)>;
+  /**
+   * Answer every fetch with this instead of the mocked routes (e.g. forward to a
+   * real dashboard server); calls are still recorded in fetchCalls
+   */
+  fetchImpl?: (url: string, init: RequestInit | undefined) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
   /** before the script is evaluated */
   beforeScript?: (h: PageHarness) => void;
   confirmResult?: boolean;
@@ -175,6 +182,7 @@ export function loadPage(opts: LoadPageOptions): PageHarness {
     const url = String(input);
     const method = (init?.method ?? 'GET').toUpperCase();
     fetchCalls.push({ url, method, body: parseBody(init), init });
+    if (opts.fetchImpl) return opts.fetchImpl(url, init);
     let spec = routes.get(`${method} ${url}`) ?? routes.get(url);
     if (spec === undefined) {
       // prefix match on "METHOD prefix*" / "prefix*"
@@ -268,13 +276,15 @@ export function loadPage(opts: LoadPageOptions): PageHarness {
   };
 
   opts.beforeScript?.(h);
-  const { code } = loadScriptSource(opts.script);
-  // Run as a classic <script> (not eval) so top-level let/const become shared
-  // global lexical bindings exactly as in the browser.
-  const scriptEl = document.createElement('script');
-  scriptEl.textContent = code;
-  document.body.appendChild(scriptEl);
-  if (scriptErrors.length > 0) throw scriptErrors[0];
+  for (const script of [opts.script, ...(opts.extraScripts ?? [])]) {
+    const { code } = loadScriptSource(script);
+    // Run as a classic <script> (not eval) so top-level let/const become shared
+    // global lexical bindings exactly as in the browser.
+    const scriptEl = document.createElement('script');
+    scriptEl.textContent = code;
+    document.body.appendChild(scriptEl);
+    if (scriptErrors.length > 0) throw scriptErrors[0];
+  }
   return h;
 }
 

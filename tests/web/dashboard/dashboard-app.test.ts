@@ -70,7 +70,6 @@ function defaultRoutes(): Record<string, MockResponseInit> {
     'GET /api/filters': { body: FILTERS },
     'GET /obs/config': { body: OBS_CONFIG },
     'GET /api/alerts/config': { body: ALERT_CONFIG },
-    'GET /api/settings': { body: { commandRefreshInterval: 30 } },
   };
 }
 
@@ -329,7 +328,7 @@ describe('dashboard app: WebSocket messages', () => {
 });
 
 describe('dashboard app: actions', () => {
-  it('nav links switch pages via inline onclick; settings loads bot settings', async () => {
+  it('nav links switch pages via inline onclick', async () => {
     const h = await boot();
     const link = h.document.querySelector('a[href="#settings"]')!;
     click(link);
@@ -338,8 +337,9 @@ describe('dashboard app: actions', () => {
     expect(link.classList.contains('active')).toBe(true);
     expect(h.document.querySelectorAll('.nav-link.active')).toHaveLength(1);
     await flush();
-    expect(h.callsTo('/api/settings')).toHaveLength(1);
-    expect(h.$('commandRefreshInterval').value).toBe('30');
+    // Settings data is loaded by manage.js (tests/web/dashboard/manage.test.ts); app.js alone fetches nothing
+    expect(h.callsTo('/api/config')).toHaveLength(0);
+    expect(h.scriptErrors).toEqual([]);
   });
 
   it('command tester validates username and logs the test command', async () => {
@@ -728,23 +728,6 @@ describe('dashboard app: actions', () => {
     expect(h.callsTo('/api/alerts/test', 'POST')[2].body).toEqual({ alertType: 'subscription', user: 'TestUser', useConfig: true, tier: '1000', message: 'Test subscription message!' });
   });
 
-  it('bot settings: validation, save success and server error', async () => {
-    const h = await boot({ 'POST /api/settings': { ok: false, status: 400, body: {} } });
-    h.$('commandRefreshInterval').value = '3';
-    h.window.eval('saveBotSettings()');
-    await flush();
-    expect(h.alerts).toEqual(['Refresh interval must be at least 5 seconds']);
-    h.$('commandRefreshInterval').value = '10';
-    h.window.eval('saveBotSettings()');
-    await flush();
-    expect(h.callsTo('/api/settings', 'POST')[0].body).toEqual({ commandRefreshInterval: 10 });
-    expect(h.alerts[1]).toBe('Failed to save settings: Unknown error');
-    h.routes.set('POST /api/settings', { body: {} });
-    h.window.eval('saveBotSettings()');
-    await flush();
-    expect(h.alerts[2]).toBe('Settings saved successfully');
-  });
-
   it('restartBot confirms then POSTs', async () => {
     let h = await boot({}, false);
     h.window.eval('restartBot()');
@@ -772,8 +755,8 @@ describe('dashboard app: actions', () => {
     expect(h.window.escapeHtml(5)).toBe('5');
   });
 
-  it('every inline handler in index.html refers to a global function', () => {
-    const h = loadPage({ html: 'dashboard/public/index.html', script: 'dashboard/public/app.js' });
+  it('every inline handler in index.html refers to a global function of app.js or manage.js', () => {
+    const h = loadPage({ html: 'dashboard/public/index.html', script: 'dashboard/public/app.js', extraScripts: ['dashboard/public/manage.js'] });
     const html = fs.readFileSync(path.join(REPO_ROOT, 'dashboard/public/index.html'), 'utf8');
     const names = new Set<string>();
     for (const m of html.matchAll(/\son[a-z]+="([^"]*)"/g)) {

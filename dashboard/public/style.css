@@ -1028,3 +1028,125 @@ input[type="range"]::-moz-range-thumb {
   font-size: 14px;  
   margin: 0;  
 } 
+
+/* ==================== Management pages (manage.js) ==================== */
+
+.mgr-status {
+  min-height: 1.4em;
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.mgr-status-ok { color: #00c853; }
+.mgr-status-error { color: #ff5252; }
+.mgr-status-info { color: #adadb8; }
+
+.mgr-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px 16px;
+  margin: 10px 0 20px;
+  border: 1px solid #9146ff;
+  border-radius: 6px;
+  background: rgba(145, 70, 255, 0.1);
+}
+
+.mgr-notice[hidden] { display: none; }
+
+.mgr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.mgr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0 20px;
+  align-items: end;
+  margin-bottom: 15px;
+}
+
+.mgr-setting.mgr-dirty > label { color: #f0b232; }
+
+.mgr-setting-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.mgr-setting-line input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.mgr-settings input[type="number"],
+.mgr-grid input[type="number"],
+.word-input-group input[type="number"],
+.mgr-inline-number {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a1a1d;
+  color: #efeff1;
+  border: 1px solid #404249;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.mgr-inline-number {
+  width: 90px;
+  padding: 4px 8px;
+}
+
+.mgr-unit {
+  color: #adadb8;
+  font-weight: normal;
+}
+
+.mgr-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #404249;
+  color: #efeff1;
+}
+
+.mgr-badge-live { background: rgba(0, 200, 83, 0.2); color: #00c853; }
+.mgr-badge-set { background: rgba(0, 200, 83, 0.2); color: #00c853; margin-left: 0; }
+.mgr-badge-unset { background: rgba(235, 4, 0, 0.15); color: #ff5252; margin-left: 0; }
+
+.mgr-warning {
+  display: block;
+  color: #f0b232;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.mgr-empty {
+  color: #adadb8;
+  font-style: italic;
+}
+
+.mgr-now-playing strong { color: #efeff1; }
+
+.mgr-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.mgr-chip-remove {
+  margin-left: 6px;
+  background: transparent;
+  color: #ff5252;
+  border: none;
+  cursor: pointer;
+}

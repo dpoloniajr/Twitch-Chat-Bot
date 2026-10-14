@@ -78,6 +78,24 @@ export function requireBotSecret(secret: string | undefined): (req: Request, res
 }
 
 /**
+ * Let a write through `botOnly` when it comes from a dashboard page instead of
+ * the bot. Browser pages cannot hold the bot secret, but they always send an
+ * Origin header on writes, and sameOriginGuard (which runs first) has already
+ * rejected every Origin other than this server's own. So a write that carries
+ * an Origin here is from a dashboard page; one without needs the bot secret.
+ * Used for the admin actions the dashboard pages offer (song queue management,
+ * loyalty settings and point edits) on routes that are otherwise bot-only.
+ */
+export function allowDashboardPages(
+  botOnly: (req: Request, res: Response, next: NextFunction) => void
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    if (typeof req.headers.origin === 'string' && req.headers.origin !== '') return next();
+    botOnly(req, res, next);
+  };
+}
+
+/**
  * Give body-less requests an empty body. Express 5 leaves req.body undefined when
  * a request has no (JSON/urlencoded) body, which made validation and destructuring
  * throw TypeErrors (500) instead of answering 400.

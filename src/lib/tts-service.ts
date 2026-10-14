@@ -71,6 +71,12 @@ export interface TTSService {
   initialize(): Promise<void>;
   generateTTS(text: string, options?: GenerateOptions): Promise<GenerateResult>;
   getConfig(): TTSPublicConfig;
+  /**
+   * Re-read the provider, keys, voices, models and cache limits from `env`
+   * (the dashboard Settings page saves them live). The cache directory and
+   * whether caching is enabled are fixed at initialize().
+   */
+  reconfigure(env?: NodeJS.ProcessEnv): void;
 }
 
 interface CacheEntry {
@@ -429,7 +435,12 @@ export function createTTSService(config: TTSConfig = configFromEnv(), http: TTSH
     };
   }
 
-  return { initialize, generateTTS, getConfig };
+  function reconfigure(env: NodeJS.ProcessEnv = process.env): void {
+    const { cacheDir: _dir, cacheEnabled: _enabled, ...next } = configFromEnv(env, config.cacheDir);
+    Object.assign(config, next);
+  }
+
+  return { initialize, generateTTS, getConfig, reconfigure };
 }
 
 /**
@@ -446,3 +457,4 @@ const defaultService = createTTSService();
 export const initialize = defaultService.initialize;
 export const generateTTS = defaultService.generateTTS;
 export const getConfig = defaultService.getConfig;
+export const reconfigure = defaultService.reconfigure;

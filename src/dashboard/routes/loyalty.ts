@@ -33,6 +33,44 @@ export interface LoyaltyRouter extends Router {
   publish: () => Promise<void>;
 }
 
+/** Numeric loyalty settings and their allowed range */
+const LOYALTY_NUMBER_FIELDS: Record<string, { min: number; max: number; integer: boolean }> = {
+  pointsPerMinute: { min: 0, max: 100000, integer: true },
+  pointsPerMessage: { min: 0, max: 100000, integer: true },
+  maxPointsPerMessage: { min: 0, max: 1000000, integer: true },
+  messageCooldownSeconds: { min: 0, max: 86400, integer: true },
+  pointsPerLevel: { min: 1, max: 100000000, integer: true },
+  subscriberMultiplier: { min: 0, max: 100, integer: false },
+  vipMultiplier: { min: 0, max: 100, integer: false }
+};
+const LOYALTY_TEXT_FIELDS = ['currencyName', 'currencyNamePlural'];
+
+/**
+ * Validate a PUT /config body: only known settings, each with the right type and
+ * range. Returns an error message, or null when the update is valid.
+ */
+export function validateLoyaltyConfigUpdate(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return 'Body must be an object of settings';
+  const entries = Object.entries(body as Record<string, unknown>);
+  if (entries.length === 0) return 'No settings given';
+  for (const [key, value] of entries) {
+    const range = LOYALTY_NUMBER_FIELDS[key];
+    if (range) {
+      if (typeof value !== 'number' || !Number.isFinite(value) || (range.integer && !Number.isInteger(value))) {
+        return `${key} must be ${range.integer ? 'a whole number' : 'a number'}`;
+      }
+      if (value < range.min || value > range.max) return `${key} must be between ${range.min} and ${range.max}`;
+    } else if (LOYALTY_TEXT_FIELDS.includes(key)) {
+      if (typeof value !== 'string' || value.trim() === '' || value.length > 30) return `${key} must be 1-30 characters`;
+    } else if (key === 'enabled') {
+      if (typeof value !== 'boolean') return 'enabled must be true or false';
+    } else {
+      return `Unknown loyalty setting: ${key}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Middleware to handle common loyalty operation response patterns
  * @param result - Result object from loyalty-store functions
@@ -109,12 +147,19 @@ export function createLoyaltyRouter(logsDir: string, broadcast?: (message: Broad
     }
   });
 
-  // PUT /api/loyalty/config - Update loyalty config
+  // PUT /api/loyalty/config - Update loyalty config (known settings only, validated)
   router.put('/config', async (req, res, next) => {
     try {
+      const invalid = validateLoyaltyConfigUpdate(req.body);
+      if (invalid) {
+        res.status(400).json({ error: invalid });
+        return;
+      }
       const config = await withCrossProcessLock(loyaltyFile, async () => {
         const data = await readOrInitLoyaltyData(loyaltyFile);
-        data.config = { ...data.config, ...req.body };
+        const updates = Object.fromEntries(Object.entries(req.body as Record<string, unknown>)
+          .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+        data.config = { ...data.config, ...updates };
         await writeData(data);
         return data.config;
       });
