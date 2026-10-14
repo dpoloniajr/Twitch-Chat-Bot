@@ -11,8 +11,8 @@ import * as dotenv from 'dotenv';
 import { projectPath } from '../utils/project-root';
 
 // Keys the system environment sets (e.g. docker-compose); dotenv never overrides
-// them, so the Settings page shows them locked. Captured before .env is loaded.
-const environmentKeys = Object.keys(process.env).filter(key => process.env[key] !== '');
+// them (even when empty), so the Settings page shows them locked. Captured before .env is loaded.
+const environmentKeys = Object.keys(process.env);
 
 // Load .env before requiring modules that read settings at load time (tts-service)
 dotenv.config({ path: projectPath('.env') });

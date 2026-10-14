@@ -600,7 +600,11 @@ async function mgrSaveSettings(): Promise<void> {
 /** Tell the user which processes must restart for saved settings to apply */
 function mgrShowRestartNotice(restart: MgrSettingApplies[]): void {
   const notice = mgrEl('settingsRestartNotice');
-  if (!notice || restart.length === 0) return;
+  if (!notice) return;
+  if (restart.length === 0) {
+    notice.hidden = true;
+    return;
+  }
   const names: Record<string, string> = { bot: 'the bot', dashboard: 'the dashboard', 'token-generator': 'the token generator' };
   const parts = restart.map(r => names[r] ?? r);
   let text = `Saved. Restart ${parts.join(' and ')} to apply.`;

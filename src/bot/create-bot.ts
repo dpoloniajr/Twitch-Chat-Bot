@@ -92,7 +92,10 @@ export function createBot(deps: BotDeps): Bot {
       try {
         ctx.fs.unlinkSync(ctx.restartFlagPath);
       } catch (e) {
-        console.error('Failed to remove restart flag:', (e as Error).message);
+        // Exiting with the flag still there would restart straight into another
+        // exit, forever. Keep running; the watcher tries again on its next tick.
+        console.error('Failed to remove restart flag, not restarting:', (e as Error).message);
+        return;
       }
       ctx.exit(RESTART_EXIT_CODE);
     }

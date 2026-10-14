@@ -71,7 +71,8 @@ describe('dashboard main', () => {
     const { createDashboard } = runMain(Promise.resolve());
     const [[options]] = createDashboard.mock.calls as unknown as Array<[{ environmentKeys: string[] }]>;
     expect(options.environmentKeys).toContain('SYSTEM_SET_KEY');
-    expect(options.environmentKeys).not.toContain('SYSTEM_EMPTY_KEY');
+    // dotenv will not override an empty system value either, so it is locked too
+    expect(options.environmentKeys).toContain('SYSTEM_EMPTY_KEY');
     delete process.env.SYSTEM_SET_KEY;
     delete process.env.SYSTEM_EMPTY_KEY;
     await flush();

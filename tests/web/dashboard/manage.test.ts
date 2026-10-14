@@ -327,6 +327,24 @@ describe('manage.js: Settings', () => {
     expect(h.$('settingsRestartNotice').hidden).toBe(true);
   });
 
+  it('a later live-only save hides the restart notice from an earlier one', async () => {
+    const replies = [['bot'], []];
+    const h = await boot({
+      'PUT /api/config': () => ({ body: { success: true, changed: ['X'], restart: replies.shift(), ...CONFIG } })
+    });
+    await open(h, 'settings');
+    change(input(h, 'HYPE_ENABLED'), false);
+    h.window.eval('mgrSaveSettings()');
+    await flush();
+    expect(h.$('settingsRestartNotice').hidden).toBe(false);
+
+    change(input(h, 'HYPE_ENABLED'), false);
+    h.window.eval('mgrSaveSettings()');
+    await flush();
+    expect(h.callsTo('/api/config', 'PUT')).toHaveLength(2);
+    expect(h.$('settingsRestartNotice').hidden).toBe(true);
+  });
+
   it('reports a load failure and a network error', async () => {
     let h = await boot({ 'GET /api/config': { status: 500, body: { error: 'boom' } } });
     await open(h, 'settings');

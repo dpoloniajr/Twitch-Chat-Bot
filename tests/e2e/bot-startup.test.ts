@@ -441,7 +441,8 @@ describe('bot startup', () => {
     // The watcher polls path.join(__dirname, 'dashboard', 'logs', 'restart.flag') in the real repo.
     // To avoid touching the repo (and racing other suites' bots), fs.existsSync/unlinkSync are faked
     // for that one path only.
-    function fakeRestartFlag(unlinkError?: Error) {
+    function fakeRestartFlag(initialUnlinkError?: Error) {
+      let unlinkError = initialUnlinkError;
       // eslint-disable-next-line @typescript-eslint/unbound-method
       const realExists = nodeFs.existsSync;
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -454,7 +455,12 @@ describe('bot startup', () => {
         if (unlinkError) throw unlinkError;
         present = false;
       });
-      return { set: (v: boolean) => { present = v; }, exists, unlink };
+      return {
+        set: (v: boolean) => { present = v; },
+        failUnlink: (e?: Error) => { unlinkError = e; },
+        exists,
+        unlink
+      };
     }
 
     it('checks every 5s and exits with the restart code (75) after removing the flag', async () => {
@@ -474,13 +480,20 @@ describe('bot startup', () => {
       expect(lines(logSpy)).toContain('🔄 Restart flag detected. Restarting bot...');
     });
 
-    it('still exits with the restart code when the flag cannot be removed', async () => {
+    it('keeps running when the flag cannot be removed, and restarts once removal works', async () => {
       const b = await start();
       const flag = fakeRestartFlag(new Error('EPERM'));
       flag.set(true);
+      // Exiting with the flag left behind would restart into another exit, forever
+      await b.advance(5_000);
+      await b.advance(5_000);
+      expect(b.exitCodes()).toEqual([]);
+      expect(flag.unlink).toHaveBeenCalledTimes(2);
+      expect(lines(errorSpy)).toContain('Failed to remove restart flag, not restarting: EPERM');
+
+      flag.failUnlink(undefined);
       await expect(b.advance(5_000)).rejects.toThrow('process.exit(75)');
       expect(b.exitCodes()).toEqual([75]);
-      expect(lines(errorSpy)).toContain('Failed to remove restart flag: EPERM');
     });
   });
 });

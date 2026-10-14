@@ -9,6 +9,7 @@
  */
 
 import { ValidationError } from '../../lib/api-utils';
+import { isTruthyEnvValue } from '../../lib/feature-scopes';
 
 /** How a setting is edited and validated */
 export type SettingType = 'string' | 'integer' | 'boolean' | 'enum' | 'list' | 'secret';
@@ -51,6 +52,8 @@ export interface SettingDefinition {
   unit?: string;
   /** boolean: write "false" by removing the key (for flags read as "set = on") */
   falseUnsets?: boolean;
+  /** boolean: how the code reading this key turns a non-empty value into on/off */
+  isOn?: (raw: string) => boolean;
   /** Shown but never written through the API */
   readOnly?: boolean;
   /** Why a read-only setting cannot be edited here */
@@ -74,6 +77,11 @@ export const SETTING_GROUPS: SettingGroup[] = [
 const TWITCH_LOGIN = /^[A-Za-z0-9_]{1,25}$/;
 const TWITCH_LOGIN_MESSAGE = 'must be a Twitch username (letters, digits and underscores, up to 25 characters)';
 
+/** On unless the value is false, 0, no or off (any case), like isFalsyEnvValue in bot/config */
+function notFalsyWord(raw: string): boolean {
+  return !['false', '0', 'no', 'off'].includes(raw.toLowerCase());
+}
+
 export const SETTINGS: SettingDefinition[] = [
   // ---- General ----
   {
@@ -93,18 +101,20 @@ export const SETTINGS: SettingDefinition[] = [
   },
   {
     key: 'DISABLE_EVENTSUB', group: 'general', label: 'Disable EventSub', type: 'boolean', default: false,
+    isOn: isTruthyEnvValue,
     description: 'Turn off follow/sub/raid/redemption events (use when the broadcaster token is not set up).',
     applies: 'bot'
   },
   {
     key: 'DEBUG', group: 'general', label: 'Debug logging', type: 'boolean', default: false, falseUnsets: true,
+    isOn: () => true,
     description: 'Print extra debug lines in the bot and dashboard logs.', applies: 'bot'
   },
 
   // ---- Welcome & Hype ----
   {
     key: 'FIRST_CHATTER_WELCOME_ENABLED', group: 'welcome', label: 'Welcome first-time chatters', type: 'boolean',
-    default: true, applies: 'bot'
+    default: true, isOn: notFalsyWord, applies: 'bot'
   },
   {
     key: 'FIRST_CHATTER_MESSAGE', group: 'welcome', label: 'Welcome message', type: 'string',
@@ -113,9 +123,12 @@ export const SETTINGS: SettingDefinition[] = [
   },
   {
     key: 'FIRST_CHATTER_ALERT_ENABLED', group: 'welcome', label: 'First-time chatter overlay alert', type: 'boolean',
-    default: true, applies: 'bot'
+    default: true, isOn: notFalsyWord, applies: 'bot'
   },
-  { key: 'HYPE_ENABLED', group: 'welcome', label: 'Hype detector', type: 'boolean', default: true, applies: 'bot' },
+  {
+    key: 'HYPE_ENABLED', group: 'welcome', label: 'Hype detector', type: 'boolean', default: true,
+    isOn: raw => raw !== 'false' && raw !== '0', applies: 'bot'
+  },
   {
     key: 'HYPE_MIN_MESSAGES', group: 'welcome', label: 'Messages needed for hype', type: 'integer',
     default: 15, min: 5, max: 1000, unit: 'messages', applies: 'bot'
@@ -180,6 +193,7 @@ export const SETTINGS: SettingDefinition[] = [
   },
   {
     key: 'TTS_CACHE_ENABLED', group: 'tts', label: 'Cache generated audio', type: 'boolean', default: true,
+    isOn: raw => raw !== 'false',
     applies: 'dashboard'
   },
 
@@ -247,7 +261,6 @@ export function getSettingDefinition(key: string): SettingDefinition | undefined
   return SETTINGS_BY_KEY.get(key);
 }
 
-const FALSY_VALUES = ['false', '0', 'no', 'off'];
 
 /**
  * Parse a stored .env string the way the bot reads it, for display.
@@ -261,7 +274,7 @@ export function parseSettingValue(def: SettingDefinition, raw: string | undefine
   }
   switch (def.type) {
     case 'boolean':
-      return def.falseUnsets ? true : !FALSY_VALUES.includes(raw.toLowerCase());
+      return (def.isOn ?? notFalsyWord)(raw);
     case 'integer': {
       const n = Number(raw);
       return Number.isFinite(n) ? n : null;
@@ -396,7 +409,7 @@ export function describeSettings(
   return SETTINGS.map(def => {
     const fromEnvironment = setByEnvironment(def.key, fileEnv);
     const raw = fromEnvironment ? processEnv[def.key] : fileEnv[def.key];
-    const { pattern: _pattern, patternMessage: _message, falseUnsets: _unsets, ...publicDef } = def;
+    const { pattern: _pattern, patternMessage: _message, falseUnsets: _unsets, isOn: _isOn, ...publicDef } = def;
     return {
       ...publicDef,
       readOnly: !!def.readOnly,

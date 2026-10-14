@@ -6,6 +6,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isTruthyEnvValue } from '../../../src/lib/feature-scopes';
+import { readFirstChatterSettings, readHypeSettings } from '../../../src/bot/config';
+import { configFromEnv } from '../../../src/lib/tts-service';
 import {
   SETTINGS,
   SETTING_GROUPS,
@@ -106,7 +109,14 @@ describe('parseSettingValue', () => {
     ['boolean "OFF" (any case)', 'FIRST_CHATTER_WELCOME_ENABLED', 'OFF', false],
     ['boolean "no"', 'FIRST_CHATTER_ALERT_ENABLED', 'no', false],
     ['boolean "true"', 'DISABLE_EVENTSUB', 'true', true],
-    ['boolean other text is on', 'DISABLE_EVENTSUB', 'yes', true],
+    ['DISABLE_EVENTSUB "yes" is on', 'DISABLE_EVENTSUB', 'yes', true],
+    ['DISABLE_EVENTSUB " TRUE " is on (trimmed, any case)', 'DISABLE_EVENTSUB', ' TRUE ', true],
+    ['DISABLE_EVENTSUB other text is off, as eventsub reads it', 'DISABLE_EVENTSUB', 'on', false],
+    ['HYPE_ENABLED "off" is on (the hype detector only checks false and 0)', 'HYPE_ENABLED', 'off', true],
+    ['HYPE_ENABLED "FALSE" is on (case-sensitive check)', 'HYPE_ENABLED', 'FALSE', true],
+    ['TTS_CACHE_ENABLED "0" is on (the TTS service only checks false)', 'TTS_CACHE_ENABLED', '0', true],
+    ['TTS_CACHE_ENABLED "false" is off', 'TTS_CACHE_ENABLED', 'false', false],
+    ['FIRST_CHATTER_* other text is on', 'FIRST_CHATTER_WELCOME_ENABLED', 'maybe', true],
     ['DEBUG: any value is on', 'DEBUG', 'false', true],
     ['DEBUG: unset is off', 'DEBUG', undefined, false],
     ['integer', 'COMMAND_REFRESH_INTERVAL', '30', 30],
@@ -263,6 +273,28 @@ describe('isSetByEnvironment', () => {
   });
 });
 
+describe('boolean settings read the way the running code reads them', () => {
+  const SAMPLES = ['true', 'TRUE', '1', 'yes', ' yes ', 'on', 'false', 'FALSE', '0', 'no', 'NO', 'off', 'Off', 'maybe'];
+  const readers: Record<string, (raw: string) => boolean> = {
+    DISABLE_EVENTSUB: raw => isTruthyEnvValue(raw),
+    DEBUG: raw => Boolean(raw),
+    FIRST_CHATTER_WELCOME_ENABLED: raw => readFirstChatterSettings({ FIRST_CHATTER_WELCOME_ENABLED: raw }).welcomeEnabled,
+    FIRST_CHATTER_ALERT_ENABLED: raw => readFirstChatterSettings({ FIRST_CHATTER_ALERT_ENABLED: raw }).alertEnabled,
+    HYPE_ENABLED: raw => readHypeSettings({ HYPE_ENABLED: raw }).enabled,
+    TTS_CACHE_ENABLED: raw => configFromEnv({ TTS_CACHE_ENABLED: raw }, '/tmp/unused').cacheEnabled
+  };
+
+  it('covers every boolean setting', () => {
+    expect(SETTINGS.filter(s => s.type === 'boolean').map(s => s.key).sort()).toEqual(Object.keys(readers).sort());
+  });
+
+  it.each(Object.keys(readers))('%s', key => {
+    for (const raw of SAMPLES) {
+      expect([raw, parseSettingValue(def(key), raw)]).toEqual([raw, readers[key](raw)]);
+    }
+  });
+});
+
 describe('describeSettings', () => {
   it('reports every setting with its parsed value and never a secret value', () => {
     const fileEnv = { OPENAI_API_KEY: 'sk-SECRET', COMMAND_REFRESH_INTERVAL: '30', TWITCH_CHANNELS: 'a,b' };
@@ -282,6 +314,7 @@ describe('describeSettings', () => {
       expect(state).not.toHaveProperty('pattern');
       expect(state).not.toHaveProperty('patternMessage');
       expect(state).not.toHaveProperty('falseUnsets');
+      expect(state).not.toHaveProperty('isOn');
     }
   });
 
